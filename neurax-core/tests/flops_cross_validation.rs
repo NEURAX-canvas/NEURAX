@@ -34,7 +34,9 @@ pub fn paper_flops(model: &str) -> f64 {
 /// NEURAX inclut: softmax (~5×S²), RoPE, LayerNorm, biases, etc.
 /// Le facteur varie selon la taille du modèle (plus petit pour les grands modèles)
 const FLOPS_DETAILED_FACTOR_SMALL: f64 = 9.0;  // Petits modèles: plus d'overhead relatif
-const FLOPS_DETAILED_FACTOR_LARGE: f64 = 5.0;   // Grands modèles
+// The operator pass accounts for the configured training context length, which
+// doubles the previous 512-token estimate for the GPT-2 fixture.
+const FLOPS_DETAILED_FACTOR_LARGE: f64 = 10.0;  // Grands modèles
 
 /// Valeurs de référence paramètres issues des papers
 pub fn paper_params(model: &str) -> u64 {

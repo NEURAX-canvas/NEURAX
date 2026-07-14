@@ -1,6 +1,6 @@
 //! NEURAX CLI - Command Line Interface
 
-use neurax_core::{analyze_file, analyze_json, validate_json, get_model_summary, run_analysis};
+use neurax_core::{analyze_json, validate_json, get_model_summary};
 use neurax_ir::report::{format_markdown, format_json_output};
 use std::path::PathBuf;
 use std::fs;
@@ -66,11 +66,11 @@ fn cmd_analyze(args: &[String]) -> Result<(), i32> {
     })?;
     
     let duration = start.elapsed();
-    let analysis_time_ms = duration.as_millis() as u64;
+    let _analysis_time_ms = duration.as_millis() as u64;
     println!("Analysis completed in {:.2}s", duration.as_secs_f64());
     
     // Generate output based on format
-    let input_file_str = input_path.to_string_lossy().to_string();
+    let _input_file_str = input_path.to_string_lossy().to_string();
     let output = match format.as_str() {
         "json" => result.to_json().map_err(|e| {
             eprintln!("JSON serialization error: {}", e);

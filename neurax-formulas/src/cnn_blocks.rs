@@ -105,6 +105,7 @@ pub fn mbconv_params(
     stride: usize,
     bias: bool,
 ) -> u64 {
+    let _ = stride; // Reserved for future stride-aware parameter calculation
     let expanded = in_channels * expand_factor;
     
     // Expansion phase (skip if expand_factor=1)

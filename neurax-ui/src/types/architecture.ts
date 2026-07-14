@@ -664,6 +664,8 @@ export interface AnalysisResult {
   totalParams: number;
   numLayers: number;
   modelType: string;
+  hiddenSize?: number;
+  vocabSize?: number;
   graphDepth: number;
   totalOperations: number;
   criticalPathLength: number;
@@ -680,6 +682,10 @@ export interface AnalysisResult {
   flopsPerToken: number;
   flopsIncrementalDecode: number;
   arithmeticIntensity: number;
+  macs?: number;
+  totalStepFlops?: number;
+  flopsPerBatch?: number;
+  bytesAccessed?: number;
   bottleneck: string;
   rooflinePosition: number;
 
@@ -697,6 +703,8 @@ export interface AnalysisResult {
   maxBatchSizeFit: number;
   memoryFragmentation: number;
   memoryUsage: string;
+  memoryFragmentationPct?: number;
+  oomRisk?: string;
 
   // Hardware
   gpuName: string;
@@ -722,6 +730,9 @@ export interface AnalysisResult {
   throughputTokensPerS: number;
   throughputGraphsPerS?: number | null;
   gpuUtilization: number | null;
+  tensorCoreUtilization?: number;
+  effectiveTflops?: number;
+  samplesPerS?: number;
 
   // Training cost
   trainingCostUsd: number;
@@ -729,6 +740,7 @@ export interface AnalysisResult {
   energyKwh: number;
   co2Kg: number;
   costPerMillionTokensUsd: number;
+  gpuHours?: number;
   provider?: string;
 
   // Runtime context

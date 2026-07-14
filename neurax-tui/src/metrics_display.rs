@@ -1,10 +1,10 @@
 //! Metrics display components
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Gauge},
+    widgets::{Block, Borders, Cell, Row, Table},
 };
 use neurax_core::AnalysisResult;
 use crate::real_world_data::RealWorldData;
@@ -94,7 +94,7 @@ pub fn render_overview_tab(result: &AnalysisResult, real: &RealWorldData, _area:
     lines
 }
 
-pub fn render_architecture_metrics(result: &AnalysisResult, real: &RealWorldData, area: Rect) -> Table<'static> {
+pub fn render_architecture_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
     let accuracy = calculate_accuracy(result.arch.metrics.total_parameters as f64, real.total_params as f64);
     
     let rows = vec![
@@ -129,7 +129,7 @@ pub fn render_architecture_metrics(result: &AnalysisResult, real: &RealWorldData
         .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
 }
 
-pub fn render_compute_metrics(result: &AnalysisResult, _real: &RealWorldData, area: Rect) -> Table<'static> {
+pub fn render_compute_metrics(result: &AnalysisResult, _real: &RealWorldData, _area: Rect) -> Table<'static> {
     let rows = vec![
         Row::new(vec![
             Cell::from("Total FLOPs"),
@@ -186,7 +186,7 @@ pub fn render_compute_metrics(result: &AnalysisResult, _real: &RealWorldData, ar
         .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
 }
 
-pub fn render_memory_metrics(result: &AnalysisResult, real: &RealWorldData, area: Rect) -> Table<'static> {
+pub fn render_memory_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
     let accuracy = calculate_accuracy(result.memory.metrics.peak_vram_gb(), real.peak_memory_gb);
     
     let rows = vec![
@@ -245,7 +245,7 @@ pub fn render_memory_metrics(result: &AnalysisResult, real: &RealWorldData, area
         .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
 }
 
-pub fn render_hardware_metrics(result: &AnalysisResult, real: &RealWorldData, area: Rect) -> Table<'static> {
+pub fn render_hardware_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
     let latency_accuracy = calculate_accuracy(result.hardware.metrics.latency_ms, real.inference_latency_ms);
     let throughput_accuracy = calculate_accuracy(result.hardware.metrics.throughput_tokens_per_s, real.throughput_tokens_per_s);
     
@@ -305,7 +305,7 @@ pub fn render_hardware_metrics(result: &AnalysisResult, real: &RealWorldData, ar
         .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
 }
 
-pub fn render_cost_metrics(result: &AnalysisResult, real: &RealWorldData, area: Rect) -> Table<'static> {
+pub fn render_cost_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
     let cost_accuracy = calculate_accuracy(result.cost.metrics.training_cost_usd, real.training_cost_usd);
     let time_accuracy = calculate_accuracy(result.cost.metrics.training_time_hours, real.training_time_hours);
     

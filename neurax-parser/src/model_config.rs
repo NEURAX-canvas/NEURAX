@@ -781,6 +781,7 @@ impl GlobalParams {
 #[derive(Debug, Clone)]
 pub struct TrainingConfig {
     pub batch_size: usize,
+    pub sequence_length: Option<usize>,
     pub optimizer: String,
     pub learning_rate: f64,
     pub precision: String,
@@ -795,6 +796,7 @@ impl Default for TrainingConfig {
     fn default() -> Self {
         Self {
             batch_size: 32,
+            sequence_length: None,
             optimizer: "adamw".to_string(),
             learning_rate: 0.001,
             precision: "fp32".to_string(),
@@ -811,6 +813,7 @@ impl TrainingConfig {
     pub fn from_raw(raw: RawTraining) -> Self {
         Self {
             batch_size: raw.batch_size,
+            sequence_length: raw.sequence_length,
             optimizer: raw.optimizer.unwrap_or_else(|| "adamw".to_string()),
             learning_rate: raw.learning_rate.unwrap_or(0.001),
             precision: raw.precision,

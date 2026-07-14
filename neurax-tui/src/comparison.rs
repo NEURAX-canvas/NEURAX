@@ -1,16 +1,16 @@
 //! Comparison view between computed and real-world metrics
 
 use ratatui::{
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Gauge, BarChart},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 use neurax_core::AnalysisResult;
 use crate::real_world_data::RealWorldData;
 use crate::metrics_display::{accuracy_color, calculate_accuracy, format_number};
 
-pub fn render_comparison_summary(result: &AnalysisResult, real: &RealWorldData, area: Rect) -> Table<'static> {
+pub fn render_comparison_summary(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
     // Calculate overall accuracy
     let param_accuracy = calculate_accuracy(result.arch.metrics.total_parameters as f64, real.total_params as f64);
     let memory_accuracy = calculate_accuracy(result.memory.metrics.peak_vram_gb(), real.peak_memory_gb);

@@ -162,6 +162,50 @@ def _apply_tool_to_snapshot(snapshot: dict[str, Any], tool: dict[str, Any]) -> d
             n["x"] = x
             n["y"] = y
 
+    elif name == "initialize_hyperparams":
+        # Initialize hyperparameters based on model architecture and hardware config
+        hw = snapshot.get("hw_config", {})
+        family = snapshot.get("family", "transformer")
+        
+        # Calculate reasonable defaults based on architecture
+        num_layers = len(nodes)
+        hidden_size = hw.get("hiddenSize", 768)
+        vocab_size = hw.get("vocabSize", 50257)
+        seq_len = hw.get("seqLen", 2048)
+        
+        # Initialize hyperparameters dict
+        hyperparams = {
+            "learning_rate": 1e-4 if family == "transformer" else 1e-3,
+            "weight_decay": 0.01,
+            "warmup_steps": int(2000 * (num_layers / 12)),
+            "max_steps": 100000,
+            "batch_size": hw.get("batchSize", 32),
+            "gradient_accumulation_steps": max(1, 32 // (hw.get("batchSize", 32) or 1)),
+            "lr_schedule": "cosine_with_warmup",
+            "beta1": 0.9,
+            "beta2": 0.999,
+            "epsilon": 1e-8,
+            "max_grad_norm": 1.0,
+            "dropout": 0.1,
+            "attention_dropout": 0.1,
+            "activation": "gelu",
+            "precision": "fp16" if hw.get("precision") == "float16" else "bf16",
+        }
+        
+        snapshot["hyperparams"] = hyperparams
+        logger.info(f"🔧 INITIALIZE HYPERPARAMS: {len(hyperparams)} params set for {family}")
+
+    elif name == "set_hyperparams":
+        # Set specific hyperparameter values
+        updates = args.get("updates")
+        if isinstance(updates, dict):
+            hyperparams = snapshot.get("hyperparams", {})
+            if not isinstance(hyperparams, dict):
+                hyperparams = {}
+            hyperparams.update(updates)
+            snapshot["hyperparams"] = hyperparams
+            logger.info(f"🔧 SET HYPERPARAMS: {list(updates.keys())}")
+
     elif name == "connect":
         from_id = str(args.get("from_id") or "")
         to_id = str(args.get("to_id") or "")

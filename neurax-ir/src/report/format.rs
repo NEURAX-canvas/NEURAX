@@ -7,13 +7,6 @@ use std::fmt::Write;
 pub fn format_markdown(report: &ReportIR) -> String {
     let mut output = String::new();
     
-    // Helper macro for safe writes
-    macro_rules! safe_write {
-        ($buf:expr, $($arg:tt)*) => {
-            let _ = write!($buf, $($arg)*);
-        };
-    }
-    
     macro_rules! safe_writeln {
         ($buf:expr) => {
             let _ = writeln!($buf);

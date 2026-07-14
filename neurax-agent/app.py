@@ -93,3 +93,11 @@ async def run_events(run_id: str) -> StreamingResponse:
             _runs.pop(run_id, None)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.environ.get("AGENT_PORT", "8099"))
+    host = os.environ.get("AGENT_HOST", "127.0.0.1")
+    uvicorn.run(app, host=host, port=port, log_level="info")

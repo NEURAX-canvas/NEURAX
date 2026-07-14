@@ -27,7 +27,9 @@ impl IrPass for OperatorPass {
         let (_tensor_ir, arch_ir) = input;
         let mut op_ir = OperatorIR::default();
         let batch = ctx.config.training.batch_size;
-        let seq = arch_ir.global_params.sequence_length.unwrap_or(512);
+        let seq = ctx.config.training.sequence_length
+            .or(arch_ir.global_params.sequence_length)
+            .unwrap_or(512);
         let dtype = &ctx.config.training.precision;
         
         // Compute block_scale: same logic as ArchitecturePass

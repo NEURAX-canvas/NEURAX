@@ -34,55 +34,86 @@ pub struct ModelInfo {
     pub intermediate_size: Option<u64>,
 }
 
-/// All 35 metrics organized by category
+/// All 70+ metrics organized by category
 #[derive(Debug, Clone, Serialize)]
 pub struct MetricsOutput {
-    // === STRUCTURE METRICS (5) ===
+    // === STRUCTURE METRICS ===
     pub structure: StructureMetricsOutput,
 
-    // === GRAPH METRICS (2) ===
+    // === GRAPH + TENSOR METRICS ===
     pub graph: GraphMetricsOutput,
 
-    // === COMPUTE METRICS (5) ===
+    // === COMPUTE METRICS ===
     pub compute: ComputeMetricsOutput,
 
-    // === MEMORY METRICS (6) ===
+    // === MEMORY METRICS ===
     pub memory: MemoryMetricsOutput,
 
-    // === PARALLELISM METRICS (3) ===
+    // === PARALLELISM METRICS ===
     pub parallelism: ParallelismMetricsOutput,
 
-    // === PERFORMANCE METRICS (4) ===
+    // === PERFORMANCE METRICS ===
     pub performance: PerformanceMetricsOutput,
 
-    // === COST METRICS (5) ===
+    // === COST METRICS ===
     pub cost: CostMetricsOutput,
 
-    // === HARDWARE METRICS (5) ===
+    // === HARDWARE METRICS ===
     pub hardware: HardwareMetricsOutput,
 
-    // === DYNAMIC METRICS (20) ===
+    // === RICH PER-LAYER METRICS ===
+    pub gradient_memory_per_layer: Vec<GradientMemoryLayerEntry>,
+    pub kv_cache_scaling: Vec<KvCacheScalingEntry>,
+
+    // === QUALITY METRICS ===
+    pub confidence_score: f64,
+    pub custom_layer_count: usize,
+    pub diagnostic_count: usize,
+
+    // === DYNAMIC METRICS (M36-M55) ===
     pub dynamic: Option<DynamicMetricsOutput>,
 }
 
-/// Structure metrics (5 metrics)
+/// Gradient memory per layer entry
+#[derive(Debug, Clone, Serialize)]
+pub struct GradientMemoryLayerEntry {
+    pub name: String,
+    pub forward: u64,
+    pub backward: u64,
+}
+
+/// KV cache scaling entry
+#[derive(Debug, Clone, Serialize)]
+pub struct KvCacheScalingEntry {
+    pub seq: u32,
+    pub value: u64,
+}
+
+/// Structure metrics
 #[derive(Debug, Clone, Serialize)]
 pub struct StructureMetricsOutput {
     pub total_parameters: u64,
     pub num_layers: usize,
     pub model_type: String,
+    pub hidden_size: usize,
+    pub vocab_size: u64,
     pub params_per_layer: HashMap<String, u64>,
     pub layers_by_type: HashMap<String, usize>,
 }
 
-/// Graph metrics (2 metrics)
+/// Graph metrics
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphMetricsOutput {
     pub graph_depth: usize,
     pub total_operations: usize,
+    pub critical_path_length: usize,
+    pub tensor_resolution_ratio: f32,
+    pub unresolved_dim_count: usize,
+    pub total_tensor_count: usize,
+    pub largest_tensor_bytes: u64,
 }
 
-/// Compute metrics (5 metrics)
+/// Compute metrics
 #[derive(Debug, Clone, Serialize)]
 pub struct ComputeMetricsOutput {
     pub total_flops: f64,
@@ -92,6 +123,11 @@ pub struct ComputeMetricsOutput {
     /// FLOPs pour inférence incrémentale (1 token avec KV cache plein)
     pub flops_incremental_decode: f64,
     pub arithmetic_intensity: f64,
+    pub macs: f64,
+    pub total_step_flops: f64,
+    pub flops_per_batch: f64,
+    pub bytes_accessed: u64,
+    pub roofline_position: f64,
     pub flops_per_layer: HashMap<String, f64>,
     pub op_type_distribution: HashMap<String, usize>,
 }
@@ -110,21 +146,24 @@ pub struct MemoryMetricsOutput {
     pub optimizer_state_bytes: u64,
     pub optimizer_state_gb: f64,
     pub max_batch_size_fit: u32,
+    pub memory_fragmentation_pct: f64,
     pub oom_risk: String,
 }
 
-/// Parallelism metrics (3 metrics)
+/// Parallelism metrics
 #[derive(Debug, Clone, Serialize)]
 pub struct ParallelismMetricsOutput {
     pub data_parallel_efficiency: f64,
     pub communication_overhead: f64,
     pub optimal_gpu_count: u32,
+    pub pipeline_stages: u32,
+    pub tensor_parallel_degree: u32,
     pub data_parallel: u32,
     pub tensor_parallel: u32,
     pub pipeline_parallel: u32,
 }
 
-/// Performance metrics (4 metrics)
+/// Performance metrics
 #[derive(Debug, Clone, Serialize)]
 pub struct PerformanceMetricsOutput {
     pub latency_ms: f64,
@@ -132,6 +171,9 @@ pub struct PerformanceMetricsOutput {
     pub throughput_tokens_per_s: f64,
     pub gpu_utilization: f64,
     pub gpu_utilization_percent: f64,
+    pub tensor_core_utilization: f64,
+    pub effective_tflops: f64,
+    pub samples_per_s: f64,
     pub bottleneck: String,
     pub latency_per_layer: HashMap<String, f64>,
 }
@@ -446,12 +488,19 @@ impl MetricsOutput {
                 total_parameters: metrics.total_parameters,
                 num_layers: metrics.num_layers,
                 model_type: metrics.model_type.clone(),
+                hidden_size: metrics.hidden_size,
+                vocab_size: metrics.vocab_size,
                 params_per_layer: metrics.params_per_layer.clone(),
                 layers_by_type: HashMap::new(),
             },
             graph: GraphMetricsOutput {
                 graph_depth: metrics.graph_depth,
                 total_operations: metrics.total_operations,
+                critical_path_length: metrics.critical_path_length,
+                tensor_resolution_ratio: metrics.tensor_resolution_ratio,
+                unresolved_dim_count: metrics.unresolved_dim_count,
+                total_tensor_count: metrics.total_tensor_count,
+                largest_tensor_bytes: metrics.largest_tensor_bytes,
             },
             compute: ComputeMetricsOutput {
                 total_flops: metrics.total_flops,
@@ -460,6 +509,11 @@ impl MetricsOutput {
                 flops_per_token: metrics.flops_per_token,
                 flops_incremental_decode: metrics.flops_incremental_decode,
                 arithmetic_intensity: metrics.arithmetic_intensity,
+                macs: metrics.macs,
+                total_step_flops: metrics.total_step_flops,
+                flops_per_batch: metrics.flops_per_batch,
+                bytes_accessed: metrics.bytes_accessed,
+                roofline_position: metrics.roofline_position,
                 flops_per_layer: metrics.flops_per_layer.clone(),
                 op_type_distribution: metrics.ops_distribution.clone(),
             },
@@ -475,15 +529,18 @@ impl MetricsOutput {
                 optimizer_state_bytes: metrics.optimizer_state_bytes,
                 optimizer_state_gb: metrics.optimizer_state_bytes as f64 / 1e9,
                 max_batch_size_fit: metrics.max_batch_size_fit,
-                oom_risk: "low".to_string(),
+                memory_fragmentation_pct: metrics.memory_fragmentation_pct,
+                oom_risk: metrics.oom_risk.clone(),
             },
             parallelism: ParallelismMetricsOutput {
                 data_parallel_efficiency: metrics.data_parallel_efficiency,
                 communication_overhead: metrics.communication_overhead,
                 optimal_gpu_count: metrics.optimal_gpu_count,
+                pipeline_stages: metrics.pipeline_stages,
+                tensor_parallel_degree: metrics.tensor_parallel_degree,
                 data_parallel: 1,
-                tensor_parallel: 1,
-                pipeline_parallel: 1,
+                tensor_parallel: metrics.tensor_parallel_degree,
+                pipeline_parallel: metrics.pipeline_stages,
             },
             performance: PerformanceMetricsOutput {
                 latency_ms: metrics.latency_ms,
@@ -491,6 +548,9 @@ impl MetricsOutput {
                 throughput_tokens_per_s: metrics.throughput_tokens_per_s,
                 gpu_utilization: metrics.gpu_utilization,
                 gpu_utilization_percent: metrics.gpu_utilization * 100.0,
+                tensor_core_utilization: metrics.tensor_core_utilization,
+                effective_tflops: metrics.effective_tflops,
+                samples_per_s: metrics.samples_per_s,
                 bottleneck: metrics.bottleneck.clone(),
                 latency_per_layer: metrics.latency_per_layer.clone(),
             },
@@ -512,6 +572,22 @@ impl MetricsOutput {
                 interconnect: metrics.interconnect.clone(),
                 interconnect_bandwidth_gbs: metrics.interconnect_bandwidth_gbs,
             },
+            gradient_memory_per_layer: metrics.gradient_memory_per_layer.iter().map(|e| {
+                GradientMemoryLayerEntry {
+                    name: e.name.clone(),
+                    forward: e.forward,
+                    backward: e.backward,
+                }
+            }).collect(),
+            kv_cache_scaling: metrics.kv_cache_scaling.iter().map(|e| {
+                KvCacheScalingEntry {
+                    seq: e.seq,
+                    value: e.value,
+                }
+            }).collect(),
+            confidence_score: metrics.confidence_score,
+            custom_layer_count: metrics.custom_layer_count,
+            diagnostic_count: metrics.diagnostic_count,
             dynamic: None,
         }
     }

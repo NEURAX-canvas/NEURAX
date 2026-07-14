@@ -103,7 +103,7 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
             total_tensor_count: input.tensor.metrics.total_tensor_count,
             largest_tensor_bytes: input.tensor.metrics.largest_tensor_bytes,
 
-            // === Compute Metrics (13-18) ===
+            // === Compute Metrics (13-22) ===
             total_flops: if groups.compute {
                 input.compute.metrics.total_flops
             } else {
@@ -133,6 +133,26 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
                 input.compute.metrics.arithmetic_intensity
             } else {
                 0.0
+            },
+            macs: if groups.compute {
+                input.compute.metrics.macs
+            } else {
+                0.0
+            },
+            total_step_flops: if groups.compute {
+                input.compute.metrics.total_step_flops
+            } else {
+                0.0
+            },
+            flops_per_batch: if groups.compute {
+                input.compute.metrics.flops_per_batch
+            } else {
+                0.0
+            },
+            bytes_accessed: if groups.compute {
+                input.compute.metrics.bytes_accessed
+            } else {
+                0
             },
             ops_distribution: input.operator.metrics.op_type_distribution.clone(),
 
@@ -168,6 +188,14 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
                 0
             },
             memory_fragmentation: input.memory.metrics.fragmentation_estimate,
+            memory_fragmentation_pct: input.memory.metrics.fragmentation_estimate * 100.0,
+            oom_risk: if input.memory.metrics.peak_vram_bytes > input.memory.metrics.gpu_vram_bytes {
+                "critical".to_string()
+            } else if input.memory.metrics.peak_vram_bytes > input.memory.metrics.gpu_vram_bytes * 80 / 100 {
+                "high".to_string()
+            } else {
+                "low".to_string()
+            },
 
             // === Parallelism Metrics (26-30) ===
             data_parallel_efficiency: if groups.parallelism {
@@ -206,6 +234,21 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
             },
             bottleneck: input.hardware.metrics.bottleneck.as_str().to_string(),
             roofline_position: input.hardware.metrics.roofline_position,
+            tensor_core_utilization: if groups.performance {
+                input.hardware.metrics.tensor_core_utilization
+            } else {
+                0.0
+            },
+            effective_tflops: if groups.performance {
+                input.hardware.metrics.effective_tflops
+            } else {
+                0.0
+            },
+            samples_per_s: if groups.performance {
+                input.hardware.metrics.samples_per_s
+            } else {
+                0.0
+            },
 
             // === Hardware Config (from JSON) ===
             gpu_name: input.hardware.gpu_profile.name.clone(),
@@ -242,6 +285,9 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
             } else {
                 0.0
             },
+
+            // === Tensor Metrics (Tensor IR) ===
+            activation_memory_bytes_tensor: input.tensor.metrics.activation_memory_bytes,
 
             // === Confidence & Quality (41-43) ===
             confidence_score: report.confidence_score,

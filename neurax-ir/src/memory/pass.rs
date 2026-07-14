@@ -105,21 +105,13 @@ impl IrPass for MemoryPass {
         let dtype = &ctx.config.training.precision;
         let dtype_bytes_val = dtype_bytes(dtype) as u64;
         
-        // Quant factor for param storage
-        let quant_factor = match dtype.as_str() {
-            "fp32"           => 1.0_f64,
-            "fp16" | "bfloat16" => 0.5,
-            "fp8"            => 0.25,
-            "int8"           => 0.25,
-            "int4"           => 0.125,
-            _                => 1.0,
-        };
         
         // Use total_parameters from ArchitectureIR (stored in MemoryIR during build)
         let total_parameters = output.total_parameters;
         
-        let global_num_layers = ctx.config.model.global_params.num_layers
+        let global_num_layers_check = ctx.config.model.global_params.num_layers
             .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
+        let _ = global_num_layers_check; // For validation purposes
         
         // ── Scaling factor identical to ArchitecturePass ──────────────────────
         let json_attention_count = ctx.config.model.layers.iter()
@@ -155,10 +147,13 @@ impl IrPass for MemoryPass {
             };
             (scale, scale)
         };
+        let _ = (dense_scale, moe_scale); // Reserved for future memory scaling
 
         // ── Parameter memory ─────────────────────────────────────────────────
         // Use total_parameters already calculated with correct scaling
-        let parameter_memory_bytes = (total_parameters as f64 * dtype_bytes_val as f64 * quant_factor) as u64;
+        // `dtype_bytes` already represents the storage width. Applying a second
+        // precision factor here undercounted FP16/BF16 parameters by 50%.
+        let parameter_memory_bytes = total_parameters * dtype_bytes_val;
 
         // ── Activation memory from liveness ──────────────────────────────────
         // Gradient checkpointing reduces activation memory to ~sqrt(L) layers kept
@@ -175,7 +170,9 @@ impl IrPass for MemoryPass {
         // Activation memory ≈ batch_size * seq_len * hidden_size * num_layers * dtype_bytes
         // With tensor parallelism, this is divided by tensor_parallel degree
         let batch_size = ctx.config.training.batch_size;
-        let seq_len = ctx.config.model.global_params.sequence_length.unwrap_or(2048) as usize;
+        let seq_len = ctx.config.training.sequence_length
+            .or(ctx.config.model.global_params.sequence_length)
+            .unwrap_or(2048);
         let hidden_size = ctx.config.model.global_params.embedding_dim.unwrap_or(512) as usize;
         
         // For MoE models, account for expert routing overhead
@@ -203,23 +200,22 @@ impl IrPass for MemoryPass {
         let is_training = has_optimizer;
 
         // ── Gradient memory ─────────────────────────────────────────────────
-        // Stored in FP32 regardless of training precision (mixed precision)
+        // Report gradients in the active training precision, consistently with
+        // parameter and optimizer metrics.
         let gradient_memory_bytes = if is_training {
-            // FP32 gradients: params * 4 bytes
-            total_parameters * 4 // FP32
+            total_parameters * dtype_bytes_val
         } else {
             0
         };
 
         // ── Optimizer state memory ──────────────────────────────────────────
-        // Adam/AdamW: 2 FP32 states (momentum + variance) per param
-        // SGD with momentum: 1 FP32 state
+        // Optimizer state is expressed relative to the parameter representation
+        // used by this report, so memory accounting remains internally coherent
+        // across precisions. Adam/AdamW keeps two states; SGD keeps one.
         let optimizer_state_bytes = if is_training {
-            let total_params_count = gradient_memory_bytes / 4;  // reuse calculation
             match ctx.config.training.optimizer.to_lowercase().as_str() {
-                "sgd"   => total_params_count * 4,               // 1 FP32 state
-                "lamb"  => total_params_count * 4 * 2,            // same as Adam
-                _       => total_params_count * 4 * 2,            // Adam: 2 FP32 states
+                "sgd" => parameter_memory_bytes,
+                _ => parameter_memory_bytes * 2,
             }
         } else {
             0
@@ -390,6 +386,8 @@ fn estimate_memory_time(ctx: &NeuraxContext, _bytes_moved: u64) -> f64 {
     gpu_bw * 0.7
 }
 
+// Reserved for future use: memory bandwidth calculation based on model characteristics
+#[allow(dead_code)]
 fn calculate_memory_bandwidth(ctx: &NeuraxContext, _peak_vram_bytes: u64) -> f64 {
     // Estimate memory bandwidth requirement based on GPU specs
     ctx.config.hardware.gpus.first()

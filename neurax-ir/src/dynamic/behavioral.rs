@@ -11,6 +11,7 @@ use crate::dynamic::types::DynamicConfig;
 /// Behavioral Synthesis Pass
 #[derive(Debug, Clone)]
 pub struct BehavioralSynthesisPass {
+    #[allow(dead_code)] // Reserved for future model path tracking
     model_path: Option<PathBuf>,
 }
 

@@ -3,7 +3,6 @@
 //! Implements numerical coherence checks for model validation
 
 use serde_json::Value;
-use std::collections::HashMap;
 use evalexpr::Value as EvalValue;
 
 /// Coherence check result

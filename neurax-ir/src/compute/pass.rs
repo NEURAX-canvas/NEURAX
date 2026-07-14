@@ -37,7 +37,12 @@ impl IrPass for ComputePass {
 
     fn compute_metrics(&self, output: &mut Self::Output, ctx: &NeuraxContext) -> Result<Self::Metrics, Self::PassError> {
         let batch = ctx.config.training.batch_size;
-        let seq = ctx.config.model.global_params.sequence_length.unwrap_or(512);
+        let _ = batch; // Reserved for future batch-aware compute metrics
+        // The universal schema stores sequence length in `training`; older model
+        // descriptions can still provide it under `model.global_params`.
+        let seq = ctx.config.training.sequence_length
+            .or(ctx.config.model.global_params.sequence_length)
+            .unwrap_or(512);
         
         // Calculate forward FLOPs
         let forward_flops: f64 = output.op_flops.iter().map(|op| op.forward_flops).sum();
@@ -161,7 +166,9 @@ fn estimate_bytes_accessed(ctx: &NeuraxContext) -> u64 {
     
     // Activation bytes (rough estimate)
     let batch = ctx.config.training.batch_size;
-    let seq = ctx.config.model.global_params.sequence_length.unwrap_or(512);
+    let seq = ctx.config.training.sequence_length
+        .or(ctx.config.model.global_params.sequence_length)
+        .unwrap_or(512);
     let hidden = ctx.config.model.global_params.embedding_dim.unwrap_or(512);
     let activation_bytes = (batch * seq * hidden * neurax_formulas::dtype_bytes(&ctx.config.training.precision)) as u64;
     

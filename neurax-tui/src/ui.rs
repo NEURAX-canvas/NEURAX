@@ -1,14 +1,12 @@
 //! Main UI rendering
 
 use ratatui::{
-    backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout, Rect, Alignment},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table, Tabs, Clear, List, ListItem, Gauge},
+    widgets::{Block, Borders, Paragraph, Tabs, List, ListItem},
     Frame,
 };
-use crossterm::event::{KeyCode, KeyEvent};
 
 use crate::app::{App, Tab};
 use crate::metrics_display;
@@ -44,7 +42,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_status_bar(f, app, chunks[3]);
 }
 
-fn draw_header(f: &mut Frame, app: &App, area: Rect) {
+fn draw_header(f: &mut Frame, _app: &App, area: Rect) {
     let header = Paragraph::new(vec![
         Line::from(vec![
             Span::styled("╔══════════════════════════════════════════════════════════════════════════════════════════════════╗", 
@@ -253,7 +251,7 @@ fn draw_content(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
-fn draw_overview(f: &mut Frame, app: &App, result: &neurax_core::AnalysisResult, real: &crate::real_world_data::RealWorldData, area: Rect) {
+fn draw_overview(f: &mut Frame, _app: &App, result: &neurax_core::AnalysisResult, real: &crate::real_world_data::RealWorldData, area: Rect) {
     // Split into 4 quadrants
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -351,7 +349,7 @@ fn draw_overview(f: &mut Frame, app: &App, result: &neurax_core::AnalysisResult,
     f.render_widget(ir_status, bottom_chunks[1]);
 }
 
-fn draw_comparison(f: &mut Frame, app: &App, result: &neurax_core::AnalysisResult, real: &crate::real_world_data::RealWorldData, area: Rect) {
+fn draw_comparison(f: &mut Frame, _app: &App, result: &neurax_core::AnalysisResult, real: &crate::real_world_data::RealWorldData, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])

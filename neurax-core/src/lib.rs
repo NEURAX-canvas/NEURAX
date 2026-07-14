@@ -111,7 +111,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
 
     // Phase 1: Architecture
     let arch_pass = ArchitecturePass;
-    let (mut arch, arch_metrics) = timed_phase!("Architecture", {
+    let (arch, arch_metrics) = timed_phase!("Architecture", {
         let (mut a, _) = arch_pass.run(&config, &ctx)?;
         let m = arch_pass.compute_metrics(&mut a, &ctx)?;
         arch_pass.validate(&a, &m)?;
@@ -121,7 +121,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 2: Graph
     let graph_pass = GraphPass;
-    let (mut graph, graph_metrics) = timed_phase!("Graph", {
+    let (graph, graph_metrics) = timed_phase!("Graph", {
         let (mut g, _) = graph_pass.run(&arch, &ctx)?;
         let m = graph_pass.compute_metrics(&mut g, &ctx)?;
         graph_pass.validate(&g, &m)?;
@@ -131,7 +131,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 3: Tensor
     let tensor_pass = TensorPass;
-    let (mut tensor, tensor_metrics) = timed_phase!("Tensor", {
+    let (tensor, tensor_metrics) = timed_phase!("Tensor", {
         let (mut t, _) = tensor_pass.run(&graph, &ctx)?;
         let m = tensor_pass.compute_metrics(&mut t, &ctx)?;
         tensor_pass.validate(&t, &m)?;
@@ -141,7 +141,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 4: Operator
     let operator_pass = OperatorPass;
-    let (mut operator, operator_metrics) = timed_phase!("Operator", {
+    let (operator, operator_metrics) = timed_phase!("Operator", {
         let (mut o, _) = operator_pass.run(&(tensor.clone(), arch.clone()), &ctx)?;
         let m = operator_pass.compute_metrics(&mut o, &ctx)?;
         operator_pass.validate(&o, &m)?;
@@ -151,7 +151,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 5: Compute
     let compute_pass = ComputePass;
-    let (mut compute, compute_metrics) = timed_phase!("Compute", {
+    let (compute, compute_metrics) = timed_phase!("Compute", {
         let (mut c, _) = compute_pass.run(&operator, &ctx)?;
         let m = compute_pass.compute_metrics(&mut c, &ctx)?;
         compute_pass.validate(&c, &m)?;
@@ -161,7 +161,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 6: Memory
     let memory_pass = MemoryPass;
-    let (mut memory, memory_metrics) = timed_phase!("Memory", {
+    let (memory, memory_metrics) = timed_phase!("Memory", {
         let (mut m, _) = memory_pass.run(&(compute.clone(), tensor.clone(), arch.clone()), &ctx)?;
         let metrics = memory_pass.compute_metrics(&mut m, &ctx)?;
         memory_pass.validate(&m, &metrics)?;
@@ -171,7 +171,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 7 & 8: Parallelism and Hardware in parallel (rayon::join per impl_2.md)
     // These passes are independent and can run concurrently
-    let ((parallelism, parallelism_metrics), (hardware, hardware_metrics)) = rayon::join(
+    let ((parallelism, _parallelism_metrics), (_hardware, _hardware_metrics)) = rayon::join(
         || {
             let parallelism_pass = ParallelismPass;
             let mut parallelism = parallelism_pass.build(&(memory.clone(), graph.clone()), &ctx)
@@ -200,7 +200,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     
     // Phase 9: Cost
     let cost_pass = CostPass;
-    let (mut cost, cost_metrics) = timed_phase!("Cost", {
+    let (cost, cost_metrics) = timed_phase!("Cost", {
         let (mut c, _) = cost_pass.run(&(hardware.clone(), parallelism.clone()), &ctx)?;
         let m = cost_pass.compute_metrics(&mut c, &ctx)?;
         cost_pass.validate(&c, &m)?;

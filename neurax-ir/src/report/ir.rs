@@ -98,8 +98,9 @@ pub struct AllMetrics {
     pub unresolved_dim_count: usize,
     pub total_tensor_count: usize,
     pub largest_tensor_bytes: u64,
+    pub activation_memory_bytes_tensor: u64,
 
-    // === Compute Metrics (13-18) ===
+    // === Compute Metrics (13-22) ===
     pub total_flops: f64,
     pub forward_flops: f64,
     pub backward_flops: f64,
@@ -108,6 +109,14 @@ pub struct AllMetrics {
     /// ≈ 60% de flops_per_token car attention devient O(S) au lieu de O(S²)
     pub flops_incremental_decode: f64,
     pub arithmetic_intensity: f64,
+    /// MACs = FLOPs / 2
+    pub macs: f64,
+    /// Total FLOPs per training step (forward + backward + optimizer)
+    pub total_step_flops: f64,
+    /// FLOPs per batch
+    pub flops_per_batch: f64,
+    /// Bytes accessed in memory
+    pub bytes_accessed: u64,
     pub ops_distribution: std::collections::HashMap<String, usize>,
 
     // === Memory Metrics (19-25) ===
@@ -118,6 +127,8 @@ pub struct AllMetrics {
     pub optimizer_state_bytes: u64,
     pub max_batch_size_fit: u32,
     pub memory_fragmentation: f64,
+    pub memory_fragmentation_pct: f64,
+    pub oom_risk: String,
 
     // === Parallelism Metrics (26-30) ===
     pub data_parallel_efficiency: f64,
@@ -126,12 +137,15 @@ pub struct AllMetrics {
     pub pipeline_stages: u32,
     pub tensor_parallel_degree: u32,
 
-    // === Hardware Metrics (31-35) ===
+    // === Hardware Metrics (31-40) ===
     pub latency_ms: f64,
     pub throughput_tokens_per_s: f64,
     pub gpu_utilization: f64,
     pub bottleneck: String,
     pub roofline_position: f64, // 0.0 = memory-bound, 1.0 = compute-bound
+    pub tensor_core_utilization: f64,
+    pub effective_tflops: f64,
+    pub samples_per_s: f64,
 
     // === Hardware Config (from JSON) ===
     pub gpu_name: String,

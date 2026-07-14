@@ -14,17 +14,9 @@ use neurax_parser::ModelConfig;
 use neurax_ir::NeuraxError;
 use neurax_ir::traits::{IrPass, ReportPass as ReportPassTrait};
 use neurax_ir::{
-    NeuraxContext,
-    ArchitectureIR, ArchitecturePass,
-    GraphIR, GraphPass,
-    TensorIR, TensorPass,
-    OperatorIR, OperatorPass,
-    ComputeIR, ComputePass,
-    MemoryIR, MemoryPass,
+    ArchitecturePass, GraphPass, TensorPass, OperatorPass, ComputePass, MemoryPass,
     ParallelismIR, ParallelismPass,
-    HardwareIR, HardwarePass,
-    CostIR, CostPass,
-    ReportIR, ReportPass,
+    HardwareIR, HardwarePass, CostPass, ReportPass,
     dynamic::{
         VirtualMemoryPass, StabilityAnalysisPass, BehavioralSynthesisPass,
         DynamicResults, DynamicConfig,
@@ -259,7 +251,7 @@ pub fn run_analysis_streaming(
 
     // Phase 1: Architecture
     let arch_pass = ArchitecturePass;
-    let (mut arch, _arch_metrics) = run_phase!("Architecture", 0, {
+    let (arch, _arch_metrics) = run_phase!("Architecture", 0, {
         let (mut a, _) = arch_pass.run(&config, &ctx)?;
         let m = arch_pass.compute_metrics(&mut a, &ctx)?;
         arch_pass.validate(&a, &m)?;
@@ -268,7 +260,7 @@ pub fn run_analysis_streaming(
 
     // Phase 2: Graph
     let graph_pass = GraphPass;
-    let (mut graph, _graph_metrics) = run_phase!("Graph", 1, {
+    let (graph, _graph_metrics) = run_phase!("Graph", 1, {
         let (mut g, _) = graph_pass.run(&arch, &ctx)?;
         let m = graph_pass.compute_metrics(&mut g, &ctx)?;
         graph_pass.validate(&g, &m)?;
@@ -277,7 +269,7 @@ pub fn run_analysis_streaming(
 
     // Phase 3: Tensor
     let tensor_pass = TensorPass;
-    let (mut tensor, _tensor_metrics) = run_phase!("Tensor", 2, {
+    let (tensor, _tensor_metrics) = run_phase!("Tensor", 2, {
         let (mut t, _) = tensor_pass.run(&graph, &ctx)?;
         let m = tensor_pass.compute_metrics(&mut t, &ctx)?;
         tensor_pass.validate(&t, &m)?;
@@ -286,7 +278,7 @@ pub fn run_analysis_streaming(
 
     // Phase 4: Operator
     let operator_pass = OperatorPass;
-    let (mut operator, _operator_metrics) = run_phase!("Operator", 3, {
+    let (operator, _operator_metrics) = run_phase!("Operator", 3, {
         let (mut o, _) = operator_pass.run(&(tensor.clone(), arch.clone()), &ctx)?;
         let m = operator_pass.compute_metrics(&mut o, &ctx)?;
         operator_pass.validate(&o, &m)?;
@@ -295,7 +287,7 @@ pub fn run_analysis_streaming(
 
     // Phase 5: Compute
     let compute_pass = ComputePass;
-    let (mut compute, _compute_metrics) = run_phase!("Compute", 4, {
+    let (compute, _compute_metrics) = run_phase!("Compute", 4, {
         let (mut c, _) = compute_pass.run(&operator, &ctx)?;
         let m = compute_pass.compute_metrics(&mut c, &ctx)?;
         compute_pass.validate(&c, &m)?;
@@ -304,7 +296,7 @@ pub fn run_analysis_streaming(
 
     // Phase 6: Memory
     let memory_pass = MemoryPass;
-    let (mut memory, _memory_metrics) = run_phase!("Memory", 5, {
+    let (memory, _memory_metrics) = run_phase!("Memory", 5, {
         let (mut m, _) = memory_pass.run(&(compute.clone(), tensor.clone(), arch.clone()), &ctx)?;
         let metrics = memory_pass.compute_metrics(&mut m, &ctx)?;
         memory_pass.validate(&m, &metrics)?;
@@ -373,7 +365,7 @@ pub fn run_analysis_streaming(
 
     // Phase 9: Cost
     let cost_pass = CostPass;
-    let (mut cost, _cost_metrics) = run_phase!("Cost", 7, {
+    let (cost, _cost_metrics) = run_phase!("Cost", 7, {
         let (mut c, _) = cost_pass.run(&(hardware.clone(), parallelism.clone()), &ctx)?;
         let m = cost_pass.compute_metrics(&mut c, &ctx)?;
         cost_pass.validate(&c, &m)?;

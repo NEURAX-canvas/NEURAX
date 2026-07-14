@@ -311,11 +311,17 @@ export function VariantPresetsPanel({
                   handleAction(preset.id, 'load', custom ? (preset as VariantPreset) : undefined);
                 }}
               >
-                {isLoading ? (
-                  <Loader2 key="loader" className="w-3 h-3 mr-1 animate-spin" />
-                ) : (
-                  <Sparkles key="sparkles" className="w-3 h-3 mr-1" />
-                )}
+                {/* Keep both SVG nodes mounted while loading. This avoids a
+                    React/Radix portal placement race when a preset action
+                    replaces the icon during a popover update. */}
+                <Loader2
+                  aria-hidden="true"
+                  className={cn('w-3 h-3 mr-1 animate-spin', !isLoading && 'invisible')}
+                />
+                <Sparkles
+                  aria-hidden="true"
+                  className={cn('w-3 h-3 mr-1', isLoading && 'invisible')}
+                />
                 {isActive ? 'Reload' : 'Load Template'}
               </Button>
               <Button

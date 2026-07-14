@@ -86,8 +86,7 @@ pub fn gqa_flops(
 
 /// Compute parameters for attention layer
 #[inline(always)]
-pub fn attention_params(hidden_size: usize, num_heads: usize, bias: bool) -> u64 {
-    let head_dim = hidden_size / num_heads;
+pub fn attention_params(hidden_size: usize, _num_heads: usize, bias: bool) -> u64 {
     
     // Q, K, V projections: 3 × (H × H) weights
     let qkv_params = 3 * hidden_size * hidden_size;

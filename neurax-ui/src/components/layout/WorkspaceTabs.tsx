@@ -58,13 +58,33 @@ export function WorkspaceTabs({
         })}
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content — all tabs stay mounted to avoid Radix portal
+          removeChild errors during unmount. Inactive tabs are hidden
+          via CSS instead of being conditionally unmounted. */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {activeTab === 'architecture' && architectureContent}
-        {activeTab === 'simulation' && simulationContent}
-        {activeTab === 'production' && productionContent}
-        {activeTab === 'inference' && inferenceContent}
-        {activeTab === 'timemachine' && timeMachineContent}
+        <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab === 'architecture' ? '' : 'hidden')}>
+          {architectureContent}
+        </div>
+        {simulationContent && (
+          <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab === 'simulation' ? '' : 'hidden')}>
+            {simulationContent}
+          </div>
+        )}
+        {productionContent && (
+          <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab === 'production' ? '' : 'hidden')}>
+            {productionContent}
+          </div>
+        )}
+        {inferenceContent && (
+          <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab === 'inference' ? '' : 'hidden')}>
+            {inferenceContent}
+          </div>
+        )}
+        {timeMachineContent && (
+          <div className={cn("flex-1 flex flex-col overflow-hidden", activeTab === 'timemachine' ? '' : 'hidden')}>
+            {timeMachineContent}
+          </div>
+        )}
       </div>
     </div>
   );

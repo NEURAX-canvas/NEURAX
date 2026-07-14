@@ -3,7 +3,7 @@
 //! Guarantees that EVERY JSON field exploited arrives in the correct IR
 //! Each IR receives EXACTLY the fields it needs, via documented mapping
 
-use neurax_parser::{AbsorbedModel, GlobalResolutionContext};
+use neurax_parser::AbsorbedModel;
 
 /// IR Injector - Targeted injection of absorbed data into IRs
 pub struct IrInjector;
@@ -144,11 +144,12 @@ impl IrInjector {
         let intermediate = grc.intermediate_size.unwrap_or(h * 4);
         let heads = grc.num_attention_heads.unwrap_or(32) as u64;
         let kv_heads = grc.num_key_value_heads.unwrap_or(heads as u32) as u64;
-        let head_dim = if grc.head_dim > 0 {
+        let head_dim_calc = if grc.head_dim > 0 {
             grc.head_dim
         } else {
             h / heads
         };
+        let _ = head_dim_calc; // Reserved for future head-dimension-aware calculations
 
         // Embedding params
         let embed_params = vocab * h;
@@ -285,6 +286,7 @@ pub struct CostPassConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use neurax_parser::GlobalResolutionContext;
 
     #[test]
     fn test_param_calculation() {

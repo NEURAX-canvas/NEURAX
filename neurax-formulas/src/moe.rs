@@ -42,6 +42,7 @@ pub fn moe_params(
     num_experts: usize,
     expert_params: u64,
 ) -> u64 {
+    let _ = intermediate_size; // Reserved for future use
     // Router parameters
     let router_params = hidden_size * num_experts;
     
@@ -59,6 +60,7 @@ pub fn moe_params_with_shared(
     shared_experts: usize,
     expert_params: u64,
 ) -> u64 {
+    let _ = intermediate_size; // Reserved for future use
     // Router parameters
     let router_params = hidden_size * num_experts;
     
@@ -81,6 +83,7 @@ pub fn sparse_moe_flops(
     expert_flops: f64,
     capacity_factor: f64,
 ) -> f64 {
+    let _ = capacity_factor; // Reserved for future capacity-aware routing
     // Standard MoE FLOPs
     let base_flops = moe_flops(batch, seq_len, hidden_size, num_experts, top_k, expert_flops);
     
@@ -97,6 +100,7 @@ pub fn moe_expert_utilization(
     batch: usize,
     seq_len: usize,
 ) -> f64 {
+    let _ = (batch, seq_len); // Reserved for load-aware utilization calculation
     // Ideal: each expert gets (batch * seq_len * top_k / num_experts) tokens
     // Real utilization depends on routing, but we estimate average
     top_k as f64 / num_experts as f64

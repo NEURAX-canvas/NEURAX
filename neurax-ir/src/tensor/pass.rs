@@ -168,7 +168,8 @@ impl IrPass for TensorPass {
     }
 }
 
-/// Propagate shape through a layer
+/// Propagate shape through a layer (reserved for future shape inference)
+#[allow(dead_code)]
 fn propagate_shape(layer_type: &LayerType, input_shapes: &[Vec<usize>], config: &neurax_parser::ModelConfig) -> Shape {
     if input_shapes.is_empty() {
         return Shape::default();

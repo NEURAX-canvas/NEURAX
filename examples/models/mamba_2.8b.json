@@ -3,6 +3,12 @@
   "model": {
     "name": "Mamba-3B",
     "type": "ssm",
+    "global_params": {
+      "num_layers": 64,
+      "sequence_length": 2048,
+      "embedding_dim": 2560,
+      "vocab_size": 50280
+    },
     "layers": [
       {
         "id": "embed",

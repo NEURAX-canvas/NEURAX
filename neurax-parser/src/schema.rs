@@ -171,6 +171,11 @@ pub struct RawGlobalParams {
 pub struct RawTraining {
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
+    /// Context length for this training run. Kept here for compatibility with
+    /// the public JSON examples; `model.global_params.sequence_length` remains
+    /// the model-level fallback.
+    #[serde(default)]
+    pub sequence_length: Option<usize>,
     #[serde(default)]
     pub optimizer: Option<String>,
     #[serde(default)]

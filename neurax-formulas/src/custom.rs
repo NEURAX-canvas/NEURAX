@@ -2,7 +2,6 @@
 
 use evalexpr::{HashMapContext, Value, ContextWithMutableVariables};
 use std::time::{Instant, Duration};
-use std::collections::HashSet;
 
 /// Maximum execution time for custom formula evaluation (100ms per impl_2.md)
 const EVAL_TIMEOUT_MS: u64 = 100;
