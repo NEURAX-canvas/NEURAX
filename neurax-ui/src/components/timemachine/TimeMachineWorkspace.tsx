@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge.tsx';
 import { Slider } from '@/components/ui/slider.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
 import { TooltipProvider } from '@/components/ui/tooltip.tsx';
+import { cn } from '@/lib/utils';
 import {
   LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, ResponsiveContainer,
@@ -309,10 +310,19 @@ export function TimeMachineWorkspace({ nodes, connections }: TimeMachineWorkspac
                 </div>
               ) : (
                 <>
-                  {activeView === 'timeline' && <TimelineView timeline={timeline} budgetMax={budgetMax} />}
-                  {activeView === 'breakdown' && <BreakdownView data={costBreakdown} />}
-                  {activeView === 'carbon' && <CarbonView data={carbon} />}
-                  {activeView === 'compliance' && <ComplianceView horizon={horizon} />}
+                  {/* All views always mounted, only active one visible — prevents Recharts removeChild crash */}
+                  <div className={cn(activeView === 'timeline' ? '' : 'hidden')}>
+                    <TimelineView timeline={timeline} budgetMax={budgetMax} />
+                  </div>
+                  <div className={cn(activeView === 'breakdown' ? '' : 'hidden')}>
+                    <BreakdownView data={costBreakdown} />
+                  </div>
+                  <div className={cn(activeView === 'carbon' ? '' : 'hidden')}>
+                    <CarbonView data={carbon} />
+                  </div>
+                  <div className={cn(activeView === 'compliance' ? '' : 'hidden')}>
+                    <ComplianceView horizon={horizon} />
+                  </div>
                 </>
               )}
             </div>
@@ -337,8 +347,8 @@ function TimelineView({ timeline, budgetMax }: { timeline: ScenarioPoint[]; budg
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400" /> Pessimistic (10%)</span>
         </div>
       </div>
-      <div className="h-80 bg-card rounded-lg border border-border p-4">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-80 min-h-[200px] bg-card rounded-lg border border-border p-4">
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <LineChart data={timeline} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="year" stroke="hsl(var(--muted-foreground))" fontSize={11} />
@@ -378,8 +388,8 @@ function BreakdownView({ data }: { data: CostBreakdown[] }) {
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-foreground">Cost Breakdown by Component</h3>
-      <div className="h-80 bg-card rounded-lg border border-border p-4">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-80 min-h-[200px] bg-card rounded-lg border border-border p-4">
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <AreaChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="year" stroke="hsl(var(--muted-foreground))" fontSize={11} />
@@ -400,8 +410,8 @@ function CarbonView({ data }: { data: CarbonPoint[] }) {
   return (
     <div className="space-y-4">
       <h3 className="text-sm font-semibold text-foreground">Carbon Footprint Projection (tonnes CO₂/yr)</h3>
-      <div className="h-80 bg-card rounded-lg border border-border p-4">
-        <ResponsiveContainer width="100%" height="100%">
+      <div className="h-80 min-h-[200px] bg-card rounded-lg border border-border p-4">
+        <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
           <AreaChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="year" stroke="hsl(var(--muted-foreground))" fontSize={11} />

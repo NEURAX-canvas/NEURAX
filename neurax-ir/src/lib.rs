@@ -19,9 +19,11 @@ pub mod inference;
 
 pub use traits::IrPass;
 pub use error::*;
+#[allow(ambiguous_glob_reexports)]
 pub use precision::*;
 pub use architecture::*;
 pub use graph::*;
+#[allow(ambiguous_glob_reexports)]
 pub use tensor::*;
 pub use operator::*;
 pub use compute::*;

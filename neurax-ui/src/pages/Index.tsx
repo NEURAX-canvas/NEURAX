@@ -59,6 +59,7 @@ const initialNodes: CanvasNode[] = [];
 const initialConnections: Connection[] = [];
 
 const initialAnalysis: AnalysisResult = {
+  modelName: undefined,
   totalParams: 0, numLayers: 0, modelType: '', graphDepth: 0,
   totalOperations: 0, criticalPathLength: 0, tensorResolutionRatio: 1,
   unresolvedDimCount: 0, totalTensorCount: 0, largestTensorBytes: 0,
@@ -76,10 +77,13 @@ const initialAnalysis: AnalysisResult = {
   dataParallel: 1, tensorParallel: 1, pipelineParallel: 1,
   latencyMs: null, throughputTokensPerS: 0, throughputGraphsPerS: null, gpuUtilization: null,
   trainingCostUsd: 0, trainingTimeHours: 0, energyKwh: 0, co2Kg: 0,
-  costPerMillionTokensUsd: 0, provider: '',
+  costPerMillionTokensUsd: 0, gpuHours: 0, provider: '',
   selectedPrecision: 'fp16', selectedBatchSize: 1,
   confidenceScore: 1, depth: 0,
   isSequenceModel: true, customLayerCount: 0, diagnosticCount: 0,
+  sequenceLength: undefined, numAttentionHeads: undefined, numKeyValueHeads: undefined,
+  intermediateSize: undefined, layersByType: undefined,
+  analysisTimeMs: undefined, generatedAt: undefined,
   reportWarnings: [], recommendations: [],
   live_trace: {
     partial_metrics: [],
@@ -375,6 +379,13 @@ function parseAnalysisReport(
   const graph = sub('graph');
   const dynamic = (metricsRoot.dynamic ?? {}) as any;
 
+  // Extract top-level model config & report metadata
+  const modelSection = (rpt.model ?? {}) as Record<string, unknown>;
+  const reportMeta = {
+    analysisTimeMs: typeof (rpt as any)?.analysis_time_ms === 'number' ? (rpt as any).analysis_time_ms as number : undefined,
+    generatedAt: typeof (rpt as any)?.generated_at === 'string' ? (rpt as any).generated_at as string : undefined,
+  };
+
   const formatFlopsHuman = (flops: number): string => {
     if (!Number.isFinite(flops) || flops <= 0) return '0 FLOPs';
     if (flops >= 1e12) return `${(flops / 1e12).toFixed(2)} TFLOPs`;
@@ -524,11 +535,21 @@ function parseAnalysisReport(
     .filter((warning: unknown): warning is string => typeof warning === 'string' && warning.trim().length > 0);
 
   const analysis: AnalysisResult = {
+    modelName: typeof modelSection.name === 'string' ? modelSection.name : undefined,
     totalParams: struct.total_parameters ?? 0,
     numLayers: struct.num_layers ?? 0,
     modelType: struct.model_type ?? '',
     hiddenSize: struct.hidden_size ?? 0,
     vocabSize: struct.vocab_size ?? 0,
+    sequenceLength: typeof modelSection.sequence_length === 'number' ? modelSection.sequence_length as number : undefined,
+    numAttentionHeads: typeof modelSection.num_attention_heads === 'number' ? modelSection.num_attention_heads as number : undefined,
+    numKeyValueHeads: typeof modelSection.num_key_value_heads === 'number' ? modelSection.num_key_value_heads as number : undefined,
+    intermediateSize: typeof modelSection.intermediate_size === 'number' ? modelSection.intermediate_size as number : undefined,
+    layersByType: (struct.layers_by_type && typeof struct.layers_by_type === 'object' && !Array.isArray(struct.layers_by_type))
+      ? struct.layers_by_type as Record<string, number>
+      : undefined,
+    analysisTimeMs: reportMeta.analysisTimeMs,
+    generatedAt: reportMeta.generatedAt,
     graphDepth: graph.graph_depth ?? 0,
     totalOperations: graph.total_operations ?? 0,
     criticalPathLength: graph.critical_path_length ?? 0,

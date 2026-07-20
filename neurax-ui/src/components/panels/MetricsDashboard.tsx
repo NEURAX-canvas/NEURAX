@@ -199,11 +199,24 @@ export function MetricsDashboard({ nodes: _nodes, selectedNodeId, onSelectNode, 
             {view === 'overview' && (
               <TabsContent value="summary" className="mt-0 space-y-4">
               <div className="grid grid-cols-2 gap-2">
+                {(analysis!.modelName && analysis!.modelName !== analysis!.modelType) && (
+                  <StatCard label="Model Name" value={analysis!.modelName} sub={analysis!.modelType || '—'} />
+                )}
                 <StatCard label="Total Params" value={fmtNum(analysis!.totalParams)} sub="trainable parameters" />
                 <StatCard label="Peak VRAM" value={analysis!.memoryUsage} sub={analysis!.gpuName || 'GPU estimate'} />
                 <StatCard label="Forward FLOPs" value={analysis!.forwardFlopsHuman} sub="per pass" />
                 <StatCard label="Backward FLOPs" value={analysis!.backwardFlopsHuman} sub="per pass" />
               </div>
+              {(analysis!.analysisTimeMs ?? 0) > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 text-[9px] text-muted-foreground/70 px-1">
+                    <Info className="w-2.5 h-2.5" />
+                    <span>Analysis completed in <span className="font-mono font-medium text-muted-foreground/90">{(analysis!.analysisTimeMs! / 1000).toFixed(2)}s</span>
+                    {analysis!.generatedAt && <> &middot; {new Date(analysis!.generatedAt!).toLocaleString()}</>}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <SectionHeader icon={Gauge} label="Performance" />
@@ -222,6 +235,9 @@ export function MetricsDashboard({ nodes: _nodes, selectedNodeId, onSelectNode, 
                   <StatRow label="Training Time" value={analysis!.trainingTimeHours > 0 ? `${fmt(analysis!.trainingTimeHours, 2)} hrs` : '—'} />
                   <StatRow label="Energy" value={analysis!.energyKwh > 0 ? `${fmt(analysis!.energyKwh, 2)} kWh` : '—'} />
                   <StatRow label="CO₂" value={analysis!.co2Kg > 0 ? `${fmt(analysis!.co2Kg, 3)} kg` : '—'} />
+                  {(analysis!.gpuHours ?? 0) > 0 && <StatRow label="GPU Hours" value={`${fmt(analysis!.gpuHours, 2)} hrs`} />}
+                  {(analysis!.costPerMillionTokensUsd ?? 0) > 0 && <StatRow label="Cost/M Tokens" value={`$${fmt(analysis!.costPerMillionTokensUsd, 4)}`} />}
+                  {analysis!.provider && <StatRow label="Provider" value={analysis!.provider} mono={false} />}
                 </div>
               </div>
               </TabsContent>
@@ -233,8 +249,20 @@ export function MetricsDashboard({ nodes: _nodes, selectedNodeId, onSelectNode, 
                 <SectionHeader icon={Layers} label="Model Structure" />
                 <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 space-y-0.5">
                   <StatRow label="Architecture" value={analysis!.modelType || '—'} mono={false} />
+                  {analysis!.modelName && analysis!.modelName !== analysis!.modelType && <StatRow label="Model Name" value={analysis!.modelName} mono={false} />}
                   <StatRow label="Layers" value={analysis!.numLayers} />
                   <StatRow label="Graph Depth" value={analysis!.graphDepth} />
+                  {(analysis!.sequenceLength ?? 0) > 0 && <StatRow label="Sequence Length" value={analysis!.sequenceLength!} />}
+                  {(analysis!.hiddenSize ?? 0) > 0 && <StatRow label="Hidden Size" value={analysis!.hiddenSize!} />}
+                  {(analysis!.numAttentionHeads ?? 0) > 0 && <StatRow label="Attention Heads" value={analysis!.numAttentionHeads!} />}
+                  {(analysis!.numKeyValueHeads ?? 0) > 0 && <StatRow label="KV Heads" value={analysis!.numKeyValueHeads!} />}
+                  {(analysis!.intermediateSize ?? 0) > 0 && <StatRow label="Intermediate Size" value={analysis!.intermediateSize!} />}
+                  {(analysis!.vocabSize ?? 0) > 0 && <StatRow label="Vocab Size" value={analysis!.vocabSize!} />}
+                  {(analysis!.layersByType && Object.keys(analysis!.layersByType!).length > 0) && (
+                    Object.entries(analysis!.layersByType!).map(([t, cnt]) => (
+                      <StatRow key={t} label={t} value={cnt} mono={false} />
+                    ))
+                  )}
                   <StatRow label="Total Operations" value={fmtNum(analysis!.totalOperations)} />
                   <StatRow label="Critical Path" value={analysis!.criticalPathLength} />
                   <StatRow label="Total Tensors" value={analysis!.totalTensorCount} />

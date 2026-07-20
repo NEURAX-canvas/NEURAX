@@ -661,11 +661,21 @@ export interface OpsDistribution {
 
 export interface AnalysisResult {
   // Model stats
+  modelName?: string;
   totalParams: number;
   numLayers: number;
   modelType: string;
   hiddenSize?: number;
   vocabSize?: number;
+  sequenceLength?: number;
+  numAttentionHeads?: number;
+  numKeyValueHeads?: number;
+  intermediateSize?: number;
+  layersByType?: Record<string, number>;
+
+  // Analysis metadata
+  analysisTimeMs?: number;
+  generatedAt?: string;
   graphDepth: number;
   totalOperations: number;
   criticalPathLength: number;

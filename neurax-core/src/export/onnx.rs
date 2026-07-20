@@ -101,6 +101,7 @@ fn encode_repeated_int64_packed(field_number: u32, values: &[i64], buf: &mut Vec
 // ─── ONNX Data Types ──────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 enum OnnxDataType {
     Float = 1,
     Uint8 = 2,

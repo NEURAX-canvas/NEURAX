@@ -12,6 +12,7 @@ import {
   GitCompare, Target, TrendingUp, Bug
 } from 'lucide-react';
 import { CanvasNode, Connection, AnalysisResult, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
+import { cn } from '@/lib/utils';
 
 const CATEGORIES = [
   { id: 'realtime', label: 'Real-Time', icon: Activity, count: 6 },
@@ -65,35 +66,45 @@ export function SimulationWorkspace({ nodes, connections, analysis, perLayer, wa
         </div>
       </div>
 
-      {/* Chart Content */}
+      {/* Chart Content — all categories always mounted, only active one visible */}
       <div className="flex-1 overflow-auto p-4 scrollbar-thin">
-        {activeCategory === 'realtime' && <RealTimeCharts analysis={analysis} />}
-        {activeCategory === 'global' && <GlobalResultsCharts analysis={analysis} />}
-        {activeCategory === 'perlayer' && <PerLayerCharts analysis={analysis} perLayer={perLayer} />}
-        {activeCategory === 'memory' && <MemoryCharts analysis={analysis} />}
-        {activeCategory === 'comparison' && <ComparisonCharts analysis={analysis} topology={topology} />}
-        {activeCategory === 'optimization' && (
+        <div className={cn(activeCategory === 'realtime' ? '' : 'hidden')}>
+          <RealTimeCharts analysis={analysis} />
+        </div>
+        <div className={cn(activeCategory === 'global' ? '' : 'hidden')}>
+          <GlobalResultsCharts analysis={analysis} />
+        </div>
+        <div className={cn(activeCategory === 'perlayer' ? '' : 'hidden')}>
+          <PerLayerCharts analysis={analysis} perLayer={perLayer} />
+        </div>
+        <div className={cn(activeCategory === 'memory' ? '' : 'hidden')}>
+          <MemoryCharts analysis={analysis} />
+        </div>
+        <div className={cn(activeCategory === 'comparison' ? '' : 'hidden')}>
+          <ComparisonCharts analysis={analysis} topology={topology} />
+        </div>
+        <div className={cn(activeCategory === 'optimization' ? '' : 'hidden')}>
           <OptimizationCharts
             analysis={analysis}
             perLayer={perLayer}
             nodes={nodes}
             connections={connections}
           />
-        )}
-        {activeCategory === 'training' && (
+        </div>
+        <div className={cn(activeCategory === 'training' ? '' : 'hidden')}>
           <TrainingCharts
             analysis={analysis}
             perLayer={perLayer}
           />
-        )}
-        {activeCategory === 'debugging' && (
+        </div>
+        <div className={cn(activeCategory === 'debugging' ? '' : 'hidden')}>
           <DebuggingCharts
             analysis={analysis}
             perLayer={perLayer}
             warnings={warnings}
             nodes={nodes}
           />
-        )}
+        </div>
       </div>
     </div>
   );
