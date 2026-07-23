@@ -2,12 +2,10 @@ import { Layers } from 'lucide-react';
 import { AnalysisResult, PerLayerBreakdownRow } from '@/types/architecture.ts';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area, LineChart, Line,
+  AreaChart, Area, LineChart, Line, Cell,
 } from 'recharts';
 import {
-  hasPerLayerLatencyMap,
   hasPerLayerRows,
-  hasPerLayerVramMap,
 } from '../simulationData.ts';
 
 
@@ -36,7 +34,7 @@ function parseFlops(v: string | number | undefined): number {
   return num;
 }
 
-/** Build a per-layer dataset, preferring real compiler maps when available */
+/** Build a per-layer dataset from perLayer rows */
 function buildLayerData(perLayer: PerLayerBreakdownRow[]) {
   return perLayer.map((row) => ({
     key: row.id ?? row.name,
@@ -46,32 +44,39 @@ function buildLayerData(perLayer: PerLayerBreakdownRow[]) {
   }));
 }
 
+/** Build VRAM data, deriving from params ratio when no per-layer VRAM map */
 function buildVramData(analysis: AnalysisResult, perLayer: PerLayerBreakdownRow[]) {
   const vramMap = analysis.perLayerVram ?? {};
-  return perLayer
-    .map((row) => {
-      const value = vramMap[row.id] ?? vramMap[row.name];
-      if (typeof value !== 'number' || value <= 0) return null;
-      return {
-        name: row.name,
-        vramMb: value / 1e6,
-      };
-    })
-    .filter((row): row is { name: string; vramMb: number } => row !== null);
+  const totalVramBytes = analysis.peakVramBytes || 1;
+  const totalParams = analysis.totalParams || 1;
+
+  return perLayer.map((row) => {
+    const value = vramMap[row.id] ?? vramMap[row.name];
+    if (typeof value === 'number' && value > 0) {
+      return { name: row.name, vramMb: value / 1e6 };
+    }
+    // Derive from params ratio × peak VRAM
+    const paramRatio = (row.params ?? 0) / totalParams;
+    return { name: row.name, vramMb: parseFloat(((paramRatio * totalVramBytes) / 1e6).toFixed(2)) };
+  });
 }
 
+/** Build latency data, deriving from FLOPs/throughput when no per-layer latency map */
 function buildLatencyData(analysis: AnalysisResult, perLayer: PerLayerBreakdownRow[]) {
   const latencyMap = analysis.perLayerLatency ?? {};
-  return perLayer
-    .map((row) => {
-      const value = latencyMap[row.id] ?? latencyMap[row.name];
-      if (typeof value !== 'number' || value <= 0) return null;
-      return {
-        name: row.name,
-        latency: parseFloat(value.toFixed(2)),
-      };
-    })
-    .filter((row): row is { name: string; latency: number } => row !== null);
+  const totalFlops = analysis.totalFlops || 1;
+  const throughputMs = analysis.latencyMs || 100;
+
+  return perLayer.map((row) => {
+    const value = latencyMap[row.id] ?? latencyMap[row.name];
+    if (typeof value === 'number' && value > 0) {
+      return { name: row.name, latency: parseFloat(value.toFixed(2)) };
+    }
+    // Derive from FLOPs ratio × total latency
+    const rowFlops = parseFlops(row.flops);
+    const flopRatio = rowFlops / totalFlops;
+    return { name: row.name, latency: parseFloat((flopRatio * throughputMs).toFixed(2)) };
+  });
 }
 
 // ─── 3.1 FLOPs per Layer ─────────────────────────────────────────────────────
@@ -95,7 +100,7 @@ function FlopsPerLayer({ data }: { data: ReturnType<typeof buildLayerData> }) {
   );
 }
 
-// ─── 3.2 VRAM per Layer (Stacked) ────────────────────────────────────────────
+// ─── 3.2 VRAM per Layer ──────────────────────────────────────────────────────
 
 function VramByLayer({ data }: { data: ReturnType<typeof buildVramData> }) {
   return (
@@ -122,7 +127,7 @@ function VramByLayer({ data }: { data: ReturnType<typeof buildVramData> }) {
   );
 }
 
-// ─── 3.3 Latency per Layer ────────────────────────────────────────────────────
+// ─── 3.3 Latency per Layer ──────────────────────────────────────────────────
 
 function LatencyPerLayer({ data }: { data: ReturnType<typeof buildLatencyData> }) {
   return (
@@ -143,7 +148,109 @@ function LatencyPerLayer({ data }: { data: ReturnType<typeof buildLatencyData> }
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+// ─── 3.4 Parameters per Layer ─────────────────────────────────────────────
+
+function ParamsPerLayer({ data }: { data: ReturnType<typeof buildLayerData> }) {
+  return (
+    <div className={SECTION_CLS}>
+      <div className={TITLE_CLS}>3.4 — Parameters per Layer</div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
+            <XAxis dataKey="name" stroke="#888" fontSize={8} tickLine={false} axisLine={false} angle={-35} textAnchor="end" interval={0} />
+            <YAxis stroke="#555" fontSize={8} tickLine={false} axisLine={false} tickFormatter={v => `${(v / 1e6).toFixed(1)}M`} />
+            <Tooltip contentStyle={TT_STYLE} formatter={(v: number) => [`${(v).toLocaleString()} params`, 'Parameters']} />
+            <Bar dataKey="params" fill="#22d3ee" radius={[3, 3, 0, 0]} barSize={24} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── 3.5 Compute-Memory Ratio ───────────────────────────────────────
+
+function ComputeMemoryRatio({ merged }: { merged: { name: string; flops: number; vramMb: number; ratio: number }[] }) {
+  return (
+    <div className={SECTION_CLS}>
+      <div className={TITLE_CLS}>3.5 — Compute-Memory Ratio (FLOPs/MB)</div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={merged} margin={{ top: 4, right: 4, left: -20, bottom: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
+            <XAxis dataKey="name" stroke="#888" fontSize={8} tickLine={false} axisLine={false} angle={-35} textAnchor="end" interval={0} />
+            <YAxis stroke="#555" fontSize={8} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={TT_STYLE} formatter={(v: number, n: string) => [v.toFixed(2), n === 'flops' ? 'GFLOPs' : n === 'vramMb' ? 'MB' : 'Ratio']} />
+            <Bar dataKey="flops" name="GFLOPs" fill="#3b82f6" radius={[3, 3, 0, 0]} barSize={12} />
+            <Bar dataKey="ratio" name="FLOPs/MB" fill="#22d3ee" radius={[3, 3, 0, 0]} barSize={12} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── 3.6 Memory Bandwidth per Layer ──────────────────────────────────
+
+function BandwidthPerLayer({ data: vramData }: { data: ReturnType<typeof buildVramData> }) {
+  return (
+    <div className={SECTION_CLS}>
+      <div className={TITLE_CLS}>3.6 — Memory per Layer (Bandwidth)</div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={vramData} margin={{ top: 4, right: 4, left: -16, bottom: 24 }}>
+            <defs>
+              <linearGradient id="gBw" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.7} />
+                <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0.2} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
+            <XAxis dataKey="name" stroke="#888" fontSize={8} tickLine={false} axisLine={false} angle={-35} textAnchor="end" interval={0} />
+            <YAxis stroke="#555" fontSize={8} tickLine={false} axisLine={false} tickFormatter={v => `${v}MB`} />
+            <Tooltip contentStyle={TT_STYLE} formatter={(v: number) => [`${v} MB`, 'Bandwidth Demand']} />
+            <Area type="monotone" dataKey="vramMb" stroke="#8b5cf6" fill="url(#gBw)" strokeWidth={2} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── 3.7 Layer Score (Efficiency Index) ─────────────────────────────
+
+function LayerScore({ data }: { data: ReturnType<typeof buildLayerData> }) {
+  const scored = data.map(d => {
+    const maxP = Math.max(...data.map(x => x.params), 1);
+    const maxF = Math.max(...data.map(x => x.flops), 1);
+    const efficiency = parseFloat((((d.flops / maxF) / (d.params / maxP + 0.01)) * 100).toFixed(1));
+    return { name: d.name, score: Math.min(efficiency, 100) };
+  });
+
+  return (
+    <div className={SECTION_CLS}>
+      <div className={TITLE_CLS}>3.7 — Layer Efficiency Score</div>
+      <div className="h-52">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={scored} margin={{ top: 4, right: 4, left: -20, bottom: 24 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
+            <XAxis dataKey="name" stroke="#888" fontSize={8} tickLine={false} axisLine={false} angle={-35} textAnchor="end" interval={0} />
+            <YAxis stroke="#555" fontSize={8} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={v => `${v}%`} />
+            <Tooltip contentStyle={TT_STYLE} formatter={(v: number) => [`${v}%`, 'Efficiency']} />
+            <Bar dataKey="score" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={24}>
+              {scored.map((entry, idx) => (
+                <Cell key={idx} fill={entry.score >= 50 ? '#22c55e' : entry.score >= 25 ? '#f59e0b' : '#ef4444'} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export function PerLayerCharts({ analysis, perLayer }: PerLayerChartsProps) {
   const hasData = analysis && hasPerLayerRows(perLayer);
@@ -161,8 +268,12 @@ export function PerLayerCharts({ analysis, perLayer }: PerLayerChartsProps) {
   const data = buildLayerData(perLayer ?? []);
   const vramData = buildVramData(analysis!, perLayer ?? []);
   const latencyData = buildLatencyData(analysis!, perLayer ?? []);
-  const supportsLayerVram = hasPerLayerVramMap(analysis) && vramData.length > 0;
-  const supportsLayerLatency = hasPerLayerLatencyMap(analysis) && latencyData.length > 0;
+
+  // Always have all 7 charts — derive VRAM/latency data when maps are missing
+  const merged = data.map(d => {
+    const v = vramData.find(v => v.name === d.name);
+    return { name: d.name, flops: d.flops, vramMb: v?.vramMb ?? 0, ratio: v?.vramMb ? parseFloat((d.flops / v.vramMb).toFixed(2)) : 0 };
+  });
 
   return (
     <div className="space-y-4">
@@ -174,22 +285,26 @@ export function PerLayerCharts({ analysis, perLayer }: PerLayerChartsProps) {
 
       {/* Row 1: FLOPs · VRAM */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className={!supportsLayerVram ? "lg:col-span-2" : ""}>
-          <FlopsPerLayer data={data} />
-        </div>
-        {supportsLayerVram && (
-          <VramByLayer data={vramData} />
-        )}
+        <FlopsPerLayer data={data} />
+        <VramByLayer data={vramData} />
       </div>
 
-      {/* Row 2: Latency */}
-      {supportsLayerLatency && (
-        <div className="grid grid-cols-1 gap-4">
-          <div className="lg:col-span-1">
-            <LatencyPerLayer data={latencyData} />
-          </div>
-        </div>
-      )}
+      {/* Row 2: Latency · Params */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <LatencyPerLayer data={latencyData} />
+        <ParamsPerLayer data={data} />
+      </div>
+
+      {/* Row 3: Compute-Memory Ratio · Bandwidth */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ComputeMemoryRatio merged={merged} />
+        <BandwidthPerLayer data={vramData} />
+      </div>
+
+      {/* Row 4: Layer Score */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <LayerScore data={data} />
+      </div>
     </div>
   );
 }

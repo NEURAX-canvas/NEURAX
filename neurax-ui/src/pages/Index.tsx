@@ -783,12 +783,13 @@ const Index = () => {
   const [showPricingPage, setShowPricingPage] = useState(false);
   const [selectedArchitecture, setSelectedArchitecture] = useState<ArchitectureFamily>('transformer');
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>('architecture');
-  const [activeRightPanelTab, setActiveRightPanelTab] = useState<RightPanelTabId>('issues');
+  const [activeRightPanelTab, setActiveRightPanelTab] = useState<RightPanelTabId>('architecture');
   const [jumpToIssuesSignal, setJumpToIssuesSignal] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isDesktopLayout, setIsDesktopLayout] = useState(true);
   const [currentPresetId, setCurrentPresetId] = useState<string | null>(null);
   const [presetAutoAnalysisTick, setPresetAutoAnalysisTick] = useState(0);
+  const [autoAnalysisTick, setAutoAnalysisTick] = useState(0);
   const [groups, setGroups] = useState<NodeGroup[]>([]);
   const [savedProjects, setSavedProjects] = useState<Project[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -1596,6 +1597,28 @@ params: params as Record<string, ParameterValue>,
     return () => window.clearTimeout(timeout);
   }, [presetAutoAnalysisTick, handleRunAnalysis]);
 
+  // Auto-analysis when nodes or connections change (debounced)
+  const isFirstRender = useRef(true);
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (nodes.length === 0) return;
+    const timeout = window.setTimeout(() => {
+      setAutoAnalysisTick(t => t + 1);
+    }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [nodes, connections]);
+
+  useEffect(() => {
+    if (autoAnalysisTick <= 0) return;
+    const timeout = window.setTimeout(() => {
+      void handleRunAnalysis();
+    }, 200);
+    return () => window.clearTimeout(timeout);
+  }, [autoAnalysisTick, handleRunAnalysis]);
+
   const [agentAnalysisTick, setAgentAnalysisTick] = useState(0);
 
   const triggerAgentAutoAnalysis = useCallback(() => {
@@ -2043,7 +2066,7 @@ params: params as Record<string, ParameterValue>,
                   perLayer={perLayer}
                   warnings={warnings}
                   onJumpToWarnings={() => {
-                    setActiveRightPanelTab('issues');
+                    setActiveRightPanelTab('architecture');
                     setJumpToIssuesSignal((v) => v + 1);
                   }}
                   onUpdateNode={handleUpdateNode}
@@ -2104,7 +2127,7 @@ params: params as Record<string, ParameterValue>,
               perLayer={perLayer}
               warnings={warnings}
               onJumpToWarnings={() => {
-                setActiveRightPanelTab('issues');
+                setActiveRightPanelTab('architecture');
                 setJumpToIssuesSignal((v) => v + 1);
               }}
               onUpdateNode={handleUpdateNode}

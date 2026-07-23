@@ -1,6 +1,6 @@
 import { useMemo, useState, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Mail, Github, Gift, Zap, Sparkles, Crown, type LucideIcon } from 'lucide-react';
+import { LogIn, Mail, Github, Gift, Zap, Sparkles, Crown, LogOut, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext.tsx';
 import { usePlan } from '@/contexts/PlanContext.tsx';
 import { PLAN_CONFIGS, type PlanTier } from '@/types/plans.ts';
@@ -35,68 +35,6 @@ interface AuthControlProps {
   triggerClassName?: string;
 }
 
-function randPick<T>(arr: T[]): T {
-  return arr[0];
-}
-
-function stableSuffix(seed: string): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i += 1) {
-    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return 1000 + (h % 9000);
-}
-
-function generateLegendMemeUsername(): string {
-  const adjectives = [
-    'Legendary',
-    'Mythic',
-    'Elite',
-    'Savage',
-    'Gigachad',
-    'Sigma',
-    'Degen',
-    'Based',
-    'Neural',
-    'Quantum',
-    'Cyber',
-    'Turbo',
-    'Cosmic',
-  ];
-  const nouns = [
-    'Architect',
-    'Tensor',
-    'Wizard',
-    'Engineer',
-    'Overlord',
-    'Monkey',
-    'Goblin',
-    'Dragon',
-    'Hacker',
-    'Researcher',
-    'Builder',
-    'Warlord',
-  ];
-  const suffix = stableSuffix(`${adjectives[0]}-${nouns[0]}`);
-  return `${randPick(adjectives)}${randPick(nouns)}${suffix}`;
-}
-
-function defaultAvatarUrl(seed: string): string {
-  const s = encodeURIComponent(seed || 'user');
-  return `https://api.dicebear.com/7.x/identicon/svg?seed=${s}`;
-}
-
-const SYSTEM_AVATAR_SEEDS = Array.from({ length: 100 }, (_v, i) => `avatar-${i + 1}`);
-
-function systemAvatarUrl(seed: string): string {
-  const s = encodeURIComponent(seed);
-  return `https://api.dicebear.com/7.x/bottts/svg?seed=${s}`;
-}
-
-function getSystemAvatarOptions(): string[] {
-  return SYSTEM_AVATAR_SEEDS.map(systemAvatarUrl);
-}
-
 export function AuthControl({
   initialTab,
   triggerLabel,
@@ -104,7 +42,7 @@ export function AuthControl({
   triggerSize,
   triggerClassName,
 }: AuthControlProps) {
-  const { session, isAuthenticated } = useAuth();
+  const { session, isAuthenticated, demoUser, demoSignIn, demoSignOut, demoAvatarUrl } = useAuth();
   const { currentPlan, planConfig } = usePlan();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -115,10 +53,6 @@ export function AuthControl({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(() => {
-    const opts = getSystemAvatarOptions();
-    return opts.length > 0 ? randPick(opts) : null;
-  });
   const [busy, setBusy] = useState(false);
   const [planPopoverOpen, setPlanPopoverOpen] = useState(false);
 
@@ -127,11 +61,21 @@ export function AuthControl({
   }, []);
 
   const avatarSrc = useMemo(() => {
+    // In demo mode, use the custom avatar
+    if (SUPABASE_DISABLED && demoUser) {
+      return demoAvatarUrl;
+    }
     const m = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
     const metaUrl = typeof m.avatar_url === 'string' ? m.avatar_url : null;
-    const fallback = defaultAvatarUrl(session?.user?.email ?? 'user');
+    const fallback = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(session?.user?.email ?? 'user')}`;
     return metaUrl ?? fallback;
-  }, [session]);
+  }, [session, demoUser, demoAvatarUrl]);
+
+  const displayName = useMemo(() => {
+    if (SUPABASE_DISABLED && demoUser) return demoUser.username;
+    const m = session?.user?.user_metadata as Record<string, unknown> | undefined;
+    return (typeof m?.username === 'string' ? m.username : session?.user?.email) ?? 'User';
+  }, [session, demoUser]);
 
   const PlanIcon = useMemo<LucideIcon>(() => {
     const icons: Record<PlanTier, LucideIcon> = {
@@ -173,6 +117,24 @@ export function AuthControl({
     }
   };
 
+  // ── Demo / Dev mode login ──────────────────────────────────
+  const onDemoSignIn = () => {
+    if (!email.trim()) {
+      toast({ title: 'Email required', description: 'Please enter an email to continue.', variant: 'destructive' });
+      return;
+    }
+    demoSignIn(email.trim(), username.trim() || undefined);
+    toast({
+      title: 'Welcome to NEURAX!',
+      description: `Signed in as ${username.trim() || email.trim().split('@')[0]}`,
+    });
+    setOpen(false);
+    setEmail('');
+    setPassword('');
+    setUsername('');
+  };
+
+  // ── Supabase auth (prod mode) ──────────────────────────────
   const onSignUp = async () => {
     setBusy(true);
     try {
@@ -184,32 +146,18 @@ export function AuthControl({
         });
         return;
       }
-      if (SUPABASE_DISABLED) {
-        toast({
-          title: 'Auth disabled (dev mode)',
-          description: 'Supabase is disabled in this environment.',
-        });
-        setOpen(false);
-        return;
-      }
-
-      const finalUsername = (username || generateLegendMemeUsername()).trim();
-      const systemOptions = getSystemAvatarOptions();
-      const finalAvatarUrl = avatarUrl || (systemOptions.length > 0 ? randPick(systemOptions) : defaultAvatarUrl(finalUsername));
-
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: redirectTo,
           data: {
-            username: finalUsername,
-            avatar_url: finalAvatarUrl,
+            username: username || email.split('@')[0],
+            avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email)}`,
           },
         },
       });
       if (error) throw error;
-
       toast({
         title: 'Account created',
         description: 'If email confirmation is enabled, check your inbox to confirm your account.',
@@ -225,15 +173,6 @@ export function AuthControl({
   const onPasswordSignIn = async () => {
     setBusy(true);
     try {
-      if (SUPABASE_DISABLED) {
-        toast({
-          title: 'Auth disabled (dev mode)',
-          description: 'Supabase is disabled in this environment.',
-        });
-        setOpen(false);
-        return;
-      }
-
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       toast({ title: 'Signed in' });
@@ -248,15 +187,6 @@ export function AuthControl({
   const onMagicLink = async () => {
     setBusy(true);
     try {
-      if (SUPABASE_DISABLED) {
-        toast({
-          title: 'Auth disabled (dev mode)',
-          description: 'Supabase is disabled in this environment.',
-        });
-        setOpen(false);
-        return;
-      }
-
       const { error } = await supabase.auth.signInWithOtp({
         email,
         options: { emailRedirectTo: redirectTo },
@@ -274,15 +204,6 @@ export function AuthControl({
   const onOAuth = async (provider: 'google' | 'github') => {
     setBusy(true);
     try {
-      if (SUPABASE_DISABLED) {
-        toast({
-          title: 'Auth disabled (dev mode)',
-          description: 'Supabase is disabled in this environment.',
-        });
-        setOpen(false);
-        return;
-      }
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: { redirectTo },
@@ -294,15 +215,17 @@ export function AuthControl({
     }
   };
 
+  // ── Authenticated state ────────────────────────────────────
   if (isAuthenticated) {
     return (
       <div className="flex items-center gap-2">
+        {/* Plan badge */}
         <Popover open={planPopoverOpen} onOpenChange={setPlanPopoverOpen}>
           <PopoverTrigger asChild>
             <button
               type="button"
               className={
-                `h-8 px-2 rounded-md border border-border/60 hover:border-border transition-colors text-[10px] font-mono uppercase tracking-wider flex items-center gap-1.5 ` +
+                `h-8 px-2 rounded-md border border-white/20 hover:border-white/40 transition-colors text-[10px] font-mono uppercase tracking-wider flex items-center gap-1.5 ` +
                 planConfig.badge
               }
               disabled={busy}
@@ -332,7 +255,7 @@ export function AuthControl({
                       type="button"
                       disabled={busy}
                       className={
-                        `w-full flex items-center justify-between rounded-md border px-3 py-2 text-left transition-colors border-border/60 hover:bg-secondary/40 hover:brightness-110 ` +
+                        `w-full flex items-center justify-between rounded-md border px-3 py-2 text-left transition-colors border-white/20 hover:bg-white/5 ` +
                         cfg.badge
                       }
                       onClick={() => {
@@ -360,12 +283,12 @@ export function AuthControl({
                 })}
             </div>
 
-            {currentPlan !== 'free' ? (
-              <div className="mt-2 pt-2 border-t border-border/60">
+            {currentPlan !== 'free' && (
+              <div className="mt-2 pt-2 border-t border-white/20">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full border-border/60"
+                  className="w-full border-white/20"
                   onClick={() => {
                     setPlanPopoverOpen(false);
                     void onManageBilling();
@@ -375,29 +298,48 @@ export function AuthControl({
                   Manage billing
                 </Button>
               </div>
-            ) : null}
+            )}
           </PopoverContent>
         </Popover>
 
-        <button
-          type="button"
-          className="h-8 w-8 rounded-full overflow-hidden border border-border/60 hover:border-border transition-colors"
-          onClick={() => navigate('/account')}
-          aria-label="Open account"
-          disabled={busy}
-        >
-          <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
-        </button>
+        {/* User avatar + name */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="h-8 w-8 rounded-full overflow-hidden border border-white/20 hover:border-white/40 transition-colors flex-shrink-0"
+            onClick={() => navigate('/account')}
+            aria-label="Open account"
+            disabled={busy}
+          >
+            <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
+          </button>
+          <span className="hidden sm:inline text-xs text-white/60 font-medium max-w-[100px] truncate">
+            {displayName}
+          </span>
+          {/* Demo sign out */}
+          {SUPABASE_DISABLED && (
+            <button
+              type="button"
+              onClick={demoSignOut}
+              className="h-7 w-7 rounded-md border border-white/10 hover:border-red-400/40 hover:bg-red-500/10 flex items-center justify-center transition-colors"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-white/40 hover:text-red-400" />
+            </button>
+          )}
+        </div>
       </div>
     );
   }
 
+  // ── Not authenticated ──────────────────────────────────────
   return (
     <>
       <Button
         variant={triggerVariant ?? 'default'}
         size={triggerSize ?? 'sm'}
-        className={triggerClassName ?? 'shadow-glow-sm'}
+        className={triggerClassName ?? 'bg-white/10 text-white hover:bg-white/20 border border-white/10'}
         onClick={() => {
           setActiveTab(initialTab ?? 'password');
           setOpen(true);
@@ -408,148 +350,153 @@ export function AuthControl({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-md bg-[#0c0c1a] border border-white/10 shadow-2xl">
           <DialogHeader>
-            <DialogTitle>{activeTab === 'signup' ? 'Sign up' : 'Sign in'}</DialogTitle>
-            <DialogDescription>
-              Sign in to run analysis and access plan features.
+            <DialogTitle className="text-white text-xl">
+              {SUPABASE_DISABLED ? 'Welcome to NEURAX' : (activeTab === 'signup' ? 'Create Account' : 'Sign In')}
+            </DialogTitle>
+            <DialogDescription className="text-white/40">
+              {SUPABASE_DISABLED
+                ? 'Enter your name to start exploring the platform.'
+                : 'Sign in to run analysis and access plan features.'}
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="password">Password</TabsTrigger>
-              <TabsTrigger value="signup">Sign up</TabsTrigger>
-              <TabsTrigger value="magic">Magic link</TabsTrigger>
-              <TabsTrigger value="oauth">OAuth</TabsTrigger>
-            </TabsList>
+          {SUPABASE_DISABLED ? (
+            /* ── Demo Login (dev mode) ── */
+            <div className="space-y-4 mt-2">
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
+                  Your Name
+                </label>
+                <Input
+                  placeholder="e.g. AI Explorer"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
+                  Email (optional)
+                </label>
+                <Input
+                  placeholder="you@example.com"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+              </div>
 
-            <TabsContent value="password" className="space-y-3 mt-3">
-              <Input
-                placeholder="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <Input
-                placeholder="Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <Button className="w-full" onClick={onPasswordSignIn} disabled={busy || !email || !password}>
-                <LogIn className="w-4 h-4 mr-2" />
-                Sign in
-              </Button>
-            </TabsContent>
+              <div className="pt-2 space-y-2">
+                <Button
+                  className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold h-11"
+                  onClick={onDemoSignIn}
+                >
+                  <Zap className="w-4 h-4 mr-2" />
+                  Enter Platform
+                </Button>
+                <p className="text-[10px] text-center text-white/20">
+                  Demo mode — no account required
+                </p>
+              </div>
+            </div>
+          ) : (
+            /* ── Supabase Auth (prod mode) ── */
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+              <TabsList className="grid w-full grid-cols-4 bg-white/5">
+                <TabsTrigger value="password" className="text-xs">Password</TabsTrigger>
+                <TabsTrigger value="signup" className="text-xs">Sign up</TabsTrigger>
+                <TabsTrigger value="magic" className="text-xs">Magic link</TabsTrigger>
+                <TabsTrigger value="oauth" className="text-xs">OAuth</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="signup" className="space-y-3 mt-3">
-              <div className="flex gap-2">
+              <TabsContent value="password" className="space-y-3 mt-3">
+                <Input
+                  placeholder="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+                <Input
+                  placeholder="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+                <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onPasswordSignIn} disabled={busy || !email || !password}>
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign in
+                </Button>
+              </TabsContent>
+
+              <TabsContent value="signup" className="space-y-3 mt-3">
                 <Input
                   placeholder="Username (optional)"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+                <Input
+                  placeholder="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+                <Input
+                  placeholder="Password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+                <Input
+                  placeholder="Confirm password"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
                 />
                 <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setUsername(generateLegendMemeUsername())}
-                  disabled={busy}
+                  className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold"
+                  onClick={onSignUp}
+                  disabled={busy || !email || !password || !confirmPassword}
                 >
-                  Generate
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Create account
                 </Button>
-              </div>
-              <Input
-                placeholder="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <Input
-                placeholder="Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-              <Input
-                placeholder="Confirm password"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-              />
+              </TabsContent>
 
-              <div className="space-y-2">
-                <div className="text-xs text-muted-foreground">Avatar (optional)</div>
-                <div className="grid grid-cols-6 gap-2">
-                  {getSystemAvatarOptions().map((url) => (
-                    <button
-                      key={url}
-                      type="button"
-                      onClick={() => setAvatarUrl(url)}
-                      className={
-                        `rounded-md border p-1 transition-colors ` +
-                        (avatarUrl === url ? 'border-primary bg-primary/10' : 'border-border hover:bg-secondary/40')
-                      }
-                      aria-label="Select avatar"
-                      disabled={busy}
-                    >
-                      <img src={url} alt="avatar" className="h-10 w-10" />
-                    </button>
-                  ))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const opts = getSystemAvatarOptions();
-                      setAvatarUrl(opts.length > 0 ? randPick(opts) : null);
-                    }}
-                    disabled={busy}
-                  >
-                    Random
-                  </Button>
-                  {avatarUrl && (
-                    <div className="text-xs text-muted-foreground">Selected</div>
-                  )}
-                </div>
-              </div>
+              <TabsContent value="magic" className="space-y-3 mt-3">
+                <Input
+                  placeholder="Email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+                />
+                <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onMagicLink} disabled={busy || !email}>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Send magic link
+                </Button>
+              </TabsContent>
 
-              <Button
-                className="w-full"
-                onClick={onSignUp}
-                disabled={busy || !email || !password || !confirmPassword}
-              >
-                <LogIn className="w-4 h-4 mr-2" />
-                Create account
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="magic" className="space-y-3 mt-3">
-              <Input
-                placeholder="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-              <Button className="w-full" onClick={onMagicLink} disabled={busy || !email}>
-                <Mail className="w-4 h-4 mr-2" />
-                Send magic link
-              </Button>
-            </TabsContent>
-
-            <TabsContent value="oauth" className="space-y-2 mt-3">
-              <Button className="w-full" variant="outline" onClick={() => onOAuth('google')} disabled={busy}>
-                <Mail className="w-4 h-4 mr-2" />
-                Continue with Google
-              </Button>
-              <Button className="w-full" variant="outline" onClick={() => onOAuth('github')} disabled={busy}>
-                <Github className="w-4 h-4 mr-2" />
-                Continue with GitHub
-              </Button>
-            </TabsContent>
-          </Tabs>
+              <TabsContent value="oauth" className="space-y-2 mt-3">
+                <Button className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10" variant="outline" onClick={() => onOAuth('google')} disabled={busy}>
+                  <Mail className="w-4 h-4 mr-2" />
+                  Continue with Google
+                </Button>
+                <Button className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10" variant="outline" onClick={() => onOAuth('github')} disabled={busy}>
+                  <Github className="w-4 h-4 mr-2" />
+                  Continue with GitHub
+                </Button>
+              </TabsContent>
+            </Tabs>
+          )}
         </DialogContent>
       </Dialog>
     </>

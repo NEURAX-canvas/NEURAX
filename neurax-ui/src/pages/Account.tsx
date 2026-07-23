@@ -21,8 +21,10 @@ function defaultAvatarUrl(seed: string): string {
   return `https://api.dicebear.com/7.x/identicon/svg?seed=${s}`;
 }
 
+const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
+
 export default function Account() {
-  const { session, isAuthenticated } = useAuth();
+  const { session, isAuthenticated, demoUser, demoSignOut, demoAvatarUrl } = useAuth();
   const { currentPlan, planConfig } = usePlan();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -32,27 +34,38 @@ export default function Account() {
   const [selectedAvatarUrl, setSelectedAvatarUrl] = useState<string | null>(null);
 
   const avatarSrc = useMemo(() => {
+    if (SUPABASE_DISABLED && demoUser) return demoAvatarUrl;
     const m = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
     const metaUrl = typeof m.avatar_url === 'string' ? m.avatar_url : null;
     const fallback = defaultAvatarUrl(session?.user?.email ?? 'user');
     return metaUrl ?? fallback;
-  }, [session]);
+  }, [session, demoUser, demoAvatarUrl]);
 
   const avatarOptions = useMemo(() => {
     return SYSTEM_AVATAR_SEEDS.map(systemAvatarUrl);
   }, []);
 
   const username = useMemo(() => {
+    if (SUPABASE_DISABLED && demoUser) return demoUser.username;
     const m = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
     const u = typeof m.username === 'string' ? m.username : null;
     return u;
-  }, [session]);
+  }, [session, demoUser]);
 
-  const email = session?.user?.email ?? null;
+  const email = useMemo(() => {
+    if (SUPABASE_DISABLED && demoUser) return demoUser.email;
+    return session?.user?.email ?? null;
+  }, [session, demoUser]);
 
   const onSignOut = async () => {
     setBusy(true);
     try {
+      if (SUPABASE_DISABLED) {
+        demoSignOut();
+        toast({ title: 'Signed out' });
+        navigate('/');
+        return;
+      }
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       toast({ title: 'Signed out' });

@@ -25,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select.tsx';
-import { DiagnosticsTerminal } from '@/components/panels/DiagnosticsTerminal.tsx';
 import { cn } from '@/lib/utils.ts';
 
 interface InspectorPanelProps {
@@ -206,8 +205,7 @@ export function InspectorPanel({
   const [isMinimized, setIsMinimized] = useState(false);
   const [panelHeight, setPanelHeight] = useState(192);
   const [compilerPaneWidth, setCompilerPaneWidth] = useState(420);
-  const [terminalHeight, setTerminalHeight] = useState(140);
-  const [terminalMinimized, setTerminalMinimized] = useState(false);
+
   const isResizing = useRef(false);
   const isWidthResizing = useRef(false);
   const startY = useRef(0);
@@ -415,7 +413,7 @@ export function InspectorPanel({
         <div className="flex-1 overflow-hidden flex flex-col">
           <div className={cn(
             "flex-1 overflow-auto scrollbar-thin p-4",
-            terminalMinimized ? "" : terminalHeight < 80 ? "pb-1" : ""
+""
           )}>
               {group ? (
               <div>
@@ -824,13 +822,6 @@ export function InspectorPanel({
 	          ) : null}
           </div>
 
-          <DiagnosticsTerminal
-            analysis={analysis}
-            height={terminalHeight}
-            onHeightChange={setTerminalHeight}
-            minimized={terminalMinimized}
-            onMinimizedChange={setTerminalMinimized}
-          />
         </div>
       )}
     </div>

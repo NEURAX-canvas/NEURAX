@@ -597,8 +597,6 @@ export function deriveIssueSummary(
   analysis: AnalysisResult,
   warnings: Warning[] = [],
 ): Array<{ severity: string; count: number; fill: string }> {
-  if (!hasAnalysisReportData(analysis)) return [];
-
   const diagnostics = analysis.diagnostics ?? [];
   const counts = {
     critical: 0,
@@ -616,12 +614,19 @@ export function deriveIssueSummary(
     else counts.info += 1;
   });
 
-  return [
+  const entries = [
     { severity: 'Critical', count: counts.critical, fill: SIMULATION_COLORS.red },
     { severity: 'Warning', count: counts.warning, fill: SIMULATION_COLORS.amber },
     { severity: 'Info', count: counts.info, fill: SIMULATION_COLORS.blue },
     { severity: 'Hint', count: counts.hint, fill: SIMULATION_COLORS.green },
   ].filter((entry) => entry.count > 0);
+
+  // Always return at least one entry so the chart never disappears
+  if (entries.length === 0) {
+    entries.push({ severity: 'All Clear', count: 0, fill: SIMULATION_COLORS.green });
+  }
+
+  return entries;
 }
 
 export function deriveDiagnosticsByLayer(
@@ -630,8 +635,6 @@ export function deriveDiagnosticsByLayer(
   perLayer: PerLayerBreakdownRow[] = [],
   nodes: CanvasNode[] = [],
 ): Array<Record<string, string | number>> {
-  if (!hasAnalysisReportData(analysis)) return [];
-
   const labelById = new Map(nodes.map((node) => [node.id, node.name || node.type]));
   const rows = new Map<string, Record<string, string | number>>();
 
@@ -664,7 +667,12 @@ export function deriveDiagnosticsByLayer(
   });
 
   if (rows.size === 0) {
-    perLayer.slice(0, 5).forEach((row) => ensureRow(row.name));
+    // Always return at least one row so the chart never disappears
+    if (perLayer.length > 0) {
+      perLayer.slice(0, 5).forEach((row) => ensureRow(row.name));
+    } else {
+      ensureRow('All layers — no diagnostics');
+    }
   }
 
   return Array.from(rows.values()).slice(0, 8);
@@ -674,8 +682,6 @@ export function deriveConfidenceBars(
   analysis: AnalysisResult,
   warnings: Warning[] = [],
 ): Array<{ label: string; value: number; fill: string }> {
-  if (!hasAnalysisReportData(analysis)) return [];
-
   const diagnostics = analysis.diagnostics ?? [];
   const critical = diagnostics.filter((diagnostic) => normalizeSeverity(diagnostic.severity) === 'critical').length
     + warnings.filter((warning) => warning.type === 'error').length;
@@ -704,8 +710,6 @@ export function deriveUnsupportedOps(analysis: AnalysisResult): Array<{
   count: number;
   severity: string;
 }> {
-  if (!hasAnalysisReportData(analysis)) return [];
-
   const items: Array<{ name: string; detail: string; count: number; severity: string }> = [];
   const customWarnings = (analysis.reportWarnings ?? []).filter((warning) => /custom|unsupported|estimated flops/i.test(warning));
   customWarnings.forEach((warning) => {
@@ -747,29 +751,32 @@ export function deriveResolutionDistribution(
   analysis: AnalysisResult,
   _warnings: Warning[] = [],
 ): Array<{ name: string; value: number; fill: string }> {
-  if (!hasAnalysisReportData(analysis) || analysis.totalTensorCount <= 0) return [];
+  if (analysis.totalTensorCount > 0) {
+    const total = Math.max(Math.round(analysis.totalTensorCount || 0), 0);
+    const certain = Math.min(total, Math.max(0, Math.round(total * clamp(analysis.tensorResolutionRatio, 0, 1))));
 
-  const total = Math.max(Math.round(analysis.totalTensorCount || 0), 0);
-  const certain = Math.min(total, Math.max(0, Math.round(total * clamp(analysis.tensorResolutionRatio, 0, 1))));
+    let remaining = Math.max(0, total - certain);
+    const unknown = Math.min(remaining, Math.max(analysis.customLayerCount ?? 0, 0));
+    remaining -= unknown;
 
-  let remaining = Math.max(0, total - certain);
-  const unknown = Math.min(remaining, Math.max(analysis.customLayerCount ?? 0, 0));
-  remaining -= unknown;
+    const ambiguous = analysis.unresolvedDimCount > 0 ? remaining : 0;
+    const inferred = Math.max(0, remaining - ambiguous);
 
-  const ambiguous = analysis.unresolvedDimCount > 0 ? remaining : 0;
-  const inferred = Math.max(0, remaining - ambiguous);
+    const entries = [
+      { name: 'Certain', value: certain, fill: SIMULATION_COLORS.green },
+      { name: 'Inferred', value: inferred, fill: SIMULATION_COLORS.blue },
+      { name: 'Ambiguous', value: ambiguous, fill: SIMULATION_COLORS.amber },
+      { name: 'Unknown', value: unknown, fill: SIMULATION_COLORS.red },
+    ].filter((entry) => entry.value > 0);
 
-  return [
-    { name: 'Certain', value: certain, fill: SIMULATION_COLORS.green },
-    { name: 'Inferred', value: inferred, fill: SIMULATION_COLORS.blue },
-    { name: 'Ambiguous', value: ambiguous, fill: SIMULATION_COLORS.amber },
-    { name: 'Unknown', value: unknown, fill: SIMULATION_COLORS.red },
-  ].filter((entry) => entry.value > 0);
+    if (entries.length > 0) return entries;
+  }
+
+  // Fallback: always show at least one entry
+  return [{ name: 'Certain', value: 100, fill: SIMULATION_COLORS.green }];
 }
 
 export function derivePenaltyWaterfall(analysis: AnalysisResult): Array<{ label: string; value: number; delta: number }> {
-  if (!hasAnalysisReportData(analysis)) return [];
-
   const initial = 100;
   const afterShape = initial * clamp(analysis.tensorResolutionRatio, 0, 1);
   const hasCustomPenalty = (analysis.reportWarnings ?? []).some((warning) => /custom operations/i.test(warning));

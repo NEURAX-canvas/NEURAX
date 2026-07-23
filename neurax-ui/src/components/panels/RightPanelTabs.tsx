@@ -1,19 +1,14 @@
 import { useCallback, useRef, useState } from 'react';
 import {
-  BarChart3,
-  Database,
-  SlidersHorizontal,
-  AlertTriangle,
-  Cpu,
+  Layers,
+  Zap,
+  Server,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
 import { CanvasNode, AnalysisResult, Warning } from '@/types/architecture.ts';
 import { ArchitectureFamily } from '@/types/plugins.ts';
-import { ParameterPanel } from './ParameterPanel.tsx';
 import { MetricsDashboard } from './MetricsDashboard.tsx';
-import { AnalysisPanel } from './AnalysisPanel.tsx';
-import { IssuesPanel } from './IssuesPanel.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { cn } from '@/lib/utils.ts';
 import {
@@ -23,7 +18,7 @@ import {
 } from '@/components/ui/tooltip.tsx';
 import { PerLayerBreakdownRow } from '@/types/architecture.ts';
 
-export type RightPanelTabId = 'analysis' | 'issues' | 'parameters' | 'metrics' | 'deepMetrics';
+export type RightPanelTabId = 'architecture' | 'performance' | 'hardware';
 
 interface RightPanelTabsProps {
   nodes: CanvasNode[];
@@ -39,11 +34,24 @@ interface RightPanelTabsProps {
 }
 
 const TABS: { id: RightPanelTabId; label: string; icon: React.ElementType; tooltip: string }[] = [
-  { id: 'analysis', label: 'Tune', icon: SlidersHorizontal, tooltip: 'Model Hyperparameters' },
-  { id: 'parameters', label: 'Params', icon: Database, tooltip: 'Parameter Generation' },
-  { id: 'metrics', label: 'Metrics', icon: BarChart3, tooltip: 'FLOPs & Memory' },
-  { id: 'deepMetrics', label: 'Deep', icon: Cpu, tooltip: 'Advanced Compute, Memory & System Metrics' },
-  { id: 'issues', label: 'Issues', icon: AlertTriangle, tooltip: 'Warnings & Diagnostics' },
+  {
+    id: 'architecture',
+    label: 'Architecture',
+    icon: Layers,
+    tooltip: 'Architecture structure, diagnostics & validation',
+  },
+  {
+    id: 'performance',
+    label: 'Performance',
+    icon: Zap,
+    tooltip: 'FLOPs, memory, throughput & compute efficiency',
+  },
+  {
+    id: 'hardware',
+    label: 'Hardware',
+    icon: Server,
+    tooltip: 'GPU specs, parallelism, cost & carbon',
+  },
 ];
 
 export function RightPanelTabs({
@@ -53,14 +61,13 @@ export function RightPanelTabs({
   analysis,
   warnings,
   perLayer,
-  selectedArchitecture,
   activeTab: controlledActiveTab,
   onActiveTabChange,
   jumpToIssuesSignal,
 }: RightPanelTabsProps) {
-  const [internalActiveTab, setInternalActiveTab] = useState<RightPanelTabId>('analysis');
+  const [internalActiveTab, setInternalActiveTab] = useState<RightPanelTabId>('architecture');
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [panelWidth, setPanelWidth] = useState<number>(320);
+  const [panelWidth, setPanelWidth] = useState<number>(360);
   const isResizingWidth = useRef(false);
   const activeTab = controlledActiveTab ?? internalActiveTab;
 
@@ -75,12 +82,11 @@ export function RightPanelTabs({
   const warningCount = warnings.filter(w => w.type === 'warning').length;
 
   const clampPanelWidth = useCallback((w: number) => {
-    return Math.max(256, Math.min(560, w));
+    return Math.max(300, Math.min(600, w));
   }, []);
 
   const handleResizeWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
-
     const primaryDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
     setPanelWidth(prev => clampPanelWidth(prev - primaryDelta));
   }, [clampPanelWidth]);
@@ -114,7 +120,6 @@ export function RightPanelTabs({
   if (isCollapsed) {
     return (
       <aside className="w-12 h-full bg-sidebar border-l border-sidebar-border flex flex-col transition-all duration-300">
-        {/* Expand Button */}
         <div className="h-10 flex items-center justify-center border-b border-sidebar-border bg-panel-header">
           <Button
             variant="ghost"
@@ -126,12 +131,11 @@ export function RightPanelTabs({
           </Button>
         </div>
 
-        {/* Collapsed Tab Icons */}
         <div className="flex-1 flex flex-col items-center gap-2 py-2">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
-            const showBadge = tab.id === 'issues' && (errorCount > 0 || warningCount > 0);
+            const showBadge = tab.id === 'architecture' && (errorCount > 0 || warningCount > 0);
 
             return (
               <Tooltip key={tab.id}>
@@ -184,7 +188,7 @@ export function RightPanelTabs({
       >
         <div className="absolute top-1/2 -translate-y-1/2 left-0.5 w-0.5 h-10 rounded-full bg-muted-foreground/30 group-hover:bg-primary/50 transition-colors" />
       </div>
-      {/* Tab Bar */}
+
       <div className="h-10 px-1 flex items-center gap-0.5 border-b border-sidebar-border bg-panel-header">
         <Button
           variant="ghost"
@@ -198,7 +202,7 @@ export function RightPanelTabs({
         {TABS.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const showBadge = tab.id === 'issues' && (errorCount > 0 || warningCount > 0);
+          const showBadge = tab.id === 'architecture' && (errorCount > 0 || warningCount > 0);
 
           return (
             <Tooltip key={tab.id}>
@@ -228,48 +232,17 @@ export function RightPanelTabs({
         })}
       </div>
 
-      {/* Panel Content */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'analysis' && (
-          <AnalysisPanel
-            selectedArchitecture={selectedArchitecture}
-          />
-        )}
-        {activeTab === 'issues' && (
-          <IssuesPanel
-            warnings={warnings}
-            jumpToIssuesSignal={jumpToIssuesSignal}
-          />
-        )}
-        {activeTab === 'parameters' && (
-          <ParameterPanel
-            nodes={nodes}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            analysis={analysis}
-            perLayer={perLayer}
-          />
-        )}
-        {activeTab === 'metrics' && (
-          <MetricsDashboard
-            nodes={nodes}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            analysis={analysis}
-            perLayer={perLayer}
-            view="overview"
-          />
-        )}
-        {activeTab === 'deepMetrics' && (
-          <MetricsDashboard
-            nodes={nodes}
-            selectedNodeId={selectedNodeId}
-            onSelectNode={onSelectNode}
-            analysis={analysis}
-            perLayer={perLayer}
-            view="deep"
-          />
-        )}
+        <MetricsDashboard
+          nodes={nodes}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={onSelectNode}
+          analysis={analysis}
+          perLayer={perLayer}
+          warnings={warnings}
+          category={activeTab}
+          jumpToIssuesSignal={jumpToIssuesSignal}
+        />
       </div>
     </aside>
   );
