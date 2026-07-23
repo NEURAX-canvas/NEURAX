@@ -8,7 +8,7 @@
 
 @layer base {
   :root {
-    /* Pure White Board Theme */
+    /* ── Pure White Theme — tout dérivé du blanc ── */
     --background: 0 0% 100%;
     --foreground: 220 14% 10%;
 
@@ -18,7 +18,8 @@
     --popover: 0 0% 100%;
     --popover-foreground: 220 14% 10%;
 
-    --primary: 220 14% 20%;
+    /* Indigo-500 comme primary (brand) */
+    --primary: 239 84% 67%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 10% 96%;
@@ -27,8 +28,8 @@
     --muted: 220 10% 96%;
     --muted-foreground: 220 10% 46%;
 
-    --accent: 220 10% 94%;
-    --accent-foreground: 220 14% 10%;
+    --accent: 239 84% 67%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
@@ -44,31 +45,31 @@
 
     --border: 220 10% 90%;
     --input: 220 10% 96%;
-    --ring: 220 14% 40%;
+    --ring: 239 84% 67%;
 
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 99%;
     --sidebar-foreground: 220 14% 20%;
-    --sidebar-primary: 220 14% 20%;
+    --sidebar-primary: 239 84% 67%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 220 10% 96%;
     --sidebar-accent-foreground: 220 14% 10%;
     --sidebar-border: 220 10% 92%;
-    --sidebar-ring: 220 14% 40%;
+    --sidebar-ring: 239 84% 67%;
 
     /* Canvas specific - Pure white board */
     --canvas-bg: 0 0% 99%;
     --canvas-grid: 220 10% 92%;
     --canvas-node: 0 0% 100%;
     --canvas-node-border: 220 10% 85%;
-    --canvas-connection: 220 14% 35%;
+    --canvas-connection: 239 84% 60%;
 
     /* Panel specific */
     --panel-header: 220 10% 97%;
 
-    /* Chart colors */
-    --chart-1: 199 89% 48%;
+    /* Chart colors - harmonisés avec le thème indigo */
+    --chart-1: 239 84% 67%;
     --chart-2: 160 84% 39%;
     --chart-3: 37 92% 50%;
     --chart-4: 0 84% 60%;
@@ -79,27 +80,26 @@
   }
 
   .dark {
-    /* Dark Theme Variant */
-    --background: 220 14% 6%;
+    /* Dark Theme — refined deep space */
+    --background: 240 6% 4%;
     --foreground: 0 0% 96%;
 
-    --card: 220 14% 8%;
+    --card: 240 4% 6%;
     --card-foreground: 0 0% 96%;
 
-    --popover: 220 14% 10%;
+    --popover: 240 4% 8%;
     --popover-foreground: 0 0% 96%;
+    --primary: 239 84% 67%;
+    --primary-foreground: 0 0% 100%;
 
-    --primary: 220 10% 70%;
-    --primary-foreground: 220 14% 6%;
-
-    --secondary: 220 14% 12%;
+    --secondary: 240 4% 10%;
     --secondary-foreground: 0 0% 90%;
 
-    --muted: 220 14% 14%;
-    --muted-foreground: 220 10% 50%;
+    --muted: 240 4% 12%;
+    --muted-foreground: 0 0% 45%;
 
-    --accent: 220 10% 75%;
-    --accent-foreground: 220 14% 6%;
+    --accent: 239 84% 60%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;

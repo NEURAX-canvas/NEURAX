@@ -96,7 +96,7 @@ export function VariantPresetsPanel({
   const [templateTags, setTemplateTags] = useState('');
   const { canAccess } = usePlan();
 
-  const canCreateTemplates = canAccess('architect');
+  const canCreateTemplates = canAccess('free');
 
   const familyCustomTemplates = customTemplates.filter(t => t.family === family);
 
@@ -418,7 +418,7 @@ export function VariantPresetsPanel({
             Save Current as Template
           </Button>
         ) : (
-          <LockedFeature minPlan="architect" tooltipSide="bottom">
+          <LockedFeature minPlan="free" tooltipSide="bottom">
             <Button
               variant="outline"
               size="sm"

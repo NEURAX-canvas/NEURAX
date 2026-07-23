@@ -1,9 +1,9 @@
 import { useMemo, useState, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Mail, Github, Gift, Zap, Sparkles, Crown, LogOut, type LucideIcon } from 'lucide-react';
+import { LogIn, Mail, Github, Gift, Zap, LogOut, Key, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext.tsx';
+import { useApiKey, PROVIDER_DEFAULTS, type ApiProvider, type ApiKeyConfig } from '@/contexts/ApiKeyContext.tsx';
 import { usePlan } from '@/contexts/PlanContext.tsx';
-import { PLAN_CONFIGS, type PlanTier } from '@/types/plans.ts';
 import { supabase } from '@/lib/supabaseClient.ts';
 import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
@@ -19,9 +19,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
-import { createBillingPortalSession, createCheckoutSession } from '@/services/neuraxApi.ts';
+
 
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 
@@ -35,6 +42,16 @@ interface AuthControlProps {
   triggerClassName?: string;
 }
 
+const PROVIDERS: { value: ApiProvider; label: string; icon: string }[] = [
+  { value: 'openai', label: 'OpenAI', icon: '🤖' },
+  { value: 'anthropic', label: 'Anthropic', icon: '🧠' },
+  { value: 'google', label: 'Google AI', icon: '🔬' },
+  { value: 'mistral', label: 'Mistral', icon: '🌬️' },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)', icon: '⚙️' },
+];
+
+type SetupStep = 'auth' | 'apikey';
+
 export function AuthControl({
   initialTab,
   triggerLabel,
@@ -43,11 +60,13 @@ export function AuthControl({
   triggerClassName,
 }: AuthControlProps) {
   const { session, isAuthenticated, demoUser, demoSignIn, demoSignOut, demoAvatarUrl } = useAuth();
-  const { currentPlan, planConfig } = usePlan();
+  const { config: apiKeyConfig, isConfigured: hasApiKey, setApiKey, markSetupComplete } = useApiKey();
+  const { planConfig } = usePlan();
   const { toast } = useToast();
   const navigate = useNavigate();
 
   const [open, setOpen] = useState(false);
+  const [setupStep, setSetupStep] = useState<SetupStep>('auth');
   const [activeTab, setActiveTab] = useState<AuthTab>('password');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,12 +75,19 @@ export function AuthControl({
   const [busy, setBusy] = useState(false);
   const [planPopoverOpen, setPlanPopoverOpen] = useState(false);
 
+  // API Key state
+  const [apiProvider, setApiProvider] = useState<ApiProvider>('openai');
+  const [apiKeyValue, setApiKeyValue] = useState('');
+  const [apiCustomEndpoint, setApiCustomEndpoint] = useState('');
+  const [apiModel, setApiModel] = useState('');
+
   const redirectTo = useMemo(() => {
     return `${window.location.origin}/app`;
   }, []);
 
+  const avatarEmoji = useMemo(() => localStorage.getItem('neurax_account_emoji'), []);
   const avatarSrc = useMemo(() => {
-    // In demo mode, use the custom avatar
+    if (avatarEmoji) return null;
     if (SUPABASE_DISABLED && demoUser) {
       return demoAvatarUrl;
     }
@@ -69,7 +95,7 @@ export function AuthControl({
     const metaUrl = typeof m.avatar_url === 'string' ? m.avatar_url : null;
     const fallback = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(session?.user?.email ?? 'user')}`;
     return metaUrl ?? fallback;
-  }, [session, demoUser, demoAvatarUrl]);
+  }, [session, demoUser, demoAvatarUrl, avatarEmoji]);
 
   const displayName = useMemo(() => {
     if (SUPABASE_DISABLED && demoUser) return demoUser.username;
@@ -77,44 +103,66 @@ export function AuthControl({
     return (typeof m?.username === 'string' ? m.username : session?.user?.email) ?? 'User';
   }, [session, demoUser]);
 
-  const PlanIcon = useMemo<LucideIcon>(() => {
-    const icons: Record<PlanTier, LucideIcon> = {
-      free: Gift,
-      essential: Zap,
-      architect: Sparkles,
-      elite: Crown,
-    };
-    return icons[currentPlan];
-  }, [currentPlan]);
+  const PlanIcon = Gift;
 
-  const startCheckout = async (plan: Exclude<PlanTier, 'free'>) => {
-    setBusy(true);
-    try {
-      const origin = window.location.origin;
-      const { url } = await createCheckoutSession({
-        plan,
-        interval: 'year',
-        success_url: `${origin}/account?checkout=success`,
-        cancel_url: `${origin}/account?checkout=cancel`,
-      });
-      window.location.assign(url);
-    } catch (e: any) {
-      toast({ title: 'Checkout failed', description: String(e?.message ?? e), variant: 'destructive' });
-    } finally {
-      setBusy(false);
-    }
+  // ── Reset dialog state ──
+  const resetDialog = () => {
+    setSetupStep('auth');
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setUsername('');
+    setApiKeyValue('');
+    setApiCustomEndpoint('');
+    setApiModel('');
+    setApiProvider('openai');
+    setBusy(false);
   };
 
-  const onManageBilling = async () => {
-    setBusy(true);
-    try {
-      const { url } = await createBillingPortalSession();
-      window.location.assign(url);
-    } catch (e: any) {
-      toast({ title: 'Billing portal failed', description: String(e?.message ?? e), variant: 'destructive' });
-    } finally {
-      setBusy(false);
+  const closeDialog = () => {
+    setOpen(false);
+    resetDialog();
+  };
+
+  // ── Transition to API key setup after successful auth ──
+  const goToApiKeySetup = () => {
+    // Pre-fill model based on provider
+    const defaults = PROVIDER_DEFAULTS[apiProvider];
+    setApiModel(defaults.defaultModel);
+    setSetupStep('apikey');
+  };
+
+  // ── API Key Save ──
+  const onSaveApiKey = () => {
+    if (!apiKeyValue.trim()) {
+      toast({ title: 'API key required', description: 'Please enter your API key to use Neurax Agent.', variant: 'destructive' });
+      return;
     }
+
+    const newConfig: ApiKeyConfig = {
+      key: apiKeyValue.trim(),
+      provider: apiProvider,
+      label: PROVIDERS.find(p => p.value === apiProvider)?.label ?? apiProvider,
+      ...(apiProvider === 'custom' && apiCustomEndpoint.trim() ? { customEndpoint: apiCustomEndpoint.trim() } : {}),
+      ...(apiModel.trim() ? { model: apiModel.trim() } : {}),
+    };
+
+    setApiKey(newConfig);
+    markSetupComplete();
+
+    toast({
+      title: 'API key saved',
+      description: `You're ready to use Neurax with ${newConfig.label}.`,
+    });
+
+    closeDialog();
+    navigate('/app');
+  };
+
+  const onSkipApiKey = () => {
+    markSetupComplete();
+    closeDialog();
+    navigate('/app');
   };
 
   // ── Demo / Dev mode login ──────────────────────────────────
@@ -124,14 +172,16 @@ export function AuthControl({
       return;
     }
     demoSignIn(email.trim(), username.trim() || undefined);
-    toast({
-      title: 'Welcome to NEURAX!',
-      description: `Signed in as ${username.trim() || email.trim().split('@')[0]}`,
-    });
-    setOpen(false);
-    setEmail('');
-    setPassword('');
-    setUsername('');
+
+    // Check if API key already configured
+    if (hasApiKey) {
+      toast({ title: 'Welcome back!', description: `Signed in as ${username.trim() || email.trim().split('@')[0]}` });
+      closeDialog();
+      navigate('/app');
+    } else {
+      toast({ title: 'Signed in!', description: 'Now configure your AI agent API key.' });
+      goToApiKeySetup();
+    }
   };
 
   // ── Supabase auth (prod mode) ──────────────────────────────
@@ -139,16 +189,11 @@ export function AuthControl({
     setBusy(true);
     try {
       if (password !== confirmPassword) {
-        toast({
-          title: 'Passwords do not match',
-          description: 'Please re-type your password.',
-          variant: 'destructive',
-        });
+        toast({ title: 'Passwords do not match', description: 'Please re-type your password.', variant: 'destructive' });
         return;
       }
       const { error } = await supabase.auth.signUp({
-        email,
-        password,
+        email, password,
         options: {
           emailRedirectTo: redirectTo,
           data: {
@@ -158,11 +203,8 @@ export function AuthControl({
         },
       });
       if (error) throw error;
-      toast({
-        title: 'Account created',
-        description: 'If email confirmation is enabled, check your inbox to confirm your account.',
-      });
-      setOpen(false);
+      toast({ title: 'Account created', description: 'If email confirmation is enabled, check your inbox.' });
+      closeDialog();
     } catch (e: any) {
       toast({ title: 'Sign up failed', description: String(e?.message ?? e), variant: 'destructive' });
     } finally {
@@ -175,8 +217,14 @@ export function AuthControl({
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      toast({ title: 'Signed in' });
-      setOpen(false);
+      if (hasApiKey) {
+        toast({ title: 'Signed in' });
+        closeDialog();
+        navigate('/app');
+      } else {
+        toast({ title: 'Signed in', description: 'Configure your AI agent API key to continue.' });
+        goToApiKeySetup();
+      }
     } catch (e: any) {
       toast({ title: 'Sign in failed', description: String(e?.message ?? e), variant: 'destructive' });
     } finally {
@@ -193,7 +241,7 @@ export function AuthControl({
       });
       if (error) throw error;
       toast({ title: 'Magic link sent', description: 'Check your email to finish signing in.' });
-      setOpen(false);
+      closeDialog();
     } catch (e: any) {
       toast({ title: 'Magic link failed', description: String(e?.message ?? e), variant: 'destructive' });
     } finally {
@@ -204,14 +252,22 @@ export function AuthControl({
   const onOAuth = async (provider: 'google' | 'github') => {
     setBusy(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: { redirectTo },
-      });
+      const { error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo } });
       if (error) throw error;
     } catch (e: any) {
       toast({ title: 'OAuth sign in failed', description: String(e?.message ?? e), variant: 'destructive' });
       setBusy(false);
+    }
+  };
+
+  // ── Update provider and model ──
+  const onProviderChange = (value: string) => {
+    const p = value as ApiProvider;
+    setApiProvider(p);
+    const defaults = PROVIDER_DEFAULTS[p];
+    setApiModel(defaults.defaultModel);
+    if (p !== 'custom') {
+      setApiCustomEndpoint('');
     }
   };
 
@@ -235,72 +291,22 @@ export function AuthControl({
               {planConfig.displayName}
             </button>
           </PopoverTrigger>
-          <PopoverContent className="w-72 p-2" align="end" alignOffset={44} sideOffset={6}>
+          <PopoverContent className="w-72 p-3" align="end" alignOffset={44} sideOffset={6}>
             <div className="px-2 py-1.5">
               <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Current plan</div>
               <div className="text-sm font-semibold" style={{ color: planConfig.color }}>{planConfig.name}</div>
+              <p className="text-[10px] text-muted-foreground mt-1">Everything included — open source.</p>
             </div>
-
-            <div className="mt-2 space-y-1">
-              {(Object.keys(PLAN_CONFIGS) as PlanTier[])
-                .filter((tier) => tier !== currentPlan)
-                .map((tier) => {
-                  const cfg = PLAN_CONFIGS[tier];
-                  const isPaid = tier !== 'free';
-                  const Icon = tier === 'free' ? Gift : tier === 'essential' ? Zap : tier === 'architect' ? Sparkles : Crown;
-
-                  return (
-                    <button
-                      key={tier}
-                      type="button"
-                      disabled={busy}
-                      className={
-                        `w-full flex items-center justify-between rounded-md border px-3 py-2 text-left transition-colors border-white/20 hover:bg-white/5 ` +
-                        cfg.badge
-                      }
-                      onClick={() => {
-                        if (!isPaid) {
-                          toast({ title: 'Free plan', description: 'Free plan is active by default.' });
-                          setPlanPopoverOpen(false);
-                          return;
-                        }
-                        setPlanPopoverOpen(false);
-                        void startCheckout(tier);
-                      }}
-                      aria-label={`Upgrade to ${cfg.name}`}
-                    >
-                      <div className="min-w-0 flex items-center gap-2">
-                        <Icon className="w-4 h-4" />
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold truncate" style={{ color: cfg.color }}>{cfg.displayName}</div>
-                          <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground truncate">
-                            {isPaid ? 'Upgrade' : 'Free'}
-                          </div>
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-            </div>
-
-            {currentPlan !== 'free' && (
-              <div className="mt-2 pt-2 border-t border-white/20">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-white/20"
-                  onClick={() => {
-                    setPlanPopoverOpen(false);
-                    void onManageBilling();
-                  }}
-                  disabled={busy}
-                >
-                  Manage billing
-                </Button>
-              </div>
-            )}
           </PopoverContent>
         </Popover>
+
+        {/* API Key indicator */}
+        {hasApiKey && (
+          <div className="hidden sm:flex items-center gap-1 h-8 px-2 rounded-md border border-emerald-500/20 bg-emerald-500/5 text-[10px] font-mono text-emerald-400">
+            <Key className="w-3 h-3" />
+            <span className="truncate max-w-[80px]">{apiKeyConfig?.label ?? 'API'}</span>
+          </div>
+        )}
 
         {/* User avatar + name */}
         <div className="flex items-center gap-2">
@@ -311,7 +317,11 @@ export function AuthControl({
             aria-label="Open account"
             disabled={busy}
           >
-            <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
+            {avatarEmoji ? (
+              <span className="h-full w-full flex items-center justify-center text-lg">{avatarEmoji}</span>
+            ) : (
+              <img src={avatarSrc!} alt="avatar" className="h-full w-full object-cover" />
+            )}
           </button>
           <span className="hidden sm:inline text-xs text-white/60 font-medium max-w-[100px] truncate">
             {displayName}
@@ -333,6 +343,192 @@ export function AuthControl({
     );
   }
 
+  // ── Dialog content: Auth step ──
+  const renderAuthStep = () => (
+    <>
+      <DialogHeader>
+        <DialogTitle className="text-white text-xl">
+          {SUPABASE_DISABLED ? 'Welcome to NEURAX' : (activeTab === 'signup' ? 'Create Account' : 'Sign In')}
+        </DialogTitle>
+        <DialogDescription className="text-white/40">
+          {SUPABASE_DISABLED
+            ? 'Enter your name to start exploring the platform.'
+            : 'Sign in to run analysis and access plan features.'}
+        </DialogDescription>
+      </DialogHeader>
+
+      {SUPABASE_DISABLED ? (
+        <div className="space-y-4 mt-2">
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">Your Name</label>
+            <Input placeholder="e.g. AI Explorer" value={username} onChange={(e) => setUsername(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+          </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">Email (optional)</label>
+            <Input placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+          </div>
+          <div className="pt-2 space-y-2">
+            <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold h-11" onClick={onDemoSignIn}>
+              <Zap className="w-4 h-4 mr-2" />
+              Enter Platform
+            </Button>
+            <p className="text-[10px] text-center text-white/20">Demo mode — no account required</p>
+          </div>
+        </div>
+      ) : (
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
+          <TabsList className="grid w-full grid-cols-4 bg-white/5">
+            <TabsTrigger value="password" className="text-xs">Password</TabsTrigger>
+            <TabsTrigger value="signup" className="text-xs">Sign up</TabsTrigger>
+            <TabsTrigger value="magic" className="text-xs">Magic link</TabsTrigger>
+            <TabsTrigger value="oauth" className="text-xs">OAuth</TabsTrigger>
+          </TabsList>
+          <TabsContent value="password" className="space-y-3 mt-3">
+            <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onPasswordSignIn} disabled={busy || !email || !password}>
+              <LogIn className="w-4 h-4 mr-2" /> Sign in
+            </Button>
+          </TabsContent>
+          <TabsContent value="signup" className="space-y-3 mt-3">
+            <Input placeholder="Username (optional)" value={username} onChange={(e) => setUsername(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Input placeholder="Confirm password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onSignUp} disabled={busy || !email || !password || !confirmPassword}>
+              <LogIn className="w-4 h-4 mr-2" /> Create account
+            </Button>
+          </TabsContent>
+          <TabsContent value="magic" className="space-y-3 mt-3">
+            <Input placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
+            <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onMagicLink} disabled={busy || !email}>
+              <Mail className="w-4 h-4 mr-2" /> Send magic link
+            </Button>
+          </TabsContent>
+          <TabsContent value="oauth" className="space-y-2 mt-3">
+            <Button className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10" variant="outline" onClick={() => onOAuth('google')} disabled={busy}>
+              <Mail className="w-4 h-4 mr-2" /> Continue with Google
+            </Button>
+            <Button className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10" variant="outline" onClick={() => onOAuth('github')} disabled={busy}>
+              <Github className="w-4 h-4 mr-2" /> Continue with GitHub
+            </Button>
+          </TabsContent>
+        </Tabs>
+      )}
+    </>
+  );
+
+  // ── Dialog content: API key setup step ──
+  const renderApiKeyStep = () => (
+    <>
+      <DialogHeader>
+        <DialogTitle className="text-white text-xl flex items-center gap-2">
+          <Key className="w-5 h-5 text-emerald-400" />
+          Configure AI Agent
+        </DialogTitle>
+        <DialogDescription className="text-white/40">
+          Connect your AI provider to use Neurax Agent — the intelligent assistant that helps you design and analyze architectures.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-4 mt-2">
+        {/* Provider Selector */}
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
+            AI Provider
+          </label>
+          <Select value={apiProvider} onValueChange={onProviderChange}>
+            <SelectTrigger className="bg-white/5 border-white/10 text-white">
+              <SelectValue placeholder="Select provider" />
+            </SelectTrigger>
+            <SelectContent className="bg-[#1a1a2e] border-white/10">
+              {PROVIDERS.map((p) => (
+                <SelectItem key={p.value} value={p.value} className="text-white focus:bg-white/10 focus:text-white">
+                  <span className="flex items-center gap-2">
+                    <span>{p.icon}</span>
+                    <span>{p.label}</span>
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* API Key */}
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
+            API Key
+          </label>
+          <Input
+            type="password"
+            placeholder={
+              apiProvider === 'openai' ? 'sk-...' :
+              apiProvider === 'anthropic' ? 'sk-ant-...' :
+              apiProvider === 'google' ? 'AIza...' :
+              apiProvider === 'mistral' ? 'MISTRAL_...' :
+              'Enter your API key'
+            }
+            value={apiKeyValue}
+            onChange={(e) => setApiKeyValue(e.target.value)}
+            className="bg-white/5 border-white/10 text-white placeholder:text-white/20 font-mono text-[12px]"
+          />
+        </div>
+
+        {/* Model (optional) */}
+        <div>
+          <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
+            Model <span className="text-white/20">(optional)</span>
+          </label>
+          <Input
+            placeholder={PROVIDER_DEFAULTS[apiProvider].defaultModel}
+            value={apiModel}
+            onChange={(e) => setApiModel(e.target.value)}
+            className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+          />
+        </div>
+
+        {/* Custom endpoint (only for custom provider) */}
+        {apiProvider === 'custom' && (
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
+              API Endpoint
+            </label>
+            <Input
+              placeholder="https://your-endpoint.com/v1"
+              value={apiCustomEndpoint}
+              onChange={(e) => setApiCustomEndpoint(e.target.value)}
+              className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
+            />
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="pt-4 space-y-2">
+          <Button
+            className="w-full bg-emerald-500 text-white hover:bg-emerald-600 font-semibold h-11"
+            onClick={onSaveApiKey}
+          >
+            <Check className="w-4 h-4 mr-2" />
+            Save & Start Using Neurax
+          </Button>
+          <Button
+            variant="ghost"
+            className="w-full text-white/30 hover:text-white/50 hover:bg-white/5"
+            onClick={onSkipApiKey}
+          >
+            Skip for now — I'll configure later
+          </Button>
+        </div>
+
+        <p className="text-[10px] text-center text-white/20 leading-relaxed">
+          Your API key is stored locally and never sent to our servers.
+          <br />
+          Neurax Agent uses your own AI provider for intelligent assistance.
+        </p>
+      </div>
+    </>
+  );
+
   // ── Not authenticated ──────────────────────────────────────
   return (
     <>
@@ -349,154 +545,14 @@ export function AuthControl({
         <span className="hidden sm:inline">{triggerLabel ?? 'Sign in'}</span>
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md bg-[#0c0c1a] border border-white/10 shadow-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-white text-xl">
-              {SUPABASE_DISABLED ? 'Welcome to NEURAX' : (activeTab === 'signup' ? 'Create Account' : 'Sign In')}
-            </DialogTitle>
-            <DialogDescription className="text-white/40">
-              {SUPABASE_DISABLED
-                ? 'Enter your name to start exploring the platform.'
-                : 'Sign in to run analysis and access plan features.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          {SUPABASE_DISABLED ? (
-            /* ── Demo Login (dev mode) ── */
-            <div className="space-y-4 mt-2">
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
-                  Your Name
-                </label>
-                <Input
-                  placeholder="e.g. AI Explorer"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">
-                  Email (optional)
-                </label>
-                <Input
-                  placeholder="you@example.com"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-              </div>
-
-              <div className="pt-2 space-y-2">
-                <Button
-                  className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold h-11"
-                  onClick={onDemoSignIn}
-                >
-                  <Zap className="w-4 h-4 mr-2" />
-                  Enter Platform
-                </Button>
-                <p className="text-[10px] text-center text-white/20">
-                  Demo mode — no account required
-                </p>
-              </div>
-            </div>
-          ) : (
-            /* ── Supabase Auth (prod mode) ── */
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="w-full">
-              <TabsList className="grid w-full grid-cols-4 bg-white/5">
-                <TabsTrigger value="password" className="text-xs">Password</TabsTrigger>
-                <TabsTrigger value="signup" className="text-xs">Sign up</TabsTrigger>
-                <TabsTrigger value="magic" className="text-xs">Magic link</TabsTrigger>
-                <TabsTrigger value="oauth" className="text-xs">OAuth</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="password" className="space-y-3 mt-3">
-                <Input
-                  placeholder="Email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Input
-                  placeholder="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onPasswordSignIn} disabled={busy || !email || !password}>
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Sign in
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="signup" className="space-y-3 mt-3">
-                <Input
-                  placeholder="Username (optional)"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Input
-                  placeholder="Email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Input
-                  placeholder="Password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Input
-                  placeholder="Confirm password"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Button
-                  className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold"
-                  onClick={onSignUp}
-                  disabled={busy || !email || !password || !confirmPassword}
-                >
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Create account
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="magic" className="space-y-3 mt-3">
-                <Input
-                  placeholder="Email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-white/5 border-white/10 text-white placeholder:text-white/20"
-                />
-                <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold" onClick={onMagicLink} disabled={busy || !email}>
-                  <Mail className="w-4 h-4 mr-2" />
-                  Send magic link
-                </Button>
-              </TabsContent>
-
-              <TabsContent value="oauth" className="space-y-2 mt-3">
-                <Button className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10" variant="outline" onClick={() => onOAuth('google')} disabled={busy}>
-                  <Mail className="w-4 h-4 mr-2" />
-                  Continue with Google
-                </Button>
-                <Button className="w-full bg-white/5 border-white/10 text-white hover:bg-white/10" variant="outline" onClick={() => onOAuth('github')} disabled={busy}>
-                  <Github className="w-4 h-4 mr-2" />
-                  Continue with GitHub
-                </Button>
-              </TabsContent>
-            </Tabs>
-          )}
+      <Dialog open={open} onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          closeDialog();
+        }
+        setOpen(isOpen);
+      }}>
+        <DialogContent className={`sm:max-w-md bg-[#0c0c1a] border border-white/10 shadow-2xl ${setupStep === 'apikey' ? 'sm:max-w-lg' : ''}`}>
+          {setupStep === 'auth' ? renderAuthStep() : renderApiKeyStep()}
         </DialogContent>
       </Dialog>
     </>

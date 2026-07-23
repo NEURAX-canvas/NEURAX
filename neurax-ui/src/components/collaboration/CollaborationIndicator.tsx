@@ -18,7 +18,7 @@ export function CollaborationIndicator({
   variant = 'compact' 
 }: CollaborationIndicatorProps) {
   const { canAccess } = usePlan();
-  const hasAccess = canAccess('elite');
+  const hasAccess = canAccess('free');
 
   if (!hasAccess) {
     if (variant === 'compact') return null;
@@ -113,7 +113,7 @@ export function CollaborationIndicator({
 export function LiveCursors() {
   const { canAccess } = usePlan();
   
-  if (!canAccess('elite')) return null;
+  if (!canAccess('free')) return null;
 
   return null;
 }

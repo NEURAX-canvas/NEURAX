@@ -12,13 +12,13 @@
 ![Rust](https://img.shields.io/badge/Rust-2021-000000?style=for-the-badge&logo=rust&logoColor=white)
 ![MLIR](https://img.shields.io/badge/MLIR-LLVM%2018-2C2C32?style=for-the-badge&logo=llvm&logoColor=white)
 ![LLVM](https://img.shields.io/badge/LLVM-18-262D3A?style=for-the-badge&logo=llvm&logoColor=white)
-![License](https://img.shields.io/badge/License-Proprietary-blue?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
 <!-- Backend / Service -->
 ![Actix Web](https://img.shields.io/badge/Actix_Web-4-000000?style=flat-square&logo=rust)
 ![Tokio](https://img.shields.io/badge/Tokio-async-15883E?style=flat-square)
 ![Supabase](https://img.shields.io/badge/Supabase-Auth-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
-![Stripe](https://img.shields.io/badge/Stripe-Billing-635BFF?style=flat-square&logo=stripe&logoColor=white)
+
 
 <!-- Front-end -->
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)
@@ -58,16 +58,15 @@
 7. [NEURAX vs. XLA / TVM / IREE / TensorRT](#7-neurax-vs-xla--tvm--iree--tensorrt)
 8. [The Interfaces](#8-the-interfaces)
 9. [The Complete Service & API](#9-the-complete-service--api)
-10. [Pricing & Plans](#10-pricing--plans)
-11. [The 35+ Metrics](#11-the-35-metrics)
-12. [Repository Layout](#12-repository-layout)
-13. [Installation](#13-installation)
-14. [Building](#14-building)
-15. [Usage](#15-usage)
-16. [The Universal Model JSON](#16-the-universal-model-json)
-17. [Technology Stack](#17-technology-stack)
-18. [Project Status & Roadmap](#18-project-status--roadmap)
-19. [License](#19-license)
+10. [The 35+ Metrics](#10-the-35-metrics)
+11. [Repository Layout](#11-repository-layout)
+12. [Installation](#12-installation)
+13. [Building](#13-building)
+14. [Usage](#14-usage)
+15. [The Universal Model JSON](#15-the-universal-model-json)
+16. [Technology Stack](#16-technology-stack)
+17. [Project Status & Roadmap](#17-project-status--roadmap)
+18. [License](#18-license)
 
 ---
 
@@ -226,47 +225,24 @@ The **actix‑web** API that powers the web UI and integrations — analysis, ha
 
 ## 9. The Complete Service & API
 
-`neurax-service` is a production **actix‑web** server (default `0.0.0.0:9098`) with CORS, gzip compression, a 10 MB payload limit, a 60‑second analysis timeout, **Supabase** authentication and **Stripe** billing.
+`neurax-service` is a production **actix‑web** server (default `0.0.0.0:9098`) with CORS, gzip compression, a 10 MB payload limit, a 60‑second analysis timeout and **Supabase** authentication.
 
 | Method | Endpoint | Auth | Purpose |
-|---|---|:---:|---|
+|---|---|---|---|
 | `GET` | `/health` | — | Liveness probe |
 | `POST` | `/analyze` | ✅ verified email | Run the full analytical pipeline on a topology, return the `ReportIR` |
 | `GET` | `/hardware` | — | GPU catalogue (H100, A100, RTX 4090/4080/3090) with peak FLOPs, bandwidth, VRAM |
 | `GET` | `/presets` · `/presets/{id}` | — | Ready‑made model presets |
 | `POST` | `/plugin/validate` | — | Validate a plugin/extension payload |
-| `GET` | `/me` | ✅ | Current user + active plan tier |
-| `POST` | `/billing/checkout` | ✅ | Create a Stripe Checkout session for a plan/interval |
-| `POST` | `/billing/portal` | ✅ | Open the Stripe customer billing portal |
-| `POST` | `/stripe/webhook` | HMAC | Stripe events (HMAC‑SHA256 verified, idempotent subscription sync) |
+| `GET` | `/me` | ✅ | Current user info |
 
-**Security & correctness highlights:** bearer‑token auth via Supabase, email‑verification gating on analysis, constant‑time webhook signature verification, idempotent webhook processing, and plan resolution that respects subscription status and admin overrides.
+**Security & correctness highlights:** bearer‑token auth via Supabase, email‑verification gating on analysis.
 
----
-
-## 10. Pricing & Plans
-
-NEURAX ships as a **SaaS** with four tiers, billed **monthly or annually** through Stripe (`free`, `essential`, `architect`, `elite`). Subscription state is synced from Stripe webhooks into Supabase and surfaced via `/me`.
-
-| | 🆓 **Free** | 🚀 **Essential** | 🏗️ **Architect** | 👑 **Elite** |
-|---|:---:|:---:|:---:|:---:|
-| **For** | Students & explorers | Individual researchers | Teams & labs | Enterprises |
-| **Analyses / month** | Limited | Generous | High | Unlimited |
-| **All 35+ metrics** | ✅ | ✅ | ✅ | ✅ |
-| **Visual canvas UI** | ✅ | ✅ | ✅ | ✅ |
-| **AI planning agent** | Preview | ✅ | ✅ | ✅ (priority) |
-| **MLIR compile export** | — | ✅ | ✅ | ✅ |
-| **Cost / energy / CO₂ reports** | Basic | ✅ | ✅ + history | ✅ + history |
-| **Parallelism advisor** | — | ✅ | ✅ | ✅ |
-| **API access** | — | Limited | ✅ | ✅ (higher limits) |
-| **Support** | Community | Email | Priority | Dedicated / SLA |
-| **Billing** | — | Monthly / Annual | Monthly / Annual | Monthly / Annual / Custom |
-
-> 💡 **Annual billing is discounted** (each tier exposes `*_MONTHLY` and `*_ANNUAL` Stripe prices). Exact price points are configured in Stripe and shown on the in‑app pricing page; the table above describes positioning and feature differentiation. The economic value proposition is simple: **one avoided OOM crash or one cancelled dead‑end training run pays for the subscription many times over.**
+> **NEURAX is 100% open source (MIT).** The full platform — analytical compiler, web UI, AI agent — is free to use, self‑host, and modify.
 
 ---
 
-## 11. The 35+ Metrics
+## 10. The 35+ Metrics
 
 A NEURAX report covers, among others:
 
@@ -283,7 +259,7 @@ Every one of these metrics is surfaced in the web UI's Metrics Dashboard and per
 
 ---
 
-## 12. Repository Layout
+## 11. Repository Layout
 
 Everything lives in a single, self‑contained workspace.
 
@@ -324,7 +300,7 @@ neurax-ui  ──HTTP──▶ neurax-service ◀──HTTP── neurax-agent
 
 ---
 
-## 13. Installation
+## 12. Installation
 
 ### Prerequisites
 
@@ -349,7 +325,7 @@ export PATH="/usr/lib/llvm-18/bin:$PATH"
 
 ---
 
-## 14. Building
+## 13. Building
 
 **Analytical engine only** (no LLVM needed):
 
@@ -372,7 +348,7 @@ cargo test -p neurax-mlir            # 118 tests (needs LLVM 18 env)
 
 ---
 
-## 15. Usage
+## 14. Usage
 
 ### Command‑line (`neurax`)
 
@@ -414,7 +390,7 @@ cd neurax-agent && pip install -r requirements.txt && python app.py   # AI agent
 
 ---
 
-## 16. The Universal Model JSON
+## 15. The Universal Model JSON
 
 A model is one JSON document: global parameters, an ordered list of layers, the training config, the target hardware, and a cost config.
 
@@ -450,7 +426,7 @@ See `test_models/` for **20 complete, ready‑to‑analyze examples** spanning e
 
 ---
 
-## 17. Technology Stack
+## 16. Technology Stack
 
 | Layer | Technology |
 |-------|------------|
@@ -463,7 +439,7 @@ See `test_models/` for **20 complete, ready‑to‑analyze examples** spanning e
 
 ---
 
-## 18. Project Status & Roadmap
+## 17. Project Status & Roadmap
 
 **Status**
 - ✅ Analytical pipeline (10 dialects, 35+ metrics) — operational.
@@ -471,7 +447,7 @@ See `test_models/` for **20 complete, ready‑to‑analyze examples** spanning e
 - ✅ End‑to‑end `neurax compile` emits real MLIR.
 - ✅ Full workspace builds green (`--features neurax-cli/mlir`).
 - ✅ Single self‑contained folder; the legacy Pliron backend fully removed.
-- ✅ Web UI, AI agent, and SaaS service (auth + Stripe billing) in place.
+- ✅ Web UI, AI agent, and HTTP service in place.
 
 **Roadmap**
 - 🚧 Lower NEURAX‑MLIR all the way to runnable kernels (closing the loop with IREE).
@@ -481,9 +457,9 @@ See `test_models/` for **20 complete, ready‑to‑analyze examples** spanning e
 
 ---
 
-## 19. License
+## 18. License
 
-Proprietary — © NEURAX. All rights reserved unless a separate license file states otherwise.
+MIT — © 2024–2026 Martial-Christian. See the [LICENSE](../LICENSE) file.
 
 <div align="center">
 <br/>

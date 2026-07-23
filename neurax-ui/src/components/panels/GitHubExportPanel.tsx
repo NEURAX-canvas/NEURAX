@@ -33,8 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
-import { usePlan } from '@/contexts/PlanContext.tsx';
-import { canAccessExport, EXPORT_OPTIONS } from '@/types/plans.ts';
+
 import { CanvasNode, Connection } from '@/types/architecture.ts';
 import { generateCode, GeneratedCode } from '@/utils/codeGenerators.ts';
 import { cn } from '@/lib/utils.ts';
@@ -54,15 +53,14 @@ interface ExportFormatOption {
   name: string;
   extension: string;
   description: string;
-  planRequired: 'essential' | 'architect' | 'elite';
 }
 
 const EXPORT_FORMATS: ExportFormatOption[] = [
-  { id: 'pytorch', name: 'PyTorch', extension: '.py', description: 'Python model definition', planRequired: 'essential' },
-  { id: 'onnx', name: 'ONNX Export', extension: '.py', description: 'ONNX export script', planRequired: 'essential' },
-  { id: 'json', name: 'JSON Schema', extension: '.json', description: 'Architecture schema', planRequired: 'essential' },
-  { id: 'rust', name: 'Rust / Burn', extension: '.rs', description: 'Rust model structure', planRequired: 'architect' },
-  { id: 'triton', name: 'Triton Kernels', extension: '.py', description: 'Optimized GPU kernels', planRequired: 'architect' },
+  { id: 'pytorch', name: 'PyTorch', extension: '.py', description: 'Python model definition' },
+  { id: 'onnx', name: 'ONNX Export', extension: '.py', description: 'ONNX export script' },
+  { id: 'json', name: 'JSON Schema', extension: '.json', description: 'Architecture schema' },
+  { id: 'rust', name: 'Rust / Burn', extension: '.rs', description: 'Rust model structure' },
+  { id: 'triton', name: 'Triton Kernels', extension: '.py', description: 'Optimized GPU kernels' },
 ];
 
 export function GitHubExportPanel({ 
@@ -73,8 +71,6 @@ export function GitHubExportPanel({
   modelName = 'GeneratedModel'
 }: GitHubExportPanelProps) {
   const { toast } = useToast();
-  const { currentPlan } = usePlan();
-  
   // GitHub connection state
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting] = useState(false);
@@ -117,16 +113,6 @@ export function GitHubExportPanel({
   };
 
   const toggleFormat = (format: ExportFormat) => {
-    const exportOption = EXPORT_OPTIONS.find(e => e.id === format);
-    if (exportOption && !canAccessExport(currentPlan, exportOption)) {
-      toast({
-        title: "Upgrade Required",
-        description: `${format.toUpperCase()} export requires ${exportOption.minPlan.toUpperCase()} plan`,
-        variant: "destructive",
-      });
-      return;
-    }
-    
     setSelectedFormats(prev => 
       prev.includes(format) 
         ? prev.filter(f => f !== format)
@@ -236,8 +222,6 @@ export function GitHubExportPanel({
                 <Label className="text-sm font-medium">Export Formats</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {EXPORT_FORMATS.map((format) => {
-                    const exportOption = EXPORT_OPTIONS.find(e => e.id === format.id);
-                    const hasAccess = exportOption ? canAccessExport(currentPlan, exportOption) : true;
                     const isSelected = selectedFormats.includes(format.id);
                     
                     return (
@@ -245,17 +229,14 @@ export function GitHubExportPanel({
                         key={format.id}
                         className={cn(
                           "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                          isSelected && hasAccess
+                          isSelected
                             ? "border-primary bg-primary/5"
-                            : hasAccess
-                            ? "border-border hover:border-primary/50"
-                            : "border-border/50 opacity-50 cursor-not-allowed"
+                            : "border-border hover:border-primary/50"
                         )}
-                        onClick={() => hasAccess && toggleFormat(format.id)}
+                        onClick={() => toggleFormat(format.id)}
                       >
                         <Checkbox 
-                          checked={isSelected && hasAccess}
-                          disabled={!hasAccess}
+                          checked={isSelected}
                         />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -263,27 +244,22 @@ export function GitHubExportPanel({
                             <Badge variant="outline" className="text-[9px]">
                               {format.extension}
                             </Badge>
-                            {!hasAccess && (
-                              <Lock className="w-3 h-3 text-muted-foreground" />
-                            )}
                           </div>
                           <div className="text-[10px] text-muted-foreground truncate">
                             {format.description}
                           </div>
                         </div>
-                        {hasAccess && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 text-[10px]"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handlePreview(format.id);
-                            }}
-                          >
-                            Preview
-                          </Button>
-                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 text-[10px]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handlePreview(format.id);
+                          }}
+                        >
+                          Preview
+                        </Button>
                       </div>
                     );
                   })}

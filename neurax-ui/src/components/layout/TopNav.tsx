@@ -5,7 +5,6 @@ import {
   Plus,
   Save,
   Trash2,
-  CreditCard,
   Upload,
   BookOpen,
   Menu,
@@ -16,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button.tsx';
 import { ArchitectureSelector } from '@/components/architecture/ArchitectureSelector.tsx';
 import { AuthControl } from '@/components/auth/AuthControl.tsx';
+import { NeuraxLogo } from '@/components/brand/NeuraxLogo.tsx';
 import { ThemeToggle } from '@/components/layout/ThemeToggle.tsx';
 import { VariantPresetsPanel } from '@/components/catalog/VariantPresetsPanel.tsx';
 import { ArchitectureFamily } from '@/types/plugins.ts';
@@ -44,7 +44,6 @@ interface TopNavProps {
   onToggleChat?: () => void;
   selectedArchitecture: ArchitectureFamily;
   onArchitectureChange: (family: ArchitectureFamily) => void;
-  onOpenPricing?: () => void;
   onLoadPreset?: (preset: VariantPreset) => void;
   onClearCanvas?: () => void;
   currentPresetId?: string | null;
@@ -70,7 +69,6 @@ export function TopNav({
   onToggleChat,
   selectedArchitecture,
   onArchitectureChange,
-  onOpenPricing,
   onLoadPreset,
   onClearCanvas,
   currentPresetId,
@@ -90,8 +88,9 @@ export function TopNav({
     <header className="h-12 bg-card border-b border-border flex items-center justify-between px-2 sm:px-4">
       {/* Left - Logo & Name */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-        <h1 className="text-xs sm:text-sm font-semibold tracking-tight">
-          <span className="text-gradient-primary">NEURAX</span>
+        <NeuraxLogo size={20} variant="mark" showText={false} />
+        <h1 className="text-xs sm:text-sm font-bold tracking-tight" style={{ color: 'hsl(var(--foreground))' }}>
+          NEURAX
         </h1>
 
         <AuthControl />
@@ -268,16 +267,6 @@ export function TopNav({
         </Button>
 
         <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-foreground"
-          onClick={onOpenPricing}
-        >
-          <CreditCard className="w-4 h-4 mr-1.5" />
-          <span className="hidden sm:inline">Pricing</span>
-        </Button>
-
-        <Button
           size="sm"
           className="bg-primary text-primary-foreground hover:bg-primary/90 shadow-glow-sm text-xs sm:text-sm"
           onClick={onRunAnalysis}
@@ -369,9 +358,7 @@ export function TopNav({
               <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onExport?.(); setMobileMenuOpen(false); }}>
                 <ChevronDown className="w-4 h-4 mr-2" /> Export
               </Button>
-              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onOpenPricing?.(); setMobileMenuOpen(false); }}>
-                <CreditCard className="w-4 h-4 mr-2" /> Pricing
-              </Button>
+
             </div>
 
             <div className="space-y-2">

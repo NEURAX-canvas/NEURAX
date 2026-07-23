@@ -9,15 +9,13 @@ import {
   Box,
   Check,
   Copy,
-  Lock,
   Zap,
   Server,
   Network,
   Github,
   Loader2
 } from 'lucide-react';
-import { usePlan } from '@/contexts/PlanContext.tsx';
-import { EXPORT_OPTIONS, ExportOption, canAccessExport } from '@/types/plans.ts';
+
 import { cn } from '@/lib/utils.ts';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
@@ -29,11 +27,6 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
 import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
 import { ArchitectureFamily } from '@/types/plugins.ts';
@@ -56,6 +49,27 @@ const iconMap: Record<string, React.ElementType> = {
   Network,
   Github
 };
+
+interface ExportOption {
+  id: string;
+  name: string;
+  description: string;
+  extension: string;
+  icon: string;
+  includeAnalysis?: boolean;
+  minPlan: string;
+}
+
+const EXPORT_OPTIONS: ExportOption[] = [
+  { id: 'json', name: 'JSON', description: 'Architecture metadata', extension: '.json', icon: 'FileJson', minPlan: 'free' },
+  { id: 'pytorch', name: 'PyTorch', description: 'Python model definition', extension: '.py', icon: 'Code', includeAnalysis: true, minPlan: 'free' },
+  { id: 'onnx', name: 'ONNX', description: 'ONNX graph export', extension: '.onnx', icon: 'Box', includeAnalysis: true, minPlan: 'free' },
+  { id: 'rust', name: 'Rust / Burn', description: 'Rust model structure', extension: '.rs', icon: 'Cog', minPlan: 'free' },
+  { id: 'triton', name: 'Triton', description: 'Optimized GPU kernels', extension: '.py', icon: 'Zap', minPlan: 'free' },
+  { id: 'server', name: 'Server Config', description: 'Inference server setup', extension: '.yaml', icon: 'Server', minPlan: 'free' },
+  { id: 'network', name: 'Network Graph', description: 'Architecture visualization', extension: '.html', icon: 'Network', minPlan: 'free' },
+  { id: 'github', name: 'GitHub', description: 'Push to repository', extension: '', icon: 'Github', minPlan: 'free' },
+];
 
 interface ExportPanelProps {
   isOpen: boolean;
@@ -178,7 +192,7 @@ export function ExportPanel({
   const [showAssistant, setShowAssistant] = useState<string | null>(null);
   const [isExportingOnnx, setIsExportingOnnx] = useState(false);
   const { toast } = useToast();
-  const { currentPlan } = usePlan();
+
   const { config: hwConfig } = useHardware();
 
   // Generate real code based on current architecture
@@ -210,15 +224,6 @@ export function ExportPanel({
   const neuraxJson = JSON.stringify(neuraxIR, null, 2);
 
   const handleExport = async (format: ExportOption) => {
-    if (!canAccessExport(currentPlan, format)) {
-      toast({
-        title: "Upgrade Required",
-        description: `${format.name} export requires ${format.minPlan.toUpperCase()} plan`,
-        variant: "destructive",
-      });
-      return;
-    }
-
     // ONNX binary export — call the backend API
     if (format.id === 'onnx') {
       if (nodes.length === 0) {
@@ -294,9 +299,7 @@ export function ExportPanel({
     });
   };
 
-  // Group exports by accessibility
-  const accessibleExports = EXPORT_OPTIONS.filter(e => canAccessExport(currentPlan, e));
-  const lockedExports = EXPORT_OPTIONS.filter(e => !canAccessExport(currentPlan, e));
+  const accessibleExports = EXPORT_OPTIONS;
 
   return (
     <>
@@ -320,15 +323,9 @@ export function ExportPanel({
                 NEURAX IR
               </TabsTrigger>
               <TabsTrigger value="pytorch">PyTorch</TabsTrigger>
-              <TabsTrigger
-                value="rust"
-                disabled={!canAccessExport(currentPlan, EXPORT_OPTIONS.find(e => e.id === 'rust')!)}
-              >
+              <TabsTrigger value="rust">
                 <span className="flex items-center gap-1">
                   Rust
-                  {!canAccessExport(currentPlan, EXPORT_OPTIONS.find(e => e.id === 'rust')!) && (
-                    <Lock className="w-3 h-3" />
-                  )}
                 </span>
               </TabsTrigger>
             </TabsList>
@@ -372,42 +369,7 @@ export function ExportPanel({
                 })}
               </div>
 
-              {/* Locked formats */}
-              {lockedExports.length > 0 && (
-                <>
-                  <div className="mt-4 mb-2 text-[10px] text-muted-foreground uppercase tracking-wider">
-                    Upgrade to unlock
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    {lockedExports.map((format) => {
-                      const Icon = iconMap[format.icon] || FileText;
 
-                      return (
-                        <Tooltip key={format.id}>
-                          <TooltipTrigger asChild>
-                            <div className="p-4 rounded-lg border border-border/50 bg-secondary/10 opacity-50 cursor-not-allowed">
-                              <div className="flex items-start justify-between mb-2">
-                                <div className="w-10 h-10 rounded-lg bg-muted/20 flex items-center justify-center">
-                                  <Icon className="w-5 h-5 text-muted-foreground" />
-                                </div>
-                                <Lock className="w-4 h-4 text-muted-foreground" />
-                              </div>
-                              <div className="text-sm font-medium mb-0.5">{format.name}</div>
-                              <div className="text-[10px] text-muted-foreground mb-2">{format.description}</div>
-                              <Badge variant="outline" className="text-[9px]">{format.minPlan.toUpperCase()}</Badge>
-                            </div>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p className="text-xs">
-                              Available on <span className="font-semibold text-primary">{format.minPlan.toUpperCase()}</span> plan
-                            </p>
-                          </TooltipContent>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
 
               <div className="mt-4 flex justify-end gap-2">
                 <Button variant="outline" onClick={onClose}>

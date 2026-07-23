@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TopNav } from '@/components/layout/TopNav.tsx';
 import { LayerPalette } from '@/components/layout/LayerPalette.tsx';
 import { WorkspaceTabs, WorkspaceTab } from '@/components/layout/WorkspaceTabs.tsx';
@@ -20,7 +21,6 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
 import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
-import { PricingPage } from '@/pages/Pricing.tsx';
 import { InferenceIntelligence } from '@/components/inference';
 import { ProductionWorkspace } from '@/components/production/ProductionWorkspace.tsx';
 import { SimulationWorkspace } from '@/components/simulation/SimulationWorkspace.tsx';
@@ -33,6 +33,7 @@ import { ImportResult } from '@/utils/architectureImporter.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { getBlockDefaults } from '@/utils/blockDefaults.ts';
 import { DEFAULT_HARDWARE_CONFIG, HardwareConfig, useHardware, validateHardwareConfig, ArchitectureFamily as HwFamily } from '@/contexts/HardwareContext.tsx';
+import { useAuth } from '@/contexts/AuthContext.tsx';
 import { analyze, analyzeStream, NeuraxApiError, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo } from '@/services/neuraxApi.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 import { getPluginLayers } from '@/plugins/registry.ts';
@@ -768,6 +769,16 @@ function parseAnalysisReport(
 }
 
 const Index = () => {
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  // ── Auth guard : seul un utilisateur connecté peut accéder au studio ──
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
   const [nodes, setNodes] = useState<CanvasNode[]>(initialNodes);
   const [connections, setConnections] = useState<Connection[]>(initialConnections);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -780,7 +791,7 @@ const Index = () => {
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
-  const [showPricingPage, setShowPricingPage] = useState(false);
+
   const [selectedArchitecture, setSelectedArchitecture] = useState<ArchitectureFamily>('transformer');
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>('architecture');
   const [activeRightPanelTab, setActiveRightPanelTab] = useState<RightPanelTabId>('architecture');
@@ -2032,7 +2043,7 @@ params: params as Record<string, ParameterValue>,
             <AIChatDrawer
               open={isChatOpen}
               onOpenChange={setIsChatOpen}
-              onAddCredits={() => setShowPricingPage(true)}
+              onAddCredits={undefined}
               creditsLeft={creditInfo ? creditInfo.limit - creditInfo.used : undefined}
               creditsLimit={creditInfo?.limit}
               getSnapshot={agentGetSnapshot}
@@ -2051,7 +2062,7 @@ params: params as Record<string, ParameterValue>,
                 <AIChatDrawer
                   open={isChatOpen}
                   onOpenChange={setIsChatOpen}
-                  onAddCredits={() => setShowPricingPage(true)}
+                  onAddCredits={undefined}
                   creditsLeft={creditInfo ? creditInfo.limit - creditInfo.used : undefined}
                   creditsLimit={creditInfo?.limit}
                   getSnapshot={agentGetSnapshot}
@@ -2191,7 +2202,7 @@ params: params as Record<string, ParameterValue>,
         onToggleChat={() => setIsChatOpen((v) => !v)}
         selectedArchitecture={selectedArchitecture}
         onArchitectureChange={handleArchitectureChange}
-        onOpenPricing={() => setShowPricingPage(true)}
+
         onLoadPreset={handleLoadPreset}
         onClearCanvas={handleClearCanvas}
         currentPresetId={currentPresetId}
@@ -2265,10 +2276,6 @@ params: params as Record<string, ParameterValue>,
         onImport={handleImportArchitecture}
       />
 
-      <PricingPage
-        isOpen={showPricingPage}
-        onClose={() => setShowPricingPage(false)}
-      />
     </div>
   );
 };
