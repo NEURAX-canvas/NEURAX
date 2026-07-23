@@ -1,9 +1,54 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Github, Sparkles, Cpu, Brain, BarChart3, Shield, Zap, Layers, Boxes, Network, Check } from 'lucide-react';
+import { ArrowRight, Github, Sparkles, Cpu, Brain, BarChart3, Shield, Zap, Layers, Boxes, Network, Check, Book } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { AuthControl } from '@/components/auth/AuthControl.tsx';
 import { NeuraxLogo } from '@/components/brand/NeuraxLogo.tsx';
 import { useApiKey } from '@/contexts/ApiKeyContext.tsx';
+import { NeuralParticles } from '@/components/landing/NeuralParticles.tsx';
+import SpiderLogo from '@/components/landing/SpiderLogo.tsx';
+
+const ANIM_STYLES = (
+  <style>{`
+    @keyframes nxFloat {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+    @keyframes nxPulse {
+      0%, 100% { opacity: 0.06; transform: scale(1); }
+      50% { opacity: 0.12; transform: scale(1.05); }
+    }
+    @keyframes nxShimmer {
+      0% { background-position: -200% center; }
+      100% { background-position: 200% center; }
+    }
+    @keyframes nxFadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes nxGlow {
+      0%, 100% { box-shadow: 0 0 20px rgba(215,153,33,0.15); }
+      50% { box-shadow: 0 0 40px rgba(215,153,33,0.3), 0 0 60px rgba(214,93,14,0.1); }
+    }
+    .nx-float { animation: nxFloat 4s ease-in-out infinite; }
+    .nx-float-delayed { animation: nxFloat 5s ease-in-out 1s infinite; }
+    .nx-pulse-glow { animation: nxPulse 5s ease-in-out infinite; }
+    .nx-shimmer {
+      background: linear-gradient(90deg, #d79921 0%, #83a598 25%, #d79921 50%, #83a598 75%, #d79921 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: nxShimmer 4s linear infinite;
+    }
+    .nx-fade-up { animation: nxFadeUp 0.8s ease-out forwards; opacity: 0; }
+    .nx-fade-up-1 { animation: nxFadeUp 0.8s ease-out 0.1s forwards; opacity: 0; }
+    .nx-fade-up-2 { animation: nxFadeUp 0.8s ease-out 0.2s forwards; opacity: 0; }
+    .nx-fade-up-3 { animation: nxFadeUp 0.8s ease-out 0.3s forwards; opacity: 0; }
+    .nx-fade-up-4 { animation: nxFadeUp 0.8s ease-out 0.4s forwards; opacity: 0; }
+    .nx-btn-glow:hover { animation: nxGlow 2s ease-in-out infinite; }
+  `}</style>
+);
 
 const FONT_LINK = (
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -61,7 +106,7 @@ const Navbar = () => (
           </a>
         ))}
         <a
-          href="https://github.com/Martial-Christian/Universal_Neurax"
+          href="https://github.com/rustnew/NEURAX"
           target="_blank" rel="noopener noreferrer"
           className="flex items-center gap-1.5 text-[13px] font-medium transition-colors duration-150"
           style={{ color: C.faint }}
@@ -87,74 +132,98 @@ const Navbar = () => (
 );
 
 /* ═══════════════════════════════════════════════════════
-   HERO
+   HERO — Live, Dynamic, Neural
    ═══════════════════════════════════════════════════════ */
+const AnimatedCounter = ({ target, suffix = '' }: { target: number; suffix?: string }) => {
+  const [val, setVal] = useState(0);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        let start = 0;
+        const duration = 1500;
+        const step = 16;
+        const increment = target / (duration / step);
+        const timer = setInterval(() => {
+          start += increment;
+          if (start >= target) { clearInterval(timer); setVal(target); }
+          else setVal(Math.floor(start));
+        }, step);
+        observer.disconnect();
+      }
+    }, { threshold: 0.3 });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [target]);
+  return <span ref={ref}>{val}{suffix}</span>;
+};
+
 const Hero = () => (
   <section className="relative min-h-[90vh] flex flex-col items-center justify-center overflow-hidden" style={{ backgroundColor: C.bg }}>
-    <div className="absolute inset-0 pointer-events-none opacity-[0.04]"
-      style={{
-        backgroundImage: 'radial-gradient(circle, #ebdbb2 0.8px, transparent 0.8px)',
-        backgroundSize: '32px 32px',
-      }}
+    <SpiderLogo />
+    <NeuralParticles />
+
+    <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/3 w-[800px] h-[800px] rounded-full pointer-events-none nx-pulse-glow"
+      style={{ background: `radial-gradient(circle, ${C.accent} 0%, transparent 60%)` }}
     />
-    <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/3 w-[700px] h-[700px] rounded-full pointer-events-none opacity-[0.08]"
-      style={{ background: `radial-gradient(circle, ${C.accent} 0%, transparent 70%)` }}
+    <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] rounded-full pointer-events-none nx-float-delayed"
+      style={{ background: `radial-gradient(circle, ${C.cyan} 0%, transparent 60%)`, opacity: 0.06 }}
     />
-    <div className="absolute bottom-1/4 right-1/4 w-[400px] h-[400px] rounded-full pointer-events-none opacity-[0.05]"
-      style={{ background: `radial-gradient(circle, ${C.cyan} 0%, transparent 70%)` }}
+    <div className="absolute top-1/4 left-[10%] w-[300px] h-[300px] rounded-full pointer-events-none nx-float"
+      style={{ background: `radial-gradient(circle, ${C.orange} 0%, transparent 60%)`, opacity: 0.04 }}
     />
 
     <div className="relative z-10 mx-auto max-w-[1000px] px-6 pt-32 pb-20 text-center">
-      <div className="inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full" style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
+      <div className="nx-fade-up inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full" style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.accent }} />
         <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
           Analytical Compiler v0.1 — Open Source
         </span>
       </div>
 
-      <h1 className="text-[48px] sm:text-[60px] lg:text-[76px] font-bold leading-[1.05] tracking-[-0.03em] mb-6 text-balance" style={{ color: C.text }}>
+      <h1 className="nx-fade-up-1 text-[48px] sm:text-[60px] lg:text-[76px] font-bold leading-[1.05] tracking-[-0.03em] mb-6 text-balance" style={{ color: C.text }}>
         Know your model's cost{' '}
-        <span className="bg-gradient-to-r from-[#d79921] to-[#83a598] bg-clip-text text-transparent">
-          before you train.
-        </span>
+        <span className="nx-shimmer">before you train.</span>
       </h1>
 
-      <p className="max-w-[640px] mx-auto text-[17px] leading-[1.6] mb-10 text-balance" style={{ color: C.muted }}>
+      <p className="nx-fade-up-2 max-w-[640px] mx-auto text-[17px] leading-[1.6] mb-10 text-balance" style={{ color: C.muted }}>
         NEURAX is the analytical compiler that predicts cost, memory, speed, and feasibility
         of any neural architecture — before a single GPU hour is spent. <span className="font-semibold" style={{ color: C.text }}>100% open source.</span>
       </p>
 
-      <div className="flex flex-wrap items-center justify-center gap-4 mb-16">
+      <div className="nx-fade-up-3 flex flex-wrap items-center justify-center gap-4 mb-16">
         <Button asChild size="lg"
-          className="h-[48px] px-8 text-[15px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02]"
+          className="nx-btn-glow h-[48px] px-8 text-[15px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02] hover:shadow-lg"
           style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}
         >
           <Link to="/app">
             Start Analyzing Free
-            <ArrowRight className="w-4 h-4 ml-2" />
+            <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
           </Link>
         </Button>
         <Button asChild variant="outline" size="lg"
-          className="h-[48px] px-8 text-[15px] font-medium rounded-[10px] transition-all duration-150"
+          className="h-[48px] px-8 text-[15px] font-medium rounded-[10px] transition-all duration-150 hover:scale-[1.02] hover:bg-white/5"
           style={{ backgroundColor: C.card, borderColor: C.border, color: C.text }}
         >
           <a href="#pipeline">See How It Works</a>
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-[760px] mx-auto">
+      <div className="nx-fade-up-4 grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-[760px] mx-auto">
         {[
-          { value: '±3–8%', label: 'Accuracy vs Real HW' },
-          { value: '55+', label: 'Metrics per Analysis' },
-          { value: '80+', label: 'Architecture Families' },
-          { value: '<50ms', label: 'Analysis Time' },
+          { display: '±3–8%', label: 'Accuracy vs Real HW' },
+          { display: true, target: 55, suffix: '+', label: 'Metrics per Analysis' },
+          { display: true, target: 80, suffix: '+', label: 'Architecture Families' },
+          { display: '<50ms', label: 'Analysis Time' },
         ].map((s) => (
           <div key={s.label}
-            className="rounded-[10px] p-4 text-center transition-all duration-200 hover:scale-[1.02]"
+            className="group rounded-[10px] p-4 text-center transition-all duration-200 hover:scale-[1.03] hover:-translate-y-0.5"
             style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
           >
             <div className="text-[28px] font-bold tracking-[-0.5px] leading-none mb-1" style={{ color: C.accent }}>
-              {s.value}
+              {typeof s.display === 'string' ? s.display : <><AnimatedCounter target={s.target} suffix={s.suffix} /></>}
             </div>
             <div className="text-[11px]" style={{ color: C.muted }}>{s.label}</div>
           </div>
@@ -570,85 +639,112 @@ const ClosingCTA = () => (
    FOOTER
    ═══════════════════════════════════════════════════════ */
 const Footer = () => (
-  <footer style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
-    <div className="mx-auto max-w-[1200px] px-6 py-12">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-8 mb-8">
+  <footer style={{ backgroundColor: '#1a1c1a', borderTop: `1px solid ${C.border}` }}>
+    <div className="mx-auto max-w-[1200px] px-6 py-16">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-10 mb-10">
         <div className="md:col-span-2">
-          <div className="flex items-center gap-2.5 mb-4">
-            <NeuraxLogo size={18} showText={false} variant="mark" />
-            <span className="text-[14px] font-bold" style={{ color: C.text }}>NEURAX</span>
+          <div className="flex items-center gap-3 mb-4">
+            <NeuraxLogo size={20} showText={false} variant="mark" />
+            <span className="text-[16px] font-bold tracking-[-0.02em]" style={{ color: C.text }}>NEURAX</span>
           </div>
-          <p className="text-[13px] leading-relaxed max-w-xs" style={{ color: C.muted }}>
-            Analytical compiler for neural architectures. Predict cost, memory, speed, and feasibility before training.
-            <br /><span className="font-semibold" style={{ color: C.accent }}>MIT Licensed — Free forever.</span>
+          <p className="text-[13px] leading-relaxed max-w-sm" style={{ color: C.muted }}>
+            Analytical compiler for neural architectures. Predict cost, memory, speed, and feasibility before a single GPU hour is spent.
           </p>
-          <div className="mt-5 flex items-center gap-2">
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+              style={{ backgroundColor: '#98971a20', color: '#98971a', border: '1px solid #98971a30' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#98971a' }} />
+              MIT License
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+              style={{ backgroundColor: '#83a59820', color: '#83a598', border: '1px solid #83a59830' }}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#83a598' }} />
+              Free forever
+            </span>
+          </div>
+          <div className="mt-6 flex items-center gap-2">
             <span className="text-[10px] font-mono uppercase tracking-[0.05em]" style={{ color: C.faint }}>Created by</span>
-            <a href="https://github.com/Martial-Christian" target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[12px] font-medium transition-colors"
-              style={{ color: C.text }}
-              onMouseEnter={(e) => e.currentTarget.style.color = C.accent}
-              onMouseLeave={(e) => e.currentTarget.style.color = C.text}
+            <a href="https://github.com/rustnew" target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-[12px] font-medium transition-colors hover:brightness-125"
+              style={{ color: C.muted }}
             >
               <Github size={12} />
-              Martial-Christian
+              <span style={{ color: C.text }}>Martial-Christian</span>
             </a>
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.1em] mb-3" style={{ color: C.faint }}>Product</h4>
-          <div className="space-y-2">
+          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Product</h4>
+          <div className="space-y-3">
             {[
-            { label: 'Features', href: '#features', external: true },
-            { label: 'Architectures', href: '#architectures', external: true },
-            { label: 'Pipeline', href: '#pipeline', external: true },
-            { label: 'Studio', href: '/app', external: false },
-          ].map(({ label, href, external }) => (
-            external ? (
-              <a key={label} href={href}
-                className="block text-[13px] transition-colors" style={{ color: C.muted }}
-                onMouseEnter={(e) => e.currentTarget.style.color = C.text}
-                onMouseLeave={(e) => e.currentTarget.style.color = C.muted}
-              >
-                {label}
-              </a>
-            ) : (
-              <Link key={label} to={href}
-                className="block text-[13px] transition-colors" style={{ color: C.muted }}
-                onMouseEnter={(e) => e.currentTarget.style.color = C.text}
-                onMouseLeave={(e) => e.currentTarget.style.color = C.muted}
-              >
-                {label}
-              </Link>
-            )
+            { label: 'Features', href: '#features' },
+            { label: 'Architectures', href: '#architectures' },
+            { label: 'Pipeline', href: '#pipeline' },
+            { label: 'Studio', href: '/app' },
+          ].map(({ label, href }) => (
+            <Link key={label} to={href}
+              className="block text-[13px] transition-colors hover:brightness-125"
+              style={{ color: C.muted }}
+            >
+              {label}
+            </Link>
           ))}
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.1em] mb-3" style={{ color: C.faint }}>Technical</h4>
-          <div className="space-y-2" style={{ color: C.muted }}>
-            <span className="block text-[13px]">10 IR Passes</span>
-            <span className="block text-[13px]">55+ Metrics</span>
-            <span className="block text-[13px]">Rust Core</span>
-            <span className="block text-[13px]">MLIR Backend</span>
+          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Technical</h4>
+          <div className="space-y-3">
+            {[
+              { label: '10 IR Passes', desc: 'Analysis depth' },
+              { label: '55+ Metrics', desc: 'Performance dimensions' },
+              { label: 'Rust Core', desc: 'High-performance engine' },
+              { label: 'MLIR Backend', desc: 'Multi-level IR' },
+            ].map(({ label, desc }) => (
+              <div key={label}>
+                <div className="text-[13px] font-medium" style={{ color: C.muted }}>{label}</div>
+                <div className="text-[10px] font-mono" style={{ color: C.faint }}>{desc}</div>
+              </div>
+            ))}
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.1em] mb-3" style={{ color: C.faint }}>Connect</h4>
-          <div className="space-y-2">
-            <a href="https://github.com/Martial-Christian/Universal_Neurax" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[13px] transition-colors" style={{ color: C.muted }} onMouseEnter={(e) => e.currentTarget.style.color = C.text} onMouseLeave={(e) => e.currentTarget.style.color = C.muted}>
-              <Github size={12} /> GitHub
+          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Connect</h4>
+          <div className="space-y-3">
+            <a href="https://github.com/rustnew/NEURAX" target="_blank" rel="noopener noreferrer"
+              className="flex items-center gap-2 text-[13px] transition-colors hover:brightness-125"
+              style={{ color: C.muted }}
+            >
+              <Github size={13} />
+              <span style={{ color: C.text }}>GitHub</span>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: C.border, color: C.faint }}>rustnew/NEURAX</span>
             </a>
-            <span className="block text-[13px]" style={{ color: C.muted }}>Documentation (WIP)</span>
+            <div className="flex items-center gap-2 text-[13px]" style={{ color: C.muted }}>
+              <Book size={13} />
+              <span>Documentation</span>
+              <span className="text-[9px] font-mono" style={{ color: C.faint }}>(WIP)</span>
+            </div>
+            <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
+              <div className="text-[10px] font-mono uppercase tracking-[0.1em] mb-2" style={{ color: C.faint }}>Community</div>
+              <div className="flex gap-2">
+                <a href="https://github.com/rustnew/NEURAX/discussions" target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all hover:brightness-125"
+                  style={{ backgroundColor: C.border, color: C.text }}
+                >
+                  <Github size={11} /> Discussions
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-      <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderTop: `1px solid ${C.border}` }}>
+      <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderTop: `1px solid ${C.border}` }}>
         <div className="text-[11px] font-mono" style={{ color: C.faint }}>
           © {new Date().getFullYear()} NEURAX — Open Source Analytical Compiler
         </div>
-        <div className="text-[11px] font-mono" style={{ color: C.faint }}>
-          MIT License — Free forever
+        <div className="flex items-center gap-4 text-[11px] font-mono" style={{ color: C.faint }}>
+          <span>Built with Rust + TypeScript</span>
+          <span className="w-1 h-1 rounded-full" style={{ backgroundColor: C.faint }} />
+          <span>MIT — Free forever</span>
         </div>
       </div>
     </div>
@@ -661,6 +757,7 @@ const Footer = () => (
 export default function Landing() {
   return (
     <div className="min-h-screen selection:bg-[#d79921]/20 antialiased" style={{ backgroundColor: C.bg, color: C.text }}>
+      {ANIM_STYLES}
       {FONT_LINK}
       <Navbar />
       <main>
