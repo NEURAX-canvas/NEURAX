@@ -1,23 +1,24 @@
-import { useState } from 'react';
-import { RealTimeCharts } from './categories/RealTimeCharts.tsx';
-import { GlobalResultsCharts } from './categories/GlobalResultsCharts.tsx';
-import { PerLayerCharts } from './categories/PerLayerCharts.tsx';
-import { MemoryCharts } from './categories/MemoryCharts.tsx';
-import { ComparisonCharts } from './categories/ComparisonCharts.tsx';
-import { OptimizationCharts } from './categories/OptimizationCharts.tsx';
-import { TrainingCharts } from './categories/TrainingCharts.tsx';
-import { DebuggingCharts } from './categories/DebuggingCharts.tsx';
+import { useState, lazy, Suspense } from 'react';
 import {
   Activity, BarChart3, Layers, HardDrive,
   GitCompare, Target, TrendingUp, Bug
 } from 'lucide-react';
 import { CanvasNode, Connection, AnalysisResult, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
-import { cn } from '@/lib/utils';
+import { ChartSkeleton } from './shared';
+
+const RealTimeCharts = lazy(() => import('./categories/RealTimeCharts.tsx').then(m => ({ default: m.RealTimeCharts })));
+const GlobalResultsCharts = lazy(() => import('./categories/GlobalResultsCharts.tsx').then(m => ({ default: m.GlobalResultsCharts })));
+const PerLayerCharts = lazy(() => import('./categories/PerLayerCharts.tsx').then(m => ({ default: m.PerLayerCharts })));
+const MemoryCharts = lazy(() => import('./categories/MemoryCharts.tsx').then(m => ({ default: m.MemoryCharts })));
+const ComparisonCharts = lazy(() => import('./categories/ComparisonCharts.tsx').then(m => ({ default: m.ComparisonCharts })));
+const OptimizationCharts = lazy(() => import('./categories/OptimizationCharts.tsx').then(m => ({ default: m.OptimizationCharts })));
+const TrainingCharts = lazy(() => import('./categories/TrainingCharts.tsx').then(m => ({ default: m.TrainingCharts })));
+const DebuggingCharts = lazy(() => import('./categories/DebuggingCharts.tsx').then(m => ({ default: m.DebuggingCharts })));
 
 const CATEGORIES = [
   { id: 'realtime', label: 'Real-Time', icon: Activity, count: 6 },
   { id: 'global', label: 'Results', icon: BarChart3, count: 8 },
-  { id: 'perlayer', label: 'Per Layer', icon: Layers, count: 7 },
+  { id: 'perlayer', label: 'Per Layer', icon: Layers, count: 6 },
   { id: 'memory', label: 'Memory', icon: HardDrive, count: 6 },
   { id: 'comparison', label: 'Comparison', icon: GitCompare, count: 9 },
   { id: 'optimization', label: 'Optimization', icon: Target, count: 5 },
@@ -66,45 +67,32 @@ export function SimulationWorkspace({ nodes, connections, analysis, perLayer, wa
         </div>
       </div>
 
-      {/* Chart Content — all categories always mounted, only active one visible */}
+      {/* Chart Content — only the active category is mounted (lazy) */}
       <div className="flex-1 overflow-auto p-4 scrollbar-thin">
-        <div className={cn(activeCategory === 'realtime' ? '' : 'hidden')}>
-          <RealTimeCharts analysis={analysis} />
-        </div>
-        <div className={cn(activeCategory === 'global' ? '' : 'hidden')}>
-          <GlobalResultsCharts analysis={analysis} />
-        </div>
-        <div className={cn(activeCategory === 'perlayer' ? '' : 'hidden')}>
-          <PerLayerCharts analysis={analysis} perLayer={perLayer} />
-        </div>
-        <div className={cn(activeCategory === 'memory' ? '' : 'hidden')}>
-          <MemoryCharts analysis={analysis} />
-        </div>
-        <div className={cn(activeCategory === 'comparison' ? '' : 'hidden')}>
-          <ComparisonCharts analysis={analysis} topology={topology} />
-        </div>
-        <div className={cn(activeCategory === 'optimization' ? '' : 'hidden')}>
-          <OptimizationCharts
-            analysis={analysis}
-            perLayer={perLayer}
-            nodes={nodes}
-            connections={connections}
-          />
-        </div>
-        <div className={cn(activeCategory === 'training' ? '' : 'hidden')}>
-          <TrainingCharts
-            analysis={analysis}
-            perLayer={perLayer}
-          />
-        </div>
-        <div className={cn(activeCategory === 'debugging' ? '' : 'hidden')}>
-          <DebuggingCharts
-            analysis={analysis}
-            perLayer={perLayer}
-            warnings={warnings}
-            nodes={nodes}
-          />
-        </div>
+        <Suspense fallback={<ChartSkeleton variant="stats-grid" />}>
+          {activeCategory === 'realtime' && <RealTimeCharts analysis={analysis} />}
+          {activeCategory === 'global' && <GlobalResultsCharts analysis={analysis} />}
+          {activeCategory === 'perlayer' && <PerLayerCharts analysis={analysis} perLayer={perLayer} />}
+          {activeCategory === 'memory' && <MemoryCharts analysis={analysis} />}
+          {activeCategory === 'comparison' && <ComparisonCharts analysis={analysis} topology={topology} />}
+          {activeCategory === 'optimization' && (
+            <OptimizationCharts
+              analysis={analysis}
+              perLayer={perLayer}
+              nodes={nodes}
+              connections={connections}
+            />
+          )}
+          {activeCategory === 'training' && <TrainingCharts analysis={analysis} />}
+          {activeCategory === 'debugging' && (
+            <DebuggingCharts
+              analysis={analysis}
+              perLayer={perLayer}
+              warnings={warnings}
+              nodes={nodes}
+            />
+          )}
+        </Suspense>
       </div>
     </div>
   );

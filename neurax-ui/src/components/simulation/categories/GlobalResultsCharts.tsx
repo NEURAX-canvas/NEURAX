@@ -1,425 +1,345 @@
-import { BarChart3 } from 'lucide-react';
-import { AnalysisResult } from '@/types/architecture.ts';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Cell, PieChart, Pie,
+  PieChart, Pie, Cell, Label,
 } from 'recharts';
-import { hasPhaseTimeline } from '../simulationData.ts';
+import { BarChart3, PieChart as PieChartIcon, Cpu, Zap, DollarSign, Layers } from 'lucide-react';
+import { AnalysisResult } from '@/types/architecture.ts';
+import {
+  SIMULATION_COLORS,
+  formatBytes,
+  formatCompactNumber,
+} from '../simulationData.ts';
+import {
+  ChartCard,
+  DonutRing,
+  StatCard,
+  ChartContainer,
+  chartTooltipStyle,
+  EmptyChartState,
+  ChartErrorBoundary,
+  CHART_MARGINS,
+} from '../shared/index.ts';
 
 
-interface GlobalResultsChartsProps {
+interface Props {
   analysis?: AnalysisResult;
 }
 
-const SECTION_CLS = 'panel-section p-4 bg-card/30 border-primary/5 rounded-xl';
-const TITLE_CLS = 'text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-3';
+function topOps(analysis: AnalysisResult, n: number = 6) {
+  return Object.entries(analysis.opsDistribution ?? {})
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, n)
+    .map(([name, value]) => ({ name, value }));
+}
 
-// ─── 2.1 Model Size (Parameters) ─────────────────────────────────────────────
+const PIE_COLORS = [
+  SIMULATION_COLORS.blue,
+  SIMULATION_COLORS.amber,
+  SIMULATION_COLORS.red,
+  SIMULATION_COLORS.teal,
+  SIMULATION_COLORS.violet,
+  SIMULATION_COLORS.cyan,
+];
 
+/* ─── 2.1 Model Size (Parameters) ─── */
 function ModelSizeDonut({ analysis }: { analysis: AnalysisResult }) {
-  const total = analysis.totalParams;
-  // Bucket op-distribution counts into semantic param groups
-  const ops = analysis.opsDistribution ?? {};
-  const opTotal = Object.values(ops).reduce((a, b) => a + b, 0) || 1;
-  const buckets: Record<string, number> = { Weights: 0, Embedding: 0, Bias: 0, Normalization: 0 };
-  for (const [op, count] of Object.entries(ops)) {
-    const pct = count / opTotal;
-    if (/embed/i.test(op)) buckets.Embedding += pct;
-    else if (/norm|layer_norm|rms/i.test(op)) buckets.Normalization += pct;
-    else if (/bias/i.test(op)) buckets.Bias += pct;
-    else buckets.Weights += pct;
+  const ops = topOps(analysis, 4);
+  if (ops.length === 0) {
+    return (
+      <ChartCard title="2.1 — Model Size (Parameters)">
+        <EmptyChartState icon={PieChartIcon} title="No parameter data" description="Run analysis to see parameter distribution." />
+      </ChartCard>
+    );
   }
-  // Convert to integer percentages and ensure sum=100
-  const labels = Object.keys(buckets);
-  const totPct = labels.reduce((s, k) => s + buckets[k], 0) || 1;
-  const sliceData = labels
-    .map((k, i) => ({
-      name: k,
-      value: Math.round((buckets[k] / totPct) * 100),
-      fill: ['#3b82f6', '#f59e0b', '#ef4444', '#f97316'][i],
-    }))
-    .filter(s => s.value > 0);
-
-  const paramLabel =
-    total >= 1e9 ? `${(total / 1e9).toFixed(1)}B`
-      : total >= 1e6 ? `${(total / 1e6).toFixed(0)}M`
-        : `${total}`;
-
+  const data = ops.map((op, i) => ({
+    name: op.name,
+    value: op.value,
+    color: PIE_COLORS[i % PIE_COLORS.length],
+  }));
+  const total = data.reduce((s, d) => s + d.value, 0);
   return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.1 — Model Size (Parameters)</div>
-      <div className="flex items-center gap-4 h-44">
-        <div className="relative flex-shrink-0 w-36 h-36">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={sliceData}
-                cx="50%"
-                cy="50%"
-                innerRadius={48}
-                outerRadius={68}
-                paddingAngle={2}
-                dataKey="value"
-                startAngle={90}
-                endAngle={-270}
-              >
-                {sliceData.map((s, i) => <Cell key={i} fill={s.fill} stroke="none" />)}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-lg font-bold font-mono">{paramLabel}</span>
-            <span className="text-[8px] text-muted-foreground">Params</span>
-          </div>
-        </div>
-
-        <div className="space-y-2 text-[10px]">
-          {sliceData.map(s => (
-            <div key={s.name} className="flex items-center gap-2">
-              <span className="font-semibold" style={{ color: s.fill }}>{s.name} {s.value}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── 2.2 FLOPs by Op Type ─────────────────────────────────────────────────────
-
-function FlopsByOpType({ analysis }: { analysis: AnalysisResult }) {
-  const raw = analysis.opsDistribution;
-  const total = Object.values(raw).reduce((a, b) => a + b, 0) || 1;
-  const data = Object.entries(raw)
-    .map(([name, value]) => ({ name, value: Math.round((value / total) * analysis.totalFlops / 1e9) }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
-
-  return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.2 — FLOPs by Op Type</div>
-      <div className="h-44">
+    <ChartCard title="2.1 — Model Size (Parameters)">
+      <ChartContainer minH={200}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout="vertical" margin={{ left: 56, right: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" horizontal={false} />
-            <XAxis type="number" stroke="#555" fontSize={9} tickLine={false} axisLine={false}
-              tickFormatter={v => v >= 1 ? `${v}G` : `${(v * 1000).toFixed(0)}M`} />
-            <YAxis type="category" dataKey="name" stroke="#888" fontSize={9} tickLine={false} axisLine={false} width={54} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#111', border: '1px solid #333', fontSize: '9px' }}
-              formatter={(v: number) => [`${v} GFLOPs`, 'FLOPs']}
-            />
-            <Bar dataKey="value" fill="#3b82f6" radius={[0, 3, 3, 0]} barSize={10} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-// ─── 2.3 Latency Breakdown ────────────────────────────────────────────────────
-
-function LatencyBreakdown({ analysis }: { analysis: AnalysisResult }) {
-  const rawPhases = analysis.compilation?.phase_timeline ?? [];
-  const phases = rawPhases.length > 0
-    ? rawPhases
-    // Derive synthetic phases from total latency when real data missing
-    : (() => {
-        const totalMs = analysis.latencyMs ?? 12;
-        const parts = [
-          { name: 'Forward', pct: 0.45 },
-          { name: 'Backward', pct: 0.35 },
-          { name: 'Optimizer', pct: 0.12 },
-          { name: 'Overhead', pct: 0.08 },
-        ];
-        return parts.map(p => ({ name: p.name, duration_ms: totalMs * p.pct }));
-      })();
-  const data = phases.map(p => ({ name: p.name.replace(' ', '\n'), ms: parseFloat(p.duration_ms.toFixed(1)) }));
-
-  return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.3 — Latency Breakdown</div>
-      <div className="h-44">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" vertical={false} />
-            <XAxis dataKey="name" stroke="#888" fontSize={8} tickLine={false} axisLine={false} />
-            <YAxis stroke="#555" fontSize={9} tickLine={false} axisLine={false} tickCount={4} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#111', border: '1px solid #333', fontSize: '9px' }}
-              formatter={(v: number) => [`${v.toFixed(1)} ms`, 'Latency']}
-            />
-            <Bar dataKey="ms" fill="#f59e0b" radius={[3, 3, 0, 0]} barSize={20} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
-}
-
-// ─── 2.5 Confidence Radar ─────────────────────────────────────────────────────
-
-function ConfidenceSummary({ analysis }: { analysis: AnalysisResult }) {
-  const score = Math.min(1, Math.max(0, analysis.confidenceScore));
-  const pct = Math.round(score * 100);
-  const color = pct >= 85 ? '#10b981' : pct >= 60 ? '#f59e0b' : '#ef4444';
-  const radius = 42;
-  const circumference = 2 * Math.PI * radius;
-
-  return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.5 — Confidence Score</div>
-      <div className="flex h-48 items-center gap-6">
-        <div className="relative h-28 w-28 shrink-0">
-          <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r={radius} stroke="#333" strokeWidth="10" fill="none" />
-            <circle
-              cx="50"
-              cy="50"
-              r={radius}
-              stroke={color}
-              strokeWidth="10"
-              fill="none"
-              strokeDasharray={circumference}
-              strokeDashoffset={circumference * (1 - score)}
-              strokeLinecap="round"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold font-mono">{pct}</span>
-            <span className="text-[8px] uppercase tracking-wider text-muted-foreground">confidence</span>
-          </div>
-        </div>
-        <div className="space-y-2 text-[10px]">
-          <div className="font-bold uppercase tracking-[0.14em]" style={{ color }}>
-            {pct >= 85 ? 'Compiler-backed' : pct >= 60 ? 'Estimated with caution' : 'Low confidence'}
-          </div>
-          <div className="text-muted-foreground">
-            This score comes directly from the report and reflects how trustworthy the current synthesis is.
-          </div>
-          <div className="rounded-md border border-border/60 bg-secondary/20 px-3 py-2 text-muted-foreground">
-            {hasPhaseTimeline(analysis)
-              ? 'Phase data is available for this run.'
-              : 'Detailed confidence dimensions are not in the report yet.'}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── 2.6 Hardware Fit Score ───────────────────────────────────────────────────
-
-function HardwareFitScore({ analysis }: { analysis: AnalysisResult }) {
-  const vram = analysis.peakVramBytes / 1e9;
-  const gpuMem = analysis.gpuMemoryGb;
-  const utilization = analysis.gpuUtilization ?? analysis.rooflinePosition;
-  const fitRatio = gpuMem > 0 ? Math.min(1, vram / gpuMem) : 0.5;
-  const score = Math.round((1 - fitRatio * 0.4 + utilization * 0.6) * 100);
-  const clamped = Math.min(100, Math.max(0, score));
-  const r = 42;
-  const circ = 2 * Math.PI * r;
-  const label = clamped > 75 ? 'Great fit' : clamped > 50 ? 'Good fit' : 'Under-utilised';
-  const color = clamped > 75 ? '#10b981' : clamped > 50 ? '#f59e0b' : '#ef4444';
-
-  return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.6 — Hardware Fit Score</div>
-      <div className="flex items-center gap-6 h-48">
-        <div className="relative w-28 h-28 flex-shrink-0">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-            <circle cx="50" cy="50" r={r} stroke="#333" strokeWidth="10" fill="none" />
-            <circle
-              cx="50" cy="50" r={r}
-              stroke={color} strokeWidth="10" fill="none"
-              strokeDasharray={circ}
-              strokeDashoffset={circ * (1 - clamped / 100)}
-              strokeLinecap="round"
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-2xl font-bold font-mono">{clamped}</span>
-            <span className="text-[8px] text-muted-foreground">/100</span>
-          </div>
-        </div>
-        <div className="space-y-2 text-[10px]">
-          <div className="font-bold" style={{ color }}>{analysis.gpuName || 'GPU'} — {label}</div>
-          <div className="text-muted-foreground">
-            {vram.toFixed(1)} GB / {gpuMem || '?'} GB VRAM
-          </div>
-          <div className="text-muted-foreground">
-            {analysis.gpuTflops ? `${analysis.gpuTflops.toFixed(1)} TFLOP/s` : '—'}
-          </div>
-          <div className="text-muted-foreground">
-            Throughput: {analysis.throughputTokensPerS ? `${Math.round(analysis.throughputTokensPerS)} tok/s` : '—'}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── 2.7 Cost Summary (Treemap-style) ────────────────────────────────────────
-
-function CostTreemap({ analysis }: { analysis: AnalysisResult }) {
-  const flops = analysis.totalFlops / 1e12;
-  const vram = analysis.peakVramBytes / 1e9;
-  const latency = analysis.latencyMs ?? 0;
-
-  const tiles = [
-    { label: 'FLOPs', value: `${flops.toFixed(1)} TFLOPs`, color: '#3b82f6', flex: 2 },
-    { label: 'VRAM', value: `${vram.toFixed(1)} GB`, color: '#f59e0b', flex: 1.5 },
-    { label: 'Latency', value: latency ? `${latency.toFixed(0)}ms` : '—', color: '#ef4444', flex: 1 },
-  ];
-
-  return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.7 — Cost Summary (Treemap)</div>
-      <div className="flex gap-2 h-48 items-stretch mt-2">
-        {tiles.map(t => (
-          <div
-            key={t.label}
-            className="flex flex-col items-center justify-center rounded-lg text-white font-bold transition-all"
-            style={{ backgroundColor: t.color, flex: t.flex }}
-          >
-            <span className="text-sm">{t.value}</span>
-            <span className="text-[9px] mt-1 opacity-80">{t.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── 2.8 Dialect Distribution ─────────────────────────────────────────────────
-
-function DialectDistribution({ analysis }: { analysis: AnalysisResult }) {
-  const ops = analysis.opsDistribution;
-  const total = Object.values(ops).reduce((a, b) => a + b, 0) || 1;
-
-  // Map op types to dialect families
-  const dialects: Record<string, number> = { DenseSeq: 0, SparseMoE: 0, ConvGrid: 0, Other: 0 };
-  for (const [op, v] of Object.entries(ops)) {
-    const pct = v / total;
-    if (/matmul|linear|embed|attn/i.test(op)) dialects.DenseSeq += pct;
-    else if (/moe|expert|gate/i.test(op)) dialects.SparseMoE += pct;
-    else if (/conv|pool/i.test(op)) dialects.ConvGrid += pct;
-    else dialects.Other += pct;
-  }
-
-  const data = Object.entries(dialects)
-    .map(([name, pct]) => ({ name, value: Math.round(pct * 100) }))
-    .filter(d => d.value > 0);
-
-  if (data.length === 0) {
-    data.push({ name: 'DenseSeq', value: 80 }, { name: 'Other', value: 20 });
-  }
-
-  const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#6366f1'];
-
-  return (
-    <div className={SECTION_CLS}>
-      <div className={TITLE_CLS}>2.8 — Dialect Distribution</div>
-      <div className="flex items-center h-48 gap-4">
-        <ResponsiveContainer width="55%" height="100%">
           <PieChart>
             <Pie
               data={data}
               cx="50%"
               cy="50%"
-              startAngle={180}
-              endAngle={-180}
-              innerRadius={44}
-              outerRadius={70}
+              innerRadius={55}
+              outerRadius={80}
               paddingAngle={2}
               dataKey="value"
             >
-              {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="none" />)}
+              <Label
+                content={({ viewBox }) => {
+                  if (!viewBox || !('cx' in viewBox)) return null;
+                  const vb = viewBox as { cx?: number; cy?: number };
+                  return (
+                    <text x={vb.cx} y={vb.cy} textAnchor="middle" dominantBaseline="middle">
+                      <tspan x={vb.cx} dy="-0.5em" className="fill-foreground text-lg font-bold font-mono">
+                        {formatCompactNumber(total)}
+                      </tspan>
+                      <tspan x={vb.cx} dy="1.4em" className="fill-muted-foreground text-[9px] uppercase tracking-wider">
+                        ops
+                      </tspan>
+                    </text>
+                  );
+                }}
+              />
+              {data.map((entry, idx) => (
+                <Cell key={idx} fill={entry.color} />
+              ))}
             </Pie>
-            <Tooltip
-              contentStyle={{ backgroundColor: '#111', border: '1px solid #333', fontSize: '9px' }}
-              formatter={(v: number) => [`${v}%`, 'Coverage']}
-            />
+            <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [formatCompactNumber(value), 'Count']} />
           </PieChart>
         </ResponsiveContainer>
-        <div className="space-y-2 text-[10px]">
-          {data.map((d, i) => (
-            <div key={d.name} className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-              <span className="text-muted-foreground">{d.name}</span>
-              <span className="font-bold ml-auto">{d.value}%</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+      </ChartContainer>
+    </ChartCard>
   );
 }
 
-// ─── 2.4 Key Stats Strip ─────────────────────────────────────────────────────
+/* ─── 2.2 FLOPs by Op Type ─── */
+function FlopsByOp({ analysis }: { analysis: AnalysisResult }) {
+  const ops = topOps(analysis, 6);
+  if (ops.length === 0) {
+    return (
+      <ChartCard title="2.2 — FLOPs by Op Type">
+        <EmptyChartState icon={BarChart3} title="No FLOPs data" description="Run analysis to see FLOPs distribution." />
+      </ChartCard>
+    );
+  }
+  const totalFlops = analysis.totalFlops || 1;
+  const data = ops.map((op, i) => ({
+    name: op.name.length > 14 ? op.name.slice(0, 12) + '…' : op.name,
+    value: ((op.value / Object.values(analysis.opsDistribution ?? {}).reduce((a, b) => a + b, 0)) * totalFlops) / 1e9,
+    color: PIE_COLORS[i % PIE_COLORS.length],
+  }));
+  return (
+    <ChartCard title="2.2 — FLOPs by Op Type">
+      <ChartContainer minH={200}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} layout="vertical" margin={CHART_MARGINS.barHorizontal}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+            <XAxis type="number" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v >= 1 ? v.toFixed(0) : v.toFixed(1)}G`} />
+            <YAxis type="category" dataKey="name" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} width={100} />
+            <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value >= 1 ? value.toFixed(0) : value.toFixed(1)} GFLOPs`, 'FLOPs']} />
+            <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              {data.map((entry, idx) => (
+                <Cell key={idx} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+    </ChartCard>
+  );
+}
 
+/* ─── 2.3 Latency Breakdown ─── */
+function LatencyBreakdown({ analysis }: { analysis: AnalysisResult }) {
+  const phases = analysis.compilation?.phase_timeline;
+  if (!phases || phases.length === 0) {
+    return (
+      <ChartCard title="2.3 — Latency Breakdown">
+        <EmptyChartState icon={BarChart3} title="No phase timeline" description="Enable profiling during compilation." />
+      </ChartCard>
+    );
+  }
+  const data = phases.map((p) => ({ name: p.name, ms: p.duration_ms }));
+  return (
+    <ChartCard title="2.3 — Latency Breakdown">
+      <ChartContainer minH={200}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={CHART_MARGINS.bar}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="name" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v: number) => `${v.toFixed(0)}ms`} />
+            <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value.toFixed(1)}ms`, 'Duration']} />
+            <Bar dataKey="ms" fill="var(--chart-3)" radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+    </ChartCard>
+  );
+}
+
+/* ─── 2.4 Key Stats Strip ─── */
 function KeyStatsStrip({ analysis }: { analysis: AnalysisResult }) {
-  const stats = [
-    { label: 'Total FLOPs', value: analysis.estimatedFlops },
-    { label: 'Peak VRAM', value: analysis.memoryUsage },
-    { label: 'Arith. Intensity', value: `${analysis.arithmeticIntensity.toFixed(1)} FLOP/B` },
-    { label: 'Confidence', value: `${(analysis.confidenceScore * 100).toFixed(0)}%` },
-    { label: 'Throughput', value: analysis.throughputTokensPerS ? `${Math.round(analysis.throughputTokensPerS)} tok/s` : '—' },
-    { label: 'Latency', value: analysis.latencyMs ? `${analysis.latencyMs.toFixed(0)} ms` : '—' },
+  return (
+    <ChartCard title="2.4 — Key Stats">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatCard icon={<Cpu className="w-3 h-3" />} label="Parameters" value={formatCompactNumber(analysis.totalParams)} sublabel={`${analysis.numLayers} layers`} />
+        <StatCard icon={<Zap className="w-3 h-3" />} label="FLOPs" value={formatCompactNumber(analysis.totalFlops)} sublabel={`${formatCompactNumber(analysis.totalOperations)} ops`} />
+        <StatCard icon={<Layers className="w-3 h-3" />} label="VRAM" value={formatBytes(analysis.peakVramBytes)} sublabel={analysis.gpuMemoryGb ? `${analysis.gpuMemoryGb}GB GPU` : undefined} />
+        <StatCard
+          icon={<DollarSign className="w-3 h-3" />}
+          label="Latency"
+          value={analysis.latencyMs != null ? `${analysis.latencyMs.toFixed(1)}ms` : '—'}
+          trend={analysis.totalParams > 1e9 ? 'down' : undefined}
+          variant={analysis.latencyMs != null && analysis.latencyMs > 100 ? 'warning' : 'default'}
+        />
+      </div>
+    </ChartCard>
+  );
+}
+
+/* ─── 2.5 Confidence Score ─── */
+function ConfidenceScore({ analysis }: { analysis: AnalysisResult }) {
+  const score = Math.round((analysis.confidenceScore ?? 0) * 100);
+  return (
+    <ChartCard title="2.5 — Confidence Score">
+      <div className="flex items-center justify-center h-full">
+        <DonutRing value={score} centerLabel={`${score}`} centerSublabel="/100" />
+      </div>
+    </ChartCard>
+  );
+}
+
+/* ─── 2.6 Hardware Fit Score ─── */
+function HardwareFitScore({ analysis }: { analysis: AnalysisResult }) {
+  const vramRatio = analysis.gpuMemoryGb && analysis.gpuMemoryGb > 0
+    ? analysis.peakVramBytes / (analysis.gpuMemoryGb * 1024 ** 3)
+    : 0.7;
+  const fitScore = Math.round(Math.max(0, Math.min(100, (1 - vramRatio + 0.3) * 100)));
+  const utilScore = Math.round((analysis.gpuUtilization ?? 0.45) * 100);
+  const overall = Math.round((fitScore + utilScore) / 2);
+
+  return (
+    <ChartCard title="2.6 — Hardware Fit Score">
+      <div className="flex flex-col items-center justify-center h-full gap-2">
+        <DonutRing value={overall} centerLabel={`${overall}`} centerSublabel="/100" size={100} />
+        <div className="flex gap-4 mt-1">
+          <StatCard label="Fit" value={`${fitScore}%`} variant={fitScore > 70 ? 'success' : fitScore > 40 ? 'warning' : 'danger'} />
+          <StatCard label="Util." value={`${utilScore}%`} variant={utilScore > 60 ? 'success' : 'info'} />
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
+
+/* ─── 2.7 Cost Summary ─── */
+function CostSummary({ analysis }: { analysis: AnalysisResult }) {
+  const flopsCost = Math.max((analysis.totalFlops || 0) * 2e-11, 0);
+  const memCost = Math.max((analysis.peakVramBytes || 0) * 5e-12, 0);
+  const latCost = Math.max(((analysis.latencyMs ?? 0) / 1000) * 3e-10 * (analysis.totalFlops || 0), 0);
+  const total = flopsCost + memCost + latCost || 1;
+
+  const items = [
+    { label: 'FLOPs', value: flopsCost, pct: flopsCost / total, color: 'var(--chart-1)' },
+    { label: 'VRAM', value: memCost, pct: memCost / total, color: 'var(--chart-3)' },
+    { label: 'Latency', value: latCost, pct: latCost / total, color: 'var(--chart-5)' },
   ];
 
   return (
-    <div className="panel-section p-4 bg-card/30 grid grid-cols-3 md:grid-cols-6 gap-4">
-      {stats.map(s => (
-        <div key={s.label} className="space-y-1">
-          <div className="text-[8px] text-muted-foreground uppercase tracking-wider">{s.label}</div>
-          <div className="text-sm font-bold font-mono text-foreground">{s.value}</div>
+    <ChartCard title="2.7 — Cost Summary (Estimated)">
+      <div className="flex flex-col gap-2 h-full justify-center">
+        <div className="flex h-6 w-full rounded-full overflow-hidden bg-secondary border border-border">
+          {items.map((item, idx) => (
+            <div
+              key={idx}
+              className="h-full transition-all"
+              style={{ width: `${item.pct * 100}%`, backgroundColor: item.color, minWidth: item.pct > 0.01 ? 4 : 0 }}
+              title={`${item.label}: $${item.value.toFixed(6)}`}
+            />
+          ))}
         </div>
-      ))}
-    </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+              <span className="text-muted-foreground">{item.label}</span>
+              <span className="font-mono font-medium">${item.value.toFixed(4)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-1 pt-2 border-t border-border flex justify-between text-[11px]">
+          <span className="text-muted-foreground">Estimated total</span>
+          <span className="font-mono font-bold">${total.toFixed(4)}</span>
+        </div>
+      </div>
+    </ChartCard>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-
-export function GlobalResultsCharts({ analysis }: GlobalResultsChartsProps) {
-  if (!analysis || analysis.totalParams === 0) {
+/* ─── 2.8 Dialect Distribution ─── */
+function DialectDistribution({ analysis }: { analysis: AnalysisResult }) {
+  const ops = topOps(analysis);
+  if (ops.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground border-2 border-dashed border-border rounded-lg">
-        <BarChart3 className="w-8 h-8 mb-2 opacity-20" />
-        <p className="text-sm">No analysis data available</p>
-        <p className="text-xs">Run analysis in the Architecture workspace first.</p>
-      </div>
+      <ChartCard title="2.8 — Dialect Distribution">
+        <EmptyChartState icon={PieChartIcon} title="No ops data" description="Run analysis to see dialect distribution." />
+      </ChartCard>
     );
   }
+  const buckets: Record<string, number> = {};
+  ops.forEach((op) => {
+    const lc = op.name.toLowerCase();
+    if (lc.includes('attn') || lc.includes('flash')) buckets['Attention'] = (buckets['Attention'] ?? 0) + op.value;
+    else if (lc.includes('linear') || lc.includes('dense')) buckets['Dense'] = (buckets['Dense'] ?? 0) + op.value;
+    else if (lc.includes('conv') || lc.includes('unet')) buckets['Conv'] = (buckets['Conv'] ?? 0) + op.value;
+    else if (lc.includes('norm') || lc.includes('batchnorm') || lc.includes('layernorm')) buckets['Normalize'] = (buckets['Normalize'] ?? 0) + op.value;
+    else if (lc.includes('embed')) buckets['Embed'] = (buckets['Embed'] ?? 0) + op.value;
+    else buckets['Other'] = (buckets['Other'] ?? 0) + op.value;
+  });
+  const data = Object.entries(buckets)
+    .sort(([, a], [, b]) => b - a)
+    .map(([name, value], i) => ({ name, value, color: PIE_COLORS[i % PIE_COLORS.length] }));
+  return (
+    <ChartCard title="2.8 — Dialect Distribution">
+      <ChartContainer minH={200}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie data={data} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={2} dataKey="value">
+              {data.map((entry, idx) => (
+                <Cell key={idx} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [formatCompactNumber(value), 'Count']} />
+          </PieChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+    </ChartCard>
+  );
+}
+
+/* ─── Grid Layout ─── */
+function Row({ children, cols = 3 }: { children: React.ReactNode; cols?: number }) {
+  const colClass = `grid grid-cols-1 lg:grid-cols-${cols} gap-6`;
+  return <div className={colClass}>{children}</div>;
+}
+
+export function GlobalResultsCharts({ analysis }: Props) {
+  if (!analysis) return null;
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <BarChart3 className="w-4 h-4 text-primary" />
-        <h2 className="text-base font-semibold">Global Results — Full Report</h2>
-      </div>
+    <ChartErrorBoundary name="Global Results">
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-indigo-500" />
+          <h2 className="text-lg font-semibold">Global Results — Synthesis Overview</h2>
+        </div>
 
-      {/* Row 1: Model Size · FLOPs by Op · Latency (always 3 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <ModelSizeDonut analysis={analysis} />
-        <FlopsByOpType analysis={analysis} />
-        <LatencyBreakdown analysis={analysis} />
-      </div>
+        <Row cols={3}>
+          <ModelSizeDonut analysis={analysis} />
+          <FlopsByOp analysis={analysis} />
+          <LatencyBreakdown analysis={analysis} />
+        </Row>
 
-      {/* Row 2: Confidence Radar · Hardware Fit · Cost Treemap */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <ConfidenceSummary analysis={analysis} />
-        <HardwareFitScore analysis={analysis} />
-        <CostTreemap analysis={analysis} />
-      </div>
-
-      {/* Row 3: Dialect Distribution */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <DialectDistribution analysis={analysis} />
         <KeyStatsStrip analysis={analysis} />
+
+        <Row cols={3}>
+          <ConfidenceScore analysis={analysis} />
+          <HardwareFitScore analysis={analysis} />
+          <CostSummary analysis={analysis} />
+        </Row>
+
+        <Row cols={3}>
+          <DialectDistribution analysis={analysis} />
+          <div /> {/* spacer */}
+          <div /> {/* spacer */}
+        </Row>
       </div>
-    </div>
+    </ChartErrorBoundary>
   );
 }

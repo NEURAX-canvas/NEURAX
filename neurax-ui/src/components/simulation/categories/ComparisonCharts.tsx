@@ -2,13 +2,17 @@ import { useState, useCallback } from 'react';
 import { GitCompare, Plus, Trash2, Play, Loader2, Cpu, Zap, HardDrive, DollarSign, Thermometer, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
 import { AnalysisResult } from '@/types/architecture.ts';
 import { compareAnalyses, listHardware, CompareHardwareConfig, CompareResultItem, HardwareDetail } from '@/services/neuraxApi.ts';
+import { formatBytes, formatCompactNumber } from '../simulationData.ts';
+import {
+  ChartCard,
+  ChartErrorBoundary,
+  EmptyChartState,
+} from '../shared';
 
 interface ComparisonChartsProps {
   analysis?: AnalysisResult;
   topology?: Record<string, unknown>;
 }
-
-const CARD_CLS = 'panel-section p-4 bg-card/30 border-primary/5 rounded-xl';
 
 const PRECISION_OPTIONS = ['fp32', 'fp16', 'bf16', 'int8', 'fp8'];
 const DEFAULT_GPUS = ['H100-SXM', 'A100-SXM', 'A100-PCIe', 'RTX4090', 'H200', 'GH200'];
@@ -23,18 +27,7 @@ interface ComparisonConfig {
 
 function formatNumber(n: number | null | undefined, decimals = 2): string {
   if (n === null || n === undefined) return '—';
-  if (n >= 1e12) return (n / 1e12).toFixed(decimals) + 'T';
-  if (n >= 1e9) return (n / 1e9).toFixed(decimals) + 'B';
-  if (n >= 1e6) return (n / 1e6).toFixed(decimals) + 'M';
-  if (n >= 1e3) return (n / 1e3).toFixed(decimals) + 'K';
-  return n.toFixed(decimals);
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1e12) return (bytes / 1e12).toFixed(2) + ' TB';
-  if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
-  if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
-  return (bytes / 1e3).toFixed(2) + ' KB';
+  return formatCompactNumber(n, decimals);
 }
 
 function extractMetric(report: Record<string, unknown>, key: string): unknown {
@@ -61,7 +54,6 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
   const [hardwareList, setHardwareList] = useState<HardwareDetail[]>([]);
   const [hardwareLoaded, setHardwareLoaded] = useState(false);
 
-  // Load hardware list on first render
   const loadHardware = useCallback(async () => {
     if (hardwareLoaded) return;
     try {
@@ -69,7 +61,6 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
       setHardwareList(hw);
       setHardwareLoaded(true);
     } catch {
-      // Use default GPU list
       setHardwareLoaded(true);
     }
   }, [hardwareLoaded]);
@@ -133,43 +124,44 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
 
   if (!analysis || analysis.totalParams === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground border-2 border-dashed border-border rounded-lg">
-        <GitCompare className="w-8 h-8 mb-2 opacity-20" />
-        <p className="text-sm">No comparison data available</p>
-        <p className="text-xs">Run analysis to compare deployment trade-offs.</p>
-      </div>
+      <EmptyChartState
+        icon={GitCompare}
+        title="No comparison data available"
+        description="Run analysis to compare deployment trade-offs."
+      />
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold flex items-center gap-2">
-          <GitCompare className="w-5 h-5 text-primary" />
-          Comparison — Benchmarks & Variants
-        </h2>
-      </div>
+    <ChartErrorBoundary>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <GitCompare className="w-5 h-5 text-primary" />
+            Comparison — Benchmarks & Variants
+          </h2>
+        </div>
 
-      {/* Current config summary */}
-      <div className={`${CARD_CLS} grid grid-cols-1 gap-4 md:grid-cols-3`}>
-        <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Current device</div>
-          <div className="mt-1 text-sm font-semibold">{analysis.gpuName || 'Unknown GPU'}</div>
-        </div>
-        <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Current precision</div>
-          <div className="mt-1 text-sm font-semibold uppercase">{analysis.selectedPrecision || 'N/A'}</div>
-        </div>
-        <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Batch size</div>
-          <div className="mt-1 text-sm font-semibold">{analysis.selectedBatchSize ?? 'N/A'}</div>
-        </div>
-      </div>
+        {/* Current config summary */}
+        <ChartCard title="Current Configuration" className="!min-h-0">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Current device</div>
+              <div className="mt-1 text-sm font-semibold">{analysis.gpuName || 'Unknown GPU'}</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Current precision</div>
+              <div className="mt-1 text-sm font-semibold uppercase">{analysis.selectedPrecision || 'N/A'}</div>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
+              <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Batch size</div>
+              <div className="mt-1 text-sm font-semibold">{analysis.selectedBatchSize ?? 'N/A'}</div>
+            </div>
+          </div>
+        </ChartCard>
 
-      {/* Configuration cards */}
-      <div className={`${CARD_CLS}`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-medium text-foreground">Hardware Configurations to Compare</h3>
+        {/* Configuration cards */}
+        <ChartCard title="Hardware Configurations to Compare" action={
           <button
             onClick={addConfig}
             className="flex items-center gap-1 px-2 py-1 text-xs bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors"
@@ -177,89 +169,86 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
             <Plus className="w-3 h-3" />
             Add Config
           </button>
-        </div>
-
-        <div className="space-y-3">
-          {configs.map((config) => (
-            <div key={config.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/40 bg-secondary/10">
-              <select
-                value={config.hardware}
-                onChange={(e) => updateConfig(config.id, 'hardware', e.target.value)}
-                className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
-              >
-                {gpuOptions.map(gpu => (
-                  <option key={gpu} value={gpu}>{gpu}</option>
-                ))}
-              </select>
-              <select
-                value={config.precision}
-                onChange={(e) => updateConfig(config.id, 'precision', e.target.value)}
-                className="w-20 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
-              >
-                {PRECISION_OPTIONS.map(p => (
-                  <option key={p} value={p}>{p.toUpperCase()}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground">BS:</span>
-                <input
-                  type="number"
-                  value={config.batchSize}
-                  onChange={(e) => updateConfig(config.id, 'batchSize', parseInt(e.target.value) || 1)}
-                  className="w-16 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
-                  min={1}
-                  max={4096}
-                />
+        }>
+          <div className="space-y-3">
+            {configs.map((config) => (
+              <div key={config.id} className="flex items-center gap-3 p-3 rounded-lg border border-border/40 bg-secondary/10">
+                <select
+                  value={config.hardware}
+                  onChange={(e) => updateConfig(config.id, 'hardware', e.target.value)}
+                  className="flex-1 min-w-0 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
+                >
+                  {gpuOptions.map(gpu => (
+                    <option key={gpu} value={gpu}>{gpu}</option>
+                  ))}
+                </select>
+                <select
+                  value={config.precision}
+                  onChange={(e) => updateConfig(config.id, 'precision', e.target.value)}
+                  className="w-20 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
+                >
+                  {PRECISION_OPTIONS.map(p => (
+                    <option key={p} value={p}>{p.toUpperCase()}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-muted-foreground">BS:</span>
+                  <input
+                    type="number"
+                    value={config.batchSize}
+                    onChange={(e) => updateConfig(config.id, 'batchSize', parseInt(e.target.value) || 1)}
+                    className="w-16 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
+                    min={1}
+                    max={4096}
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-muted-foreground">×GPU:</span>
+                  <input
+                    type="number"
+                    value={config.gpuCount}
+                    onChange={(e) => updateConfig(config.id, 'gpuCount', parseInt(e.target.value) || 1)}
+                    className="w-14 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
+                    min={1}
+                    max={256}
+                  />
+                </div>
+                <button
+                  onClick={() => removeConfig(config.id)}
+                  className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                  disabled={configs.length <= 1}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
               </div>
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-muted-foreground">×GPU:</span>
-                <input
-                  type="number"
-                  value={config.gpuCount}
-                  onChange={(e) => updateConfig(config.id, 'gpuCount', parseInt(e.target.value) || 1)}
-                  className="w-14 px-2 py-1.5 text-xs bg-background border border-border rounded-md"
-                  min={1}
-                  max={256}
-                />
-              </div>
-              <button
-                onClick={() => removeConfig(config.id)}
-                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                disabled={configs.length <= 1}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        <div className="flex items-center gap-3 mt-4">
-          <button
-            onClick={runComparison}
-            disabled={isComparing || configs.length === 0}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isComparing ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4" />
+          <div className="flex items-center gap-3 mt-4">
+            <button
+              onClick={runComparison}
+              disabled={isComparing || configs.length === 0}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isComparing ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4" />
+              )}
+              {isComparing ? 'Comparing...' : 'Run Comparison'}
+            </button>
+            {error && (
+              <div className="flex items-center gap-1 text-xs text-destructive">
+                <AlertTriangle className="w-3 h-3" />
+                {error}
+              </div>
             )}
-            {isComparing ? 'Comparing...' : 'Run Comparison'}
-          </button>
-          {error && (
-            <div className="flex items-center gap-1 text-xs text-destructive">
-              <AlertTriangle className="w-3 h-3" />
-              {error}
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </ChartCard>
 
-      {/* Results table */}
-      {results.length > 0 && (
-        <div className={`${CARD_CLS}`}>
-          <h3 className="text-sm font-medium text-foreground mb-4">Comparison Results</h3>
-          <div className="overflow-x-auto">
+        {/* Results table */}
+        {results.length > 0 && (
+          <ChartCard title="Comparison Results" className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border">
@@ -290,7 +279,6 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
                 </tr>
               </thead>
               <tbody>
-                {/* Current config row */}
                 <tr className="border-b border-border/50 bg-primary/5">
                   <td className="py-2 px-2 font-medium">
                     <div className="text-xs">{analysis.gpuName || 'Current'}</div>
@@ -343,157 +331,156 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
                 })}
               </tbody>
             </table>
-          </div>
-        </div>
-      )}
+          </ChartCard>
+        )}
 
-      {/* Visual comparison bars */}
-      {results.length > 0 && results.some(r => r.report) && (
-        <div className={`${CARD_CLS}`}>
-          <h3 className="text-sm font-medium text-foreground mb-4">Visual Comparison</h3>
-          <div className="space-y-4">
-            {/* Throughput comparison */}
-            <div>
-              <div className="text-xs text-muted-foreground mb-2">Throughput (tokens/s)</div>
-              <div className="space-y-1">
-                {[
-                  { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.throughputTokensPerS },
-                  ...results.filter(r => r.report).map(r => ({
-                    label: r.label,
-                    value: extractMetric(r.report ?? {}, 'performance.throughput_tokens_per_s') as number | undefined,
-                  })),
-                ].map((item, i) => {
-                  const maxThroughput = Math.max(
-                    analysis.throughputTokensPerS,
-                    ...results.filter(r => r.report).map(r =>
-                      (extractMetric(r.report ?? {}, 'performance.throughput_tokens_per_s') as number) || 0
-                    ),
-                    1
-                  );
-                  const pct = item.value ? (item.value / maxThroughput) * 100 : 0;
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-40 text-[10px] text-muted-foreground truncate">{item.label}</div>
-                      <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${i === 0 ? 'bg-primary' : 'bg-primary/60'}`}
-                          style={{ width: `${Math.max(pct, 2)}%` }}
-                        />
+        {/* Visual comparison bars */}
+        {results.length > 0 && results.some(r => r.report) && (
+          <ChartCard title="Visual Comparison">
+            <div className="space-y-4">
+              {/* Throughput comparison */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-2">Throughput (tokens/s)</div>
+                <div className="space-y-1">
+                  {[
+                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.throughputTokensPerS },
+                    ...results.filter(r => r.report).map(r => ({
+                      label: r.label,
+                      value: extractMetric(r.report ?? {}, 'performance.throughput_tokens_per_s') as number | undefined,
+                    })),
+                  ].map((item, i) => {
+                    const maxThroughput = Math.max(
+                      analysis.throughputTokensPerS,
+                      ...results.filter(r => r.report).map(r =>
+                        (extractMetric(r.report ?? {}, 'performance.throughput_tokens_per_s') as number) || 0
+                      ),
+                      1,
+                    );
+                    const pct = item.value ? (item.value / maxThroughput) * 100 : 0;
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
+                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-primary' : 'bg-primary/60'}`}
+                            style={{ width: `${Math.max(pct, 2)}%` }}
+                          />
+                        </div>
+                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? formatNumber(item.value) : '—'}</div>
                       </div>
-                      <div className="w-20 text-right text-[10px] font-medium">{item.value ? formatNumber(item.value) : '—'}</div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Latency comparison */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-2">Latency (ms)</div>
+                <div className="space-y-1">
+                  {[
+                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.latencyMs },
+                    ...results.filter(r => r.report).map(r => ({
+                      label: r.label,
+                      value: extractMetric(r.report ?? {}, 'performance.latency_ms') as number | null | undefined,
+                    })),
+                  ].map((item, i) => {
+                    const allLatencies = [
+                      analysis.latencyMs,
+                      ...results.filter(r => r.report).map(r =>
+                        extractMetric(r.report ?? {}, 'performance.latency_ms') as number | null,
+                      ),
+                    ].filter((v): v is number => v !== null && v !== undefined);
+                    const maxLatency = Math.max(...allLatencies, 1);
+                    const pct = item.value ? (item.value / maxLatency) * 100 : 0;
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
+                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-amber-500' : 'bg-amber-500/60'}`}
+                            style={{ width: `${Math.max(pct, 2)}%` }}
+                          />
+                        </div>
+                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? `${item.value.toFixed(1)}ms` : '—'}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Training cost comparison */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-2">Training Cost (USD)</div>
+                <div className="space-y-1">
+                  {[
+                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.trainingCostUsd },
+                    ...results.filter(r => r.report).map(r => ({
+                      label: r.label,
+                      value: extractMetric(r.report ?? {}, 'cost.training_cost_usd') as number | undefined,
+                    })),
+                  ].map((item, i) => {
+                    const maxCost = Math.max(
+                      analysis.trainingCostUsd,
+                      ...results.filter(r => r.report).map(r =>
+                        (extractMetric(r.report ?? {}, 'cost.training_cost_usd') as number) || 0
+                      ),
+                      0.01,
+                    );
+                    const pct = item.value ? (item.value / maxCost) * 100 : 0;
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
+                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-emerald-500' : 'bg-emerald-500/60'}`}
+                            style={{ width: `${Math.max(pct, 2)}%` }}
+                          />
+                        </div>
+                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? `$${item.value.toFixed(2)}` : '—'}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Peak VRAM comparison */}
+              <div>
+                <div className="text-xs text-muted-foreground mb-2">Peak VRAM</div>
+                <div className="space-y-1">
+                  {[
+                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.peakVramBytes },
+                    ...results.filter(r => r.report).map(r => ({
+                      label: r.label,
+                      value: extractMetric(r.report ?? {}, 'memory.peak_vram_bytes') as number | undefined,
+                    })),
+                  ].map((item, i) => {
+                    const maxVram = Math.max(
+                      analysis.peakVramBytes,
+                      ...results.filter(r => r.report).map(r =>
+                        (extractMetric(r.report ?? {}, 'memory.peak_vram_bytes') as number) || 0
+                      ),
+                      1,
+                    );
+                    const pct = item.value ? (item.value / maxVram) * 100 : 0;
+                    return (
+                      <div key={i} className="flex items-center gap-2">
+                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
+                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-blue-500' : 'bg-blue-500/60'}`}
+                            style={{ width: `${Math.max(pct, 2)}%` }}
+                          />
+                        </div>
+                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? formatBytes(item.value) : '—'}</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-
-            {/* Latency comparison */}
-            <div>
-              <div className="text-xs text-muted-foreground mb-2">Latency (ms)</div>
-              <div className="space-y-1">
-                {[
-                  { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.latencyMs },
-                  ...results.filter(r => r.report).map(r => ({
-                    label: r.label,
-                    value: extractMetric(r.report ?? {}, 'performance.latency_ms') as number | null | undefined,
-                  })),
-                ].map((item, i) => {
-                  const allLatencies = [
-                    analysis.latencyMs,
-                    ...results.filter(r => r.report).map(r =>
-                      extractMetric(r.report ?? {}, 'performance.latency_ms') as number | null
-                    ),
-                  ].filter((v): v is number => v !== null && v !== undefined);
-                  const maxLatency = Math.max(...allLatencies, 1);
-                  const pct = item.value ? (item.value / maxLatency) * 100 : 0;
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-40 text-[10px] text-muted-foreground truncate">{item.label}</div>
-                      <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${i === 0 ? 'bg-amber-500' : 'bg-amber-500/60'}`}
-                          style={{ width: `${Math.max(pct, 2)}%` }}
-                        />
-                      </div>
-                      <div className="w-20 text-right text-[10px] font-medium">{item.value ? `${item.value.toFixed(1)}ms` : '—'}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Training cost comparison */}
-            <div>
-              <div className="text-xs text-muted-foreground mb-2">Training Cost (USD)</div>
-              <div className="space-y-1">
-                {[
-                  { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.trainingCostUsd },
-                  ...results.filter(r => r.report).map(r => ({
-                    label: r.label,
-                    value: extractMetric(r.report ?? {}, 'cost.training_cost_usd') as number | undefined,
-                  })),
-                ].map((item, i) => {
-                  const maxCost = Math.max(
-                    analysis.trainingCostUsd,
-                    ...results.filter(r => r.report).map(r =>
-                      (extractMetric(r.report ?? {}, 'cost.training_cost_usd') as number) || 0
-                    ),
-                    0.01
-                  );
-                  const pct = item.value ? (item.value / maxCost) * 100 : 0;
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-40 text-[10px] text-muted-foreground truncate">{item.label}</div>
-                      <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${i === 0 ? 'bg-emerald-500' : 'bg-emerald-500/60'}`}
-                          style={{ width: `${Math.max(pct, 2)}%` }}
-                        />
-                      </div>
-                      <div className="w-20 text-right text-[10px] font-medium">{item.value ? `$${item.value.toFixed(2)}` : '—'}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Peak VRAM comparison */}
-            <div>
-              <div className="text-xs text-muted-foreground mb-2">Peak VRAM</div>
-              <div className="space-y-1">
-                {[
-                  { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.peakVramBytes },
-                  ...results.filter(r => r.report).map(r => ({
-                    label: r.label,
-                    value: extractMetric(r.report ?? {}, 'memory.peak_vram_bytes') as number | undefined,
-                  })),
-                ].map((item, i) => {
-                  const maxVram = Math.max(
-                    analysis.peakVramBytes,
-                    ...results.filter(r => r.report).map(r =>
-                      (extractMetric(r.report ?? {}, 'memory.peak_vram_bytes') as number) || 0
-                    ),
-                    1
-                  );
-                  const pct = item.value ? (item.value / maxVram) * 100 : 0;
-                  return (
-                    <div key={i} className="flex items-center gap-2">
-                      <div className="w-40 text-[10px] text-muted-foreground truncate">{item.label}</div>
-                      <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${i === 0 ? 'bg-blue-500' : 'bg-blue-500/60'}`}
-                          style={{ width: `${Math.max(pct, 2)}%` }}
-                        />
-                      </div>
-                      <div className="w-20 text-right text-[10px] font-medium">{item.value ? formatBytes(item.value) : '—'}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+          </ChartCard>
+        )}
+      </div>
+    </ChartErrorBoundary>
   );
 }

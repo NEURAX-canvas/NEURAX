@@ -1330,7 +1330,9 @@ params: params as Record<string, ParameterValue>,
 
       // Handle 400 Bad Request (Compilation Errors/Warnings)
       if (err instanceof NeuraxApiError && err.status === 400) {
-        skipToast = true; // DO NOT show a intrusive toast for 400s
+        // Reset metrics to zero — analysis failed, no valid data
+        setAnalysis(initialAnalysis);
+        setPerLayer([]);
 
         // Attempt to parse diagnostics from the error body
         if (err.body && typeof err.body === 'string') {
@@ -1349,6 +1351,9 @@ params: params as Record<string, ParameterValue>,
                 precision_impact: typeof diag?.precision_impact === 'number' ? diag.precision_impact : undefined,
               }));
 
+              const errors = parsedDiagnostics.filter(d => d.severity === 'critical' || d.severity === 'error');
+              const warnings = parsedDiagnostics.filter(d => d.severity === 'warning');
+
               // Use these diagnostics as warnings so they show up in the issues panel
               setWarnings(parsedDiagnostics.map((d: any, idx: number) => ({
                 id: `diag-${idx}`,
@@ -1363,13 +1368,43 @@ params: params as Record<string, ParameterValue>,
                 diagnostics: parsedDiagnostics,
                 diagnosticCount: parsedDiagnostics.length,
               }));
+
+              // Show a toast with the error count so the user knows the analysis failed
+              toast({
+                title: errors.length > 0
+                  ? `Compilation failed — ${errors.length} error${errors.length > 1 ? 's' : ''}`
+                  : `Analysis completed with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}`,
+                description: errors.length > 0
+                  ? errors[0].message
+                  : warnings.length > 0
+                    ? warnings[0].message
+                    : 'Check the diagnostics panel for details.',
+                variant: errors.length > 0 ? 'destructive' : 'default',
+              });
             } else {
               setWarnings([{ id: 'compile-fail', type: 'error', message: 'Architecture compilation failed. Please check the block connections.' }]);
+              toast({
+                title: 'Compilation failed',
+                description: 'Architecture compilation failed. Please check the block connections.',
+                variant: 'destructive',
+              });
             }
           } catch (e) {
             setWarnings([{ id: 'bad-request', type: 'error', message: 'The compiler rejected the current topology (400).' }]);
+            toast({
+              title: 'Analysis failed',
+              description: 'The backend rejected the current topology (400).',
+              variant: 'destructive',
+            });
           }
+        } else {
+          toast({
+            title: 'Analysis failed',
+            description: 'The backend rejected the current topology (400).',
+            variant: 'destructive',
+          });
         }
+        return; // Skip the generic error handling below
       }
 
       if (!skipToast) {

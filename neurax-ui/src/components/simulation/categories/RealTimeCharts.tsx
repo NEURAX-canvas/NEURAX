@@ -1,5 +1,5 @@
-import { useMemo, useState, useEffect } from 'react';
-import { Zap, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useMemo } from 'react';
+import { Zap, Info, AlertTriangle, CheckCircle2, Activity } from 'lucide-react';
 import { AnalysisResult } from '@/types/architecture.ts';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -9,348 +9,317 @@ import {
   normalizePhaseStatus,
   normalizeSeverity,
 } from '../simulationData.ts';
+import {
+  ChartCard,
+  DonutRing,
+  ChartContainer,
+  chartTooltipStyle,
+  EmptyChartState,
+  ChartErrorBoundary,
+  CHART_MARGINS,
+} from '../shared/index.ts';
 
 
 interface RealTimeChartsProps {
   analysis?: AnalysisResult;
 }
 
-function useIsMounted() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  return mounted;
+function ProgressBar({ analysis }: { analysis: AnalysisResult }) {
+  const { compilation, confidenceScore } = analysis;
+  const progressVal = compilation?.total_progress ?? (confidenceScore > 0 ? confidenceScore * 0.9 : 0.5);
+  const currentPhase = compilation?.current_phase ?? (confidenceScore > 0 ? 'Complete' : 'Pending');
+
+  return (
+    <ChartCard title="1.1 — Global Progress" badge={compilation?.current_phase ? { text: 'live', variant: 'live' } : undefined}>
+      <div className="space-y-2">
+        <div className="text-[11px] text-muted-foreground">
+          Phase: <span className="text-foreground font-medium">{currentPhase}</span>
+        </div>
+        <div className="relative h-2.5 w-full bg-secondary rounded-full overflow-hidden">
+          <div
+            className="absolute top-0 left-0 h-full bg-[#3b82f6] transition-all duration-700 ease-out rounded-full"
+            style={{ width: `${Math.round(progressVal * 100)}%` }}
+          />
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-[10px] text-muted-foreground">Compilation progress</span>
+          <span className="text-[11px] font-mono font-bold">{Math.round(progressVal * 100)}%</span>
+        </div>
+      </div>
+    </ChartCard>
+  );
+}
+
+function TimelinePhases({ analysis }: { analysis: AnalysisResult }) {
+  const timelinePhases = analysis.compilation?.phase_timeline;
+  const hasLive = timelinePhases && timelinePhases.length > 0;
+
+  // Use real phases or show empty state
+  const phases = hasLive ? timelinePhases : null;
+
+  if (!phases) {
+    return (
+      <ChartCard title="1.2 — Timeline des Phases" badge={{ text: 'estimated', variant: 'derived' }}>
+        <EmptyChartState
+          icon={Activity}
+          title="No compilation data yet"
+          description="Run a compilation with profiling to see phase timing."
+        />
+      </ChartCard>
+    );
+  }
+
+  const totalDuration = phases.reduce((acc, p) => acc + p.duration_ms, 0);
+
+  return (
+    <ChartCard title="1.2 — Timeline des Phases" badge={{ text: 'live', variant: 'live' }}>
+      <div className="flex h-10 w-full rounded-md overflow-hidden bg-secondary/50 border border-border/50">
+        {phases.map((phase, idx) => {
+          const width = totalDuration > 0 ? (phase.duration_ms / totalDuration) * 100 : 10;
+          const status = normalizePhaseStatus(phase.status);
+          const color = status === 'completed'
+            ? 'var(--chart-2)'
+            : status === 'inprogress'
+              ? 'var(--chart-1)'
+              : status === 'failed'
+                ? 'var(--chart-4)'
+                : '#64748b';
+          return (
+            <div
+              key={idx}
+              className="h-full flex items-center justify-center text-[9px] font-bold text-white px-1 whitespace-nowrap overflow-hidden transition-all duration-300"
+              style={{ width: `${width}%`, backgroundColor: color }}
+              title={`${phase.name}: ${phase.duration_ms.toFixed(1)}ms`}
+            >
+              {phase.name}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-3">
+        {phases.map((phase, idx) => {
+          const status = normalizePhaseStatus(phase.status);
+          const colors: Record<string, string> = {
+            completed: 'bg-[var(--chart-2)]',
+            inprogress: 'bg-[var(--chart-1)]',
+            failed: 'bg-[var(--chart-4)]',
+            pending: 'bg-slate-500',
+          };
+          return (
+            <div key={`legend-${idx}`} className="flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full ${colors[status] ?? 'bg-slate-500'}`} />
+              <span className="text-[10px] text-muted-foreground">
+                {phase.name}
+                <span className="ml-1 font-mono">({phase.duration_ms.toFixed(0)}ms)</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </ChartCard>
+  );
+}
+
+function LiveDiagnosticsFeed({ analysis }: { analysis: AnalysisResult }) {
+  const { diagnostics } = analysis;
+
+  return (
+    <ChartCard title="1.3 — Live Diagnostics Feed" className="max-h-[320px] overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-auto pr-1 space-y-2 scrollbar-thin">
+        {diagnostics && diagnostics.length > 0 ? (
+          diagnostics.map((diag, idx) => {
+            const sev = normalizeSeverity(diag.severity);
+            const severityStyles: Record<string, string> = {
+              critical: 'bg-red-500/5 border-red-500/10 text-red-500',
+              warning: 'bg-amber-500/5 border-amber-500/10 text-amber-500',
+              hint: 'bg-emerald-500/5 border-emerald-500/10 text-emerald-400',
+              info: 'bg-blue-500/5 border-blue-500/10 text-blue-400',
+            };
+            return (
+              <div
+                key={`${diag.code ?? diag.category}-${idx}`}
+                className={`p-3 rounded-md border ${severityStyles[sev] ?? 'bg-secondary/50 border-border'}`}
+              >
+                <div className={`flex items-center gap-2 text-[10px] font-bold mb-1 ${severityStyles[sev] ?? ''}`}>
+                  {sev === 'warning' || sev === 'critical' ? (
+                    <AlertTriangle className="w-3 h-3 shrink-0" />
+                  ) : (
+                    <Info className="w-3 h-3 shrink-0" />
+                  )}
+                  {diag.category ?? diag.code}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-snug">{diag.message}</p>
+                {diag.suggestion && (
+                  <p className="text-[9px] text-primary/60 mt-1 italic">Suggestion: {diag.suggestion}</p>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full text-muted-foreground/50 space-y-2">
+            <CheckCircle2 className="w-8 h-8" />
+            <span className="text-[11px] font-medium">No issues detected</span>
+            <span className="text-[10px] text-center">All diagnostics passed in the current pass.</span>
+          </div>
+        )}
+      </div>
+    </ChartCard>
+  );
+}
+
+function PartialMetrics({ analysis }: { analysis: AnalysisResult }) {
+  const cleanMetrics = analysis.live_trace?.partial_metrics;
+
+  const data = useMemo(() => {
+    if (cleanMetrics && cleanMetrics.length > 0) {
+      return cleanMetrics.map(([time, value]) => ({ time, value }));
+    }
+    return null;
+  }, [cleanMetrics]);
+
+  if (!data) {
+    return (
+      <ChartCard title="1.4 — Partial Metrics" badge={{ text: 'no data', variant: 'info' }}>
+        <EmptyChartState
+          icon={Activity}
+          title="No live metrics"
+          description="Partial metrics appear during active compilation."
+        />
+      </ChartCard>
+    );
+  }
+
+  return (
+    <ChartCard title="1.4 — Partial Metrics" badge={{ text: 'live', variant: 'live' }}>
+      <ChartContainer minH={192}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={CHART_MARGINS.area}>
+            <defs>
+              <linearGradient id="partialGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--chart-3)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--chart-3)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="time" type="number" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickCount={5} />
+            <Tooltip contentStyle={chartTooltipStyle()} />
+            <Area
+              type="monotone"
+              dataKey="value"
+              name="Activity"
+              stroke="var(--chart-3)"
+              fillOpacity={1}
+              fill="url(#partialGrad)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+    </ChartCard>
+  );
+}
+
+function ConfidenceScore({ analysis }: { analysis: AnalysisResult }) {
+  const { confidenceScore } = analysis;
+  const score = confidenceScore ?? 0;
+  const isReliable = score > 0.8;
+
+  return (
+    <ChartCard title="1.5 — Confidence Score Live">
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <DonutRing
+          value={Math.round(score * 100)}
+          size={112}
+          centerLabel={`${Math.round(score * 100)}`}
+          centerSublabel="/100"
+        />
+        <div className="flex items-center gap-1.5 text-[11px] font-medium">
+          {isReliable ? (
+            <>
+              <CheckCircle2 className="w-4 h-4 text-[var(--chart-2)]" />
+              <span style={{ color: 'var(--chart-2)' }}>Reliable</span>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="w-4 h-4 text-[var(--chart-3)]" />
+              <span style={{ color: 'var(--chart-3)' }}>Approximated</span>
+            </>
+          )}
+        </div>
+        <span className="text-[10px] text-muted-foreground text-center">
+          Confidence in synthesis results based on topology complexity.
+        </span>
+      </div>
+    </ChartCard>
+  );
+}
+
+function ThroughputChart({ analysis }: { analysis: AnalysisResult }) {
+  const cleanTrace = analysis.live_trace?.throughput_trace;
+
+  const data = useMemo(() => {
+    if (cleanTrace && cleanTrace.length > 0) {
+      return cleanTrace.map(([time, value]) => ({ time, value }));
+    }
+    return null;
+  }, [cleanTrace]);
+
+  if (!data) {
+    return (
+      <ChartCard title="1.6 — Throughput Instantané" badge={{ text: 'no data', variant: 'info' }}>
+        <EmptyChartState
+          icon={Activity}
+          title="No throughput data"
+          description="Throughput traces appear during active inference or training."
+        />
+      </ChartCard>
+    );
+  }
+
+  return (
+    <ChartCard title="1.6 — Throughput Instantané" badge={{ text: 'live', variant: 'live' }}>
+      <ChartContainer minH={192}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={CHART_MARGINS.line}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="time" type="number" stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} />
+            <YAxis stroke="var(--muted-foreground)" fontSize={11} tickLine={false} axisLine={false} tickCount={3} />
+            <Tooltip contentStyle={chartTooltipStyle()} />
+            <Line
+              type="monotone"
+              dataKey="value"
+              name="Tokens/sec"
+              stroke="var(--chart-2)"
+              dot={false}
+              strokeWidth={2}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+    </ChartCard>
+  );
 }
 
 export function RealTimeCharts({ analysis }: RealTimeChartsProps) {
   if (!analysis) return null;
 
-  const { compilation, live_trace, diagnostics, confidenceScore } = analysis;
-
-  // ─── Derived data for always-visible charts ───
-
-  // 1.1 Progress — even without compilation data, derive from confidence
-  const progressVal = compilation?.total_progress ?? (confidenceScore > 0 ? confidenceScore * 0.9 : 0.5);
-  const currentPhase = compilation?.current_phase ?? (confidenceScore > 0 ? 'Complete' : 'Pending');
-
-  // 1.2 Timeline — derive synthetic phases when real data missing
-  const timelinePhases = compilation?.phase_timeline && compilation.phase_timeline.length > 0
-    ? compilation.phase_timeline
-    : [
-      { name: 'Parse', duration_ms: 120, status: 'completed' },
-      { name: 'Analyze', duration_ms: 340, status: 'completed' },
-      { name: 'Synthesize', duration_ms: 280, status: 'completed' },
-      { name: 'Report', duration_ms: 60, status: confidenceScore > 0 ? 'completed' : 'running' },
-    ];
-
-  // 1.4 Partial Metrics — derive synthetic when no live trace
-  const partialMetricsData = useMemo(() => {
-    if (live_trace?.partial_metrics && live_trace.partial_metrics.length > 0) {
-      return live_trace.partial_metrics.map(([time, value]) => ({ time, value }));
-    }
-    // Derive synthetic progression from FLOPs, memory, time
-    const totalFlopsG = (analysis.totalFlops || 1e12) / 1e9;
-    const peakMemGb = (analysis.peakVramBytes || 1e9) / 1e9;
-    return Array.from({ length: 20 }, (_, i) => ({
-      time: i * 0.5,
-      value: (totalFlopsG * 0.3) * (1 - Math.abs(i - 10) / 15) + peakMemGb * 0.1,
-    }));
-  }, [live_trace?.partial_metrics, analysis]);
-
-  // 1.6 Throughput — derive synthetic when no live trace
-  const throughputData = useMemo(() => {
-    if (live_trace?.throughput_trace && live_trace.throughput_trace.length > 0) {
-      return live_trace.throughput_trace.map(([time, value]) => ({ time, value }));
-    }
-    const tokPerS = analysis.throughputTokensPerS || 0;
-    const flopsPerToken = analysis.flopsPerToken || 1e9;
-    return Array.from({ length: 15 }, (_, i) => ({
-      time: i * 0.3,
-      value: tokPerS > 0 ? tokPerS * (0.8 + Math.sin(i * 0.5) * 0.2) : (flopsPerToken / 1e9) * (0.7 + Math.random() * 0.3),
-    }));
-  }, [live_trace?.throughput_trace, analysis]);
-
-  const isMounted = useIsMounted();
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
-        <h2 className="text-lg font-semibold">Real-Time — Live Compilation</h2>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ── 1.1 Global Progress ── */}
-        <div className="panel-section p-4 bg-card/30 border-primary/5">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">1.1 — Global Progress</h3>
-            {compilation?.current_phase && (
-              <span className="text-[8px] text-emerald-500/60 font-mono">live</span>
-            )}
-          </div>
-          <div className="space-y-2">
-            <div className="text-[10px] text-muted-foreground uppercase">
-              Phase: <span className="text-foreground font-medium">{currentPhase}</span>
-            </div>
-            <div className="relative h-2 w-full bg-secondary rounded-full overflow-hidden">
-              <div
-                className="absolute top-0 left-0 h-full bg-[#3b82f6] transition-all duration-500"
-                style={{ width: `${Math.round(progressVal * 100)}%` }}
-              />
-            </div>
-            <div className="text-[10px] text-right text-muted-foreground">
-              {Math.round(progressVal * 100)}%
-            </div>
-          </div>
+    <ChartErrorBoundary name="Real-Time">
+      <div className="space-y-6">
+        <div className="flex items-center gap-2">
+          <Zap className="w-5 h-5 text-amber-500 fill-amber-500" />
+          <h2 className="text-lg font-semibold">Real-Time — Live Compilation</h2>
         </div>
 
-        {/* ── 1.2 Timeline des Phases ── */}
-        <div className="panel-section p-4 bg-card/30 border-primary/5">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-            1.2 — Timeline des Phases
-            {compilation?.phase_timeline && compilation.phase_timeline.length > 0 && (
-              <span className="ml-2 text-[8px] text-emerald-500/60 font-mono">live</span>
-            )}
-          </h3>
-          <div className="flex h-10 w-full rounded-md overflow-hidden bg-secondary/50 border border-border/50">
-            {timelinePhases.map((phase, idx) => {
-              const totalDuration = timelinePhases.reduce((acc, p) => acc + p.duration_ms, 0);
-              const width = totalDuration > 0 ? (phase.duration_ms / totalDuration) * 100 : 10;
-              const status = normalizePhaseStatus(phase.status);
-              const color = status === 'completed'
-                ? '#10b981'
-                : status === 'inprogress'
-                  ? '#3b82f6'
-                  : status === 'failed'
-                    ? '#ef4444'
-                    : '#64748b';
-
-              return (
-                <div
-                  key={idx}
-                  className="h-full flex items-center justify-center text-[8px] font-bold text-white px-1 whitespace-nowrap overflow-hidden transition-all duration-300"
-                  style={{ width: `${width}%`, backgroundColor: color }}
-                  title={`${phase.name}: ${phase.duration_ms.toFixed(1)}ms`}
-                >
-                  {phase.name}
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {timelinePhases.map((phase, idx) => {
-              const status = normalizePhaseStatus(phase.status);
-              return (
-                <div key={`legend-${idx}`} className="flex items-center gap-1.5">
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      status === 'completed'
-                        ? 'bg-[#10b981]'
-                        : status === 'inprogress'
-                          ? 'bg-[#3b82f6]'
-                          : status === 'failed'
-                            ? 'bg-red-500'
-                            : 'bg-slate-500'
-                    }`}
-                  />
-                  <span className="text-[9px] text-muted-foreground">
-                    {phase.name} ({phase.duration_ms.toFixed(0)}ms)
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ── 1.3 Live Diagnostics Feed ── */}
-        <div className="panel-section p-4 bg-card/30 border-primary/5 max-h-[320px] overflow-hidden flex flex-col">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">1.3 — Live Diagnostics Feed</h3>
-          <div className="space-y-3 flex-1 overflow-auto pr-2 scrollbar-thin">
-            {diagnostics && diagnostics.length > 0 ? (
-              diagnostics.map((diag, idx) => {
-                const sev = normalizeSeverity(diag.severity);
-                return (
-                  <div
-                    key={`${diag.code ?? diag.category}-${idx}`}
-                    className={`p-3 rounded-md border ${
-                      sev === 'critical'
-                        ? 'bg-red-500/5 border-red-500/10'
-                        : sev === 'warning'
-                          ? 'bg-amber-500/5 border-amber-500/10'
-                          : sev === 'hint'
-                            ? 'bg-emerald-500/5 border-emerald-500/10'
-                            : 'bg-blue-500/5 border-blue-500/10'
-                    }`}
-                  >
-                    <div
-                      className={`flex items-center gap-2 text-[10px] font-bold mb-1 ${
-                        sev === 'critical'
-                          ? 'text-red-500'
-                          : sev === 'warning'
-                            ? 'text-amber-500'
-                            : sev === 'hint'
-                              ? 'text-emerald-400'
-                              : 'text-blue-400'
-                      }`}
-                    >
-                      {sev === 'warning' || sev === 'critical' ? (
-                        <AlertTriangle className="w-3 h-3 shrink-0" />
-                      ) : (
-                        <Info className="w-3 h-3 shrink-0" />
-                      )}
-                      {diag.category}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground leading-snug">{diag.message}</p>
-                    {diag.suggestion && (
-                      <p className="text-[9px] text-primary/60 mt-1 italic">Suggestion: {diag.suggestion}</p>
-                    )}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50 space-y-2">
-                <CheckCircle2 className="w-8 h-8" />
-                <span className="text-[10px]">No issues detected in current pass.</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── 1.4 Partial Metrics (Live) ── */}
-        <div className="panel-section p-4 bg-card/30 border-primary/5">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-            1.4 — Partial Metrics
-            {live_trace?.partial_metrics && live_trace.partial_metrics.length > 0 && (
-              <span className="ml-2 text-[8px] text-emerald-500/60 font-mono">live</span>
-            )}
-          </h3>
-          <div className="h-48 min-h-[192px] w-full">
-            {isMounted ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={192}>
-                <AreaChart data={partialMetricsData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPartial" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                  <XAxis dataKey="time" type="number" stroke="#666" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#666" fontSize={10} tickLine={false} axisLine={false} tickCount={5} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#111', border: '1px solid #333', fontSize: '10px' }}
-                    itemStyle={{ color: '#f59e0b' }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="value"
-                    name="Activity"
-                    stroke="#f59e0b"
-                    fillOpacity={1}
-                    fill="url(#colorPartial)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-muted-foreground text-xs">
-                Waiting for chart render…
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* ── 1.5 Confidence Score Live ── */}
-        <div className="panel-section p-4 bg-card/30 border-primary/5 flex flex-col items-center justify-center">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider self-start mb-6">1.5 — Confidence Score Live</h3>
-          <div className="flex items-center gap-8">
-            <div className="relative w-28 h-28">
-              <svg className="w-full h-full transform -rotate-90">
-                <circle
-                  cx="56"
-                  cy="56"
-                  r="48"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  fill="transparent"
-                  className="text-secondary"
-                />
-                <circle
-                  cx="56"
-                  cy="56"
-                  r="48"
-                  stroke="currentColor"
-                  strokeWidth="8"
-                  fill="transparent"
-                  strokeDasharray={2 * Math.PI * 48}
-                  strokeDashoffset={2 * Math.PI * 48 * (1 - (confidenceScore || 0))}
-                  strokeLinecap="round"
-                  className={
-                    confidenceScore && confidenceScore > 0.8
-                      ? 'text-[#10b981]'
-                      : confidenceScore && confidenceScore > 0.5
-                        ? 'text-amber-500'
-                        : 'text-red-500'
-                  }
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-3xl font-bold font-mono">{Math.round((confidenceScore || 0) * 100)}</div>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div
-                className={`flex items-center gap-1.5 text-xs font-bold ${confidenceScore && confidenceScore > 0.8 ? 'text-[#10b981]' : 'text-amber-500'}`}
-              >
-                {confidenceScore && confidenceScore > 0.8 ? (
-                  <CheckCircle2 className="w-4 h-4" />
-                ) : (
-                  <AlertTriangle className="w-4 h-4" />
-                )}
-                {confidenceScore && confidenceScore > 0.8 ? 'Reliable' : 'Approximated'}
-              </div>
-              <div className="text-[10px] text-muted-foreground">
-                Confidence in synthesis results based on topology complexity.
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 1.6 Throughput Instantané ── */}
-        <div className="panel-section p-4 bg-card/30 border-primary/5">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4">
-            1.6 — Throughput
-            {live_trace?.throughput_trace && live_trace.throughput_trace.length > 0 && (
-              <span className="ml-2 text-[8px] text-emerald-500/60 font-mono">live</span>
-            )}
-          </h3>
-          <div className="h-48 min-h-[192px] w-full">
-            {isMounted ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={192}>
-                <LineChart data={throughputData} margin={{ top: 10, right: 10, left: -30, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
-                  <XAxis dataKey="time" type="number" stroke="#666" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#666" fontSize={10} tickLine={false} axisLine={false} tickCount={3} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#111', border: '1px solid #333', fontSize: '10px' }}
-                    itemStyle={{ color: '#10b981' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    name="Tokens/sec"
-                    stroke="#10b981"
-                    dot={false}
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center text-muted-foreground text-xs">
-                Waiting for chart render…
-              </div>
-            )}
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ProgressBar analysis={analysis} />
+          <TimelinePhases analysis={analysis} />
+          <LiveDiagnosticsFeed analysis={analysis} />
+          <PartialMetrics analysis={analysis} />
+          <ConfidenceScore analysis={analysis} />
+          <ThroughputChart analysis={analysis} />
         </div>
       </div>
-    </div>
+    </ChartErrorBoundary>
   );
 }

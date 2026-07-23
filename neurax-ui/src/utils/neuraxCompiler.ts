@@ -712,7 +712,7 @@ function canonicalizeParams(params: Record<string, unknown>): Record<string, unk
   return out;
 }
 
-/** For sdpa blocks, ensure `num_heads` not `heads`, and add in_features */
+/** For sdpa blocks, ensure `num_heads` not `heads`, and add hidden_size */
 function fixSdpaParams(params: Record<string, unknown>, inputDim: number | null): Record<string, unknown> {
   const out = { ...params };
   // Rename heads → num_heads
@@ -720,14 +720,15 @@ function fixSdpaParams(params: Record<string, unknown>, inputDim: number | null)
     out.num_heads = out.heads;
     delete out.heads;
   }
-  // Infer in_features from dim or d_model or upstream
-  if (!('in_features' in out)) {
+  // Infer hidden_size from dim or d_model or upstream
+  // Backend calculate_layer_params reads hidden_size for Attention
+  if (!('hidden_size' in out)) {
     if ('dim' in out) {
-      out.in_features = out.dim;
+      out.hidden_size = out.dim;
     } else if ('d_model' in out) {
-      out.in_features = out.d_model;
+      out.hidden_size = out.d_model;
     } else if (inputDim !== null) {
-      out.in_features = inputDim;
+      out.hidden_size = inputDim;
     }
   }
   return out;
@@ -1789,7 +1790,7 @@ export function compileToNeuraxIR(
         outputs: [`${attnId}_out`],
         params: {
           ...(heads != null ? { num_heads: heads } : {}),
-          ...(dim != null ? { in_features: dim } : {}),
+          ...(dim != null ? { hidden_size: dim } : {}),
         },
         trainable: true,
       },
@@ -1800,7 +1801,7 @@ export function compileToNeuraxIR(
         inputs: [`${attnId}_out`],
         outputs: ['{group_output}'],
         params: {
-          ...(dim != null ? { in_features: dim, out_features: dim } : {}),
+          ...(dim != null ? { hidden_size: dim } : {}),
           ...(ffn != null ? { intermediate_size: ffn } : {}),
           activation: activation ?? 'gelu',
         },
