@@ -27,6 +27,35 @@
 
 </div>
 
+<div align="center">
+
+### 📸 Platform Screenshots
+
+<table>
+<tr>
+  <td align="center" width="50%">
+    <img src="screenshots/01-architecture.png" alt="Architecture Canvas" width="100%"><br/>
+    <sub><b>Architecture Canvas</b> — Visual drag‑and‑drop model designer</sub>
+  </td>
+  <td align="center" width="50%">
+    <img src="screenshots/03-simulation.png" alt="Simulation" width="100%"><br/>
+    <sub><b>Simulation Dashboard</b> — 40+ metrics, instant analytical results</sub>
+  </td>
+</tr>
+<tr>
+  <td align="center" width="50%">
+    <img src="screenshots/06-inference.png" alt="Inference Intelligence" width="100%"><br/>
+    <sub><b>Inference Intelligence</b> — Stability prediction, hallucination risk, 10 widgets</sub>
+  </td>
+  <td align="center" width="50%">
+    <img src="screenshots/05-timemachine.png" alt="Time Machine" width="100%"><br/>
+    <sub><b>Time Machine</b> — Multi‑year cost, carbon & compliance projection</sub>
+  </td>
+</tr>
+</table>
+
+</div>
+
 ---
 
 ## Table of Contents
