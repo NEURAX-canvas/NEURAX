@@ -1266,6 +1266,19 @@ params: params as Record<string, ParameterValue>,
         numClasses: hwConfig.numClasses,
       });
 
+      const compilerWarnings: string[] = (ir as any)?._warnings ?? [];
+      if (compilerWarnings.length > 0) {
+        setWarnings(prev => [
+          ...prev,
+          ...compilerWarnings.map((w, i) => ({
+            id: `compiler-${i}`,
+            type: 'warning' as const,
+            code: 'COMPILER_AUTO_FIX' as const,
+            message: w,
+          })),
+        ]);
+      }
+
       // Send to backend — topology IS the full IR (env already embedded)
       setCompiledTopology(ir as unknown as Record<string, unknown>);
       const { report } = await analyze({
@@ -1276,7 +1289,7 @@ params: params as Record<string, ParameterValue>,
       const parsed = parseAnalysisReport(report, hwConfig.precision, hwConfig.batchSize);
       setAnalysis(parsed.analysis);
       setPerLayer(parsed.perLayer);
-      setWarnings(parsed.warnings);
+      setWarnings(prev => [...prev, ...parsed.warnings]);
 
       // Backfill perLayerLatency and perLayerVram into the analysis state
       if (Object.keys(parsed.perLayerLatency).length > 0 || Object.keys(parsed.perLayerVram).length > 0) {
@@ -1485,6 +1498,19 @@ params: params as Record<string, ParameterValue>,
         numClasses: hwConfig.numClasses,
       });
 
+      const cw: string[] = (ir as any)?._warnings ?? [];
+      if (cw.length > 0) {
+        setWarnings(prev => [
+          ...prev,
+          ...cw.map((w, i) => ({
+            id: `compiler-${i}`,
+            type: 'warning' as const,
+            code: 'COMPILER_AUTO_FIX' as const,
+            message: w,
+          })),
+        ]);
+      }
+
       setCompiledTopology(ir as unknown as Record<string, unknown>);
 
       // Set initial compilation state
@@ -1558,9 +1584,8 @@ params: params as Record<string, ParameterValue>,
                 },
               } : prev);
             },
-            onDiagnostic: (diag) => {
-              // Optionally show diagnostics as they arrive
-              console.log('[neurax] Streaming diagnostic:', diag);
+            onDiagnostic: (_diag) => {
+              // Diagnostics processed silently
             },
             onCompleted: () => {
               setAnalysis(prev => prev ? {

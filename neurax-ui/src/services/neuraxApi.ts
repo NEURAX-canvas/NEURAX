@@ -436,16 +436,17 @@ export function analyzeStream(
   const controller = new AbortController();
 
   // Step 1: Start the job
-  request<{ job_id: string }>('/analyze/stream', {
+  request<{ job_id: string; view_token: string }>('/analyze/stream', {
     method: 'POST',
     body: JSON.stringify(body),
   })
     .then(async (response) => {
       const jobId = response.job_id;
+      const viewToken = response.view_token;
 
-      // Step 2: Connect to SSE stream
+      // Step 2: Connect to SSE stream with view token auth
       const baseUrl = NEURAX_API_BASE;
-      const eventSource = new EventSource(`${baseUrl}/analyze/stream/${jobId}`);
+      const eventSource = new EventSource(`${baseUrl}/analyze/stream/${jobId}?token=${encodeURIComponent(viewToken)}`);
 
       const cleanup = () => {
         eventSource.close();

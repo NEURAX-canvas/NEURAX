@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { MODEL_TEMPLATES } from '@/data/modelTemplates.ts';
 import {
   BookOpen,
   Copy,
@@ -100,8 +101,24 @@ export function VariantPresetsPanel({
 
   const familyCustomTemplates = customTemplates.filter(t => t.family === family);
 
+  // Local built-in templates (88 reference architectures, always available offline)
+  const localTemplates = useMemo(
+    () => Array.from(MODEL_TEMPLATES).filter(t => t.family === family),
+    [family]
+  );
+
+  const allPresets: Array<PresetMetadata | VariantPreset> = useMemo(
+    () => {
+      const localIds = new Set(localTemplates.map(t => t.id));
+      // dedup: local templates take priority over API
+      const apiPresets = builtInPresets.filter(m => !localIds.has(m.id));
+      return [...localTemplates, ...apiPresets];
+    },
+    [builtInPresets, localTemplates]
+  );
+
   // Combine for total count
-  const totalCount = builtInPresets.length + familyCustomTemplates.length;
+  const totalCount = allPresets.length + familyCustomTemplates.length;
 
   const normalizeTemplateNodes = useCallback((nodes: CanvasNode[]): CanvasNode[] => {
     const layerMap = new Map(getPluginLayers(family).map((layer) => [layer.type, layer]));
@@ -186,9 +203,11 @@ export function VariantPresetsPanel({
   }, []);
 
   const isCustom = (id: string) => id.startsWith('custom-');
+  const isLocalTpl = (id: string) => id.startsWith('tpl-');
 
   const handleAction = async (id: string, action: 'load' | 'clone', presetData?: VariantPreset) => {
-    if (presetData && isCustom(id)) {
+    // Custom and local templates load directly from memory
+    if (presetData && (isCustom(id) || isLocalTpl(id))) {
       if (action === 'load') onLoadPreset(presetData);
       else onClonePreset(presetData);
       return;
@@ -197,7 +216,6 @@ export function VariantPresetsPanel({
     try {
       setLoadingIds(prev => ({ ...prev, [id]: true }));
       const fullPreset = await getPreset(id);
-      // Backend returns nodes/connections as any[] but they match CanvasNode/Connection
       if (action === 'load') onLoadPreset(fullPreset as unknown as VariantPreset);
       else onClonePreset(fullPreset as unknown as VariantPreset);
     } catch (error) {
@@ -216,6 +234,7 @@ export function VariantPresetsPanel({
     const isExpanded = expandedId === preset.id;
     const custom = 'id' in preset && preset.id.startsWith('custom-');
     const isLoading = loadingIds[preset.id];
+    const localRef = 'id' in preset && preset.id.startsWith('tpl-');
 
     // Type guard/helper for counts
     let nodesCount = 0;
@@ -255,6 +274,12 @@ export function VariantPresetsPanel({
               <span className="text-sm font-medium truncate">
                 {preset.name}
               </span>
+              {localRef && (
+                <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-green-500/40 text-green-600">
+                  <BookOpen className="w-2 h-2 mr-0.5" />
+                  Reference
+                </Badge>
+              )}
               {custom && (
                 <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5 border-primary/40 text-primary">
                   <User className="w-2 h-2 mr-0.5" />
@@ -308,7 +333,7 @@ export function VariantPresetsPanel({
                 disabled={isLoading}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleAction(preset.id, 'load', custom ? (preset as VariantPreset) : undefined);
+                  handleAction(preset.id, 'load', (custom || localRef) ? (preset as VariantPreset) : undefined);
                 }}
               >
                 {/* Keep both SVG nodes mounted while loading. This avoids a
@@ -331,7 +356,7 @@ export function VariantPresetsPanel({
                 disabled={isLoading}
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleAction(preset.id, 'clone', custom ? (preset as VariantPreset) : undefined);
+                  handleAction(preset.id, 'clone', (custom || localRef) ? (preset as VariantPreset) : undefined);
                 }}
               >
                 <Copy className="w-3 h-3 mr-1" />
@@ -450,19 +475,19 @@ export function VariantPresetsPanel({
           </>
         )}
 
-        {/* Built-in section header (if there are other types) */}
-        {!loading && familyCustomTemplates.length > 0 && builtInPresets.length > 0 && (
+        {/* Built-in section header */}
+        {!loading && familyCustomTemplates.length > 0 && allPresets.length > 0 && (
           <div className="flex items-center gap-2 pb-1">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Reference Architectures
             </span>
             <Badge variant="secondary" className="text-[8px] px-1 py-0 h-3.5">
-              {builtInPresets.length}
+              {allPresets.length}
             </Badge>
           </div>
         )}
 
-        {!loading && builtInPresets.map(renderPresetCard)}
+        {!loading && allPresets.map(renderPresetCard)}
         {!loading && totalCount === 0 && (
           <div className="p-4 text-center text-sm text-muted-foreground">
             No presets available for this architecture family.

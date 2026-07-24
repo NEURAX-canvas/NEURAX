@@ -1872,8 +1872,8 @@ export function compileToNeuraxIR(
       const node = outerNodeMap.get(id);
       if (!node) continue;
       const incomingOuter = incomingMap.get(id) || [];
-      const inputTensors = incomingOuter.map(srcId => tensorNames.get(srcId)!).filter(Boolean);
-      const outTensor = tensorNames.get(id)!;
+      const inputTensors = incomingOuter.map(srcId => tensorNames.get(srcId)).filter(Boolean) as string[];
+      const outTensor = tensorNames.get(id) ?? `${id}_out`;
       blocks.push(buildAtomicBlock(node, incomingOuter, inputTensors, outTensor));
       continue;
     }
@@ -1894,7 +1894,7 @@ export function compileToNeuraxIR(
       c => groupNodeSet.has(c.from) && !groupNodeSet.has(c.to)
     );
 
-    const groupInputsOuter = (incomingMap.get(group.id) || []).map(srcId => tensorNames.get(srcId)!).filter(Boolean);
+    const groupInputsOuter = (incomingMap.get(group.id) || []).map(srcId => tensorNames.get(srcId)).filter(Boolean) as string[];
     const groupOutputsOuter = (() => {
       const outTensor = tensorNames.get(group.id);
       return outTensor ? [outTensor] : [];
@@ -2063,14 +2063,48 @@ export function compileToNeuraxIR(
   for (const block of blocks) {
     for (const inp of block.inputs) {
       if (inp && !producedTensors.has(inp)) {
-        // Allow if it's the first block (external input)
         if (block.inputs.length > 0 && blocks.indexOf(block) > 0) {
-          // Tensor not yet produced — might be an issue but don't break, just note
+          autoFixNotes.push(`Block "${block.id}" expects input tensor "${inp}" which is not produced by any prior block.`);
         }
       }
     }
     for (const out of block.outputs) {
       producedTensors.add(out);
+    }
+  }
+
+  // 6. Client-side shape validation (pass through topological order)
+  const blockOutputDims = new Map<string, number>();
+  for (const block of blocks) {
+    const params = block.params || {};
+    let outputDim: number | undefined;
+    switch (block.type) {
+      case 'Embedding':
+        outputDim = getNumericParam(params, ['d_model', 'dim', 'dModel']);
+        break;
+      case 'DenseProjection':
+      case 'LMHead':
+        outputDim = getNumericParam(params, ['out_features', 'outFeatures']);
+        break;
+      case 'RMSNorm':
+      case 'LayerNorm':
+        outputDim = getNumericParam(params, ['normalized_shape', 'dim', 'd_model']);
+        break;
+    }
+    if (outputDim != null) {
+      blockOutputDims.set(block.id, outputDim);
+    }
+    if (block.inputs.length > 0) {
+      const srcId = block.inputs[0];
+      const prevDim = blockOutputDims.get(srcId);
+      if (prevDim != null) {
+        const expectedIn = getNumericParam(params, ['in_features', 'inFeatures', 'd_model', 'hidden_size']);
+        if (expectedIn != null && expectedIn !== prevDim) {
+          autoFixNotes.push(
+            `Shape mismatch: "${block.id}" expects in_features=${expectedIn} but previous block outputs dim=${prevDim}.`
+          );
+        }
+      }
     }
   }
 
@@ -2271,5 +2305,6 @@ export function compileToNeuraxIR(
     training: trainingConfig,
     hardware: hardwareConfig,
     ...(dataConfig && { data: dataConfig }),
+    ...(autoFixNotes.length > 0 && { _warnings: autoFixNotes }),
   };
 }

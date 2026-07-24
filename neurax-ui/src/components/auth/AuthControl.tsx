@@ -124,14 +124,6 @@ export function AuthControl({
     resetDialog();
   };
 
-  // ── Transition to API key setup after successful auth ──
-  const goToApiKeySetup = () => {
-    // Pre-fill model based on provider
-    const defaults = PROVIDER_DEFAULTS[apiProvider];
-    setApiModel(defaults.defaultModel);
-    setSetupStep('apikey');
-  };
-
   // ── API Key Save ──
   const onSaveApiKey = () => {
     if (!apiKeyValue.trim()) {
@@ -179,8 +171,9 @@ export function AuthControl({
       closeDialog();
       navigate('/app');
     } else {
-      toast({ title: 'Signed in!', description: 'Now configure your AI agent API key.' });
-      goToApiKeySetup();
+      toast({ title: 'API key needed', description: 'Configure your API key in Account settings to use Neurax Agent.' });
+      closeDialog();
+      navigate('/account');
     }
   };
 
@@ -217,14 +210,9 @@ export function AuthControl({
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
-      if (hasApiKey) {
-        toast({ title: 'Signed in' });
-        closeDialog();
-        navigate('/app');
-      } else {
-        toast({ title: 'Signed in', description: 'Configure your AI agent API key to continue.' });
-        goToApiKeySetup();
-      }
+      toast({ title: 'Signed in' });
+      closeDialog();
+      navigate(hasApiKey ? '/app' : '/account');
     } catch (e: any) {
       toast({ title: 'Sign in failed', description: String(e?.message ?? e), variant: 'destructive' });
     } finally {
@@ -256,6 +244,7 @@ export function AuthControl({
       if (error) throw error;
     } catch (e: any) {
       toast({ title: 'OAuth sign in failed', description: String(e?.message ?? e), variant: 'destructive' });
+    } finally {
       setBusy(false);
     }
   };
@@ -320,7 +309,7 @@ export function AuthControl({
             {avatarEmoji ? (
               <span className="h-full w-full flex items-center justify-center text-lg">{avatarEmoji}</span>
             ) : (
-              <img src={avatarSrc!} alt="avatar" className="h-full w-full object-cover" />
+              <img src={avatarSrc ?? ''} alt="avatar" className="h-full w-full object-cover" />
             )}
           </button>
           <span className="hidden sm:inline text-xs text-white/60 font-medium max-w-[100px] truncate">

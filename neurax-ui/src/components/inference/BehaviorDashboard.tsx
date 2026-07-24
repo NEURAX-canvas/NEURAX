@@ -16,7 +16,7 @@ import { ArchitectureFamily } from '@/types/plugins.ts';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { Progress } from '@/components/ui/progress.tsx';
 
-import { InferenceReport } from '@/services/neuraxApi.ts';
+import { InferenceReport, StabilityLevel, InferenceRiskLevel } from '@/services/neuraxApi.ts';
 
 interface BehaviorDashboardProps {
   architectureType: ArchitectureFamily;
@@ -25,9 +25,6 @@ interface BehaviorDashboardProps {
   error: string | null;
 }
 
-type StabilityLevel = 'stable' | 'drift' | 'unstable' | 'chaotic';
-type RiskLevel = 'low' | 'medium' | 'high';
-
 const stabilityColors: Record<StabilityLevel, string> = {
   stable: 'text-success bg-success/10 border-success/30',
   drift: 'text-warning bg-warning/10 border-warning/30',
@@ -35,7 +32,7 @@ const stabilityColors: Record<StabilityLevel, string> = {
   chaotic: 'text-destructive bg-destructive/20 border-destructive/50',
 };
 
-const riskColors: Record<RiskLevel, string> = {
+const riskColors: Record<InferenceRiskLevel, string> = {
   low: 'bg-success text-success-foreground',
   medium: 'bg-warning text-warning-foreground',
   high: 'bg-destructive text-destructive-foreground',
@@ -167,8 +164,8 @@ function NoiseScheduleChart({ data }: { data: number[] }) {
   );
 }
 
-function HallucinationRiskCard({ risk, confidence }: { risk: RiskLevel; confidence: number }) {
-  const descriptions: Record<RiskLevel, string> = {
+function HallucinationRiskCard({ risk, confidence }: { risk: InferenceRiskLevel; confidence: number }) {
+  const descriptions: Record<InferenceRiskLevel, string> = {
     low: 'Model outputs are grounded in context with minimal fabrication risk.',
     medium: 'Some outputs may deviate from provided context. Verify critical information.',
     high: 'High likelihood of generating unsupported claims. Manual review recommended.',
@@ -380,7 +377,7 @@ function RouterStabilityCard({ stability, distribution }: { stability: number; d
   );
 }
 
-function InferenceRiskOverview({ risks }: { risks: Record<string, RiskLevel> }) {
+function InferenceRiskOverview({ risks }: { risks: Record<string, InferenceRiskLevel> }) {
   const riskLabels: Record<string, { label: string; tooltip: string }> = {
     coherence: { 
       label: 'Coherence Risk', 
@@ -507,7 +504,7 @@ export function BehaviorDashboard({ architectureType, report, loading, error }: 
             )}
 
             {/* Widget 10 — Inference Risk Overview */}
-            <InferenceRiskOverview risks={report.risk_overview as Record<string, RiskLevel>} />
+            <InferenceRiskOverview risks={report.risk_overview as Record<string, InferenceRiskLevel>} />
           </div>
         )}
       </div>

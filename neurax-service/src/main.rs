@@ -343,6 +343,8 @@ type HmacSha256 = Hmac<Sha256>;
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct JobInfo {
     pub job_id: String,
+    pub user_id: String,
+    pub view_token: String,
     pub status: String,
     pub created_at_ms: u64,
     pub completed_at_ms: Option<u64>,
@@ -434,6 +436,7 @@ struct CompareResponse {
 #[derive(Debug, serde::Serialize)]
 struct AnalyzeStreamResponse {
     job_id: String,
+    view_token: String,
 }
 
 fn bearer_token_from_req(req: &HttpRequest) -> Result<String, HttpResponse> {
@@ -1403,14 +1406,17 @@ async fn analyze(http_req: HttpRequest, req: web::Json<AnalyzeRequest>) -> impl 
 
 async fn analyze_compare(
     http_req: HttpRequest,
+    state: web::Data<AppState>,
     req: web::Json<CompareRequest>,
 ) -> impl Responder {
     let start = std::time::Instant::now();
     tracing::info!("[COMPARE] Request received with {} configs", req.configs.len());
 
-    if let Err(resp) = require_verified_email(&http_req).await {
-        return resp;
-    }
+    let _user_id = match auth_any(&http_req, &state).await {
+        Ok(id) => id,
+        Err(resp) => return resp,
+    };
+    let _ = check_api_key_scope(&http_req, &state, "analyze");
 
     // Limit the number of configs to prevent abuse
     if req.configs.len() > 8 {
@@ -1699,9 +1705,10 @@ async fn analyze_stream_start(
     req: web::Json<AnalyzeStreamRequest>,
     state: web::Data<AppState>,
 ) -> impl Responder {
-    if let Err(resp) = require_verified_email(&http_req).await {
-        return resp;
-    }
+    let user = match require_verified_email(&http_req).await {
+        Ok(u) => u,
+        Err(resp) => return resp,
+    };
 
     let job_id = uuid::Uuid::new_v4().to_string();
     let created_at = std::time::SystemTime::now()
@@ -1714,8 +1721,11 @@ async fn analyze_stream_start(
     state.channels.insert(job_id.clone(), tx);
 
     // Insert job info
+    let view_token = uuid::Uuid::new_v4().to_string();
     state.jobs.insert(job_id.clone(), JobInfo {
         job_id: job_id.clone(),
+        user_id: user.id.clone(),
+        view_token: view_token.clone(),
         status: "running".to_string(),
         created_at_ms: created_at,
         completed_at_ms: None,
@@ -1847,19 +1857,31 @@ async fn analyze_stream_start(
         });
     });
 
-    HttpResponse::Accepted().json(AnalyzeStreamResponse { job_id })
+    HttpResponse::Accepted().json(AnalyzeStreamResponse { job_id, view_token })
 }
 
 /// GET /analyze/stream/{job_id} — SSE endpoint for streaming analysis events
+/// Auth: requires ?token=<view_token> query parameter
 async fn analyze_stream_events(
     path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
     state: web::Data<AppState>,
 ) -> HttpResponse {
     let job_id = path.into_inner();
 
-    // Check if job exists
-    if !state.jobs.contains_key(&job_id) {
-        return HttpResponse::NotFound().body("Job not found");
+    // Auth via view token
+    let token = match query.get("token") {
+        Some(t) => t.clone(),
+        None => return HttpResponse::Unauthorized().body("Missing view token"),
+    };
+
+    // Check job exists and token matches
+    let owned = match state.jobs.get(&job_id) {
+        Some(job) => job.view_token == token,
+        None => return HttpResponse::NotFound().body("Job not found"),
+    };
+    if !owned {
+        return HttpResponse::Forbidden().body("Invalid token");
     }
 
     // Get or create a receiver
@@ -1944,9 +1966,23 @@ async fn analyze_stream_events(
 /// GET /analyze/result/{job_id} — Get the final result of a streaming analysis
 async fn analyze_result(
     path: web::Path<String>,
+    req: HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    let user = match require_verified_email(&req).await {
+        Ok(u) => u,
+        Err(resp) => return resp,
+    };
     let job_id = path.into_inner();
+
+    // Verify job ownership
+    match state.jobs.get(&job_id) {
+        Some(job) if job.user_id != user.id => {
+            return HttpResponse::Forbidden().body("Access denied");
+        }
+        None => return HttpResponse::NotFound().body("Job not found"),
+        _ => {}
+    }
 
     match state.jobs.get(&job_id) {
         Some(job) => {
@@ -1980,9 +2016,22 @@ async fn analyze_result(
 /// GET /analyze/status/{job_id} — Get the status of a streaming analysis job
 async fn analyze_status(
     path: web::Path<String>,
+    req: HttpRequest,
     state: web::Data<AppState>,
 ) -> impl Responder {
+    let user = match require_verified_email(&req).await {
+        Ok(u) => u,
+        Err(resp) => return resp,
+    };
     let job_id = path.into_inner();
+
+    match state.jobs.get(&job_id) {
+        Some(job) if job.user_id != user.id => {
+            return HttpResponse::Forbidden().body("Access denied");
+        }
+        None => return HttpResponse::NotFound().body("Job not found"),
+        _ => {}
+    }
 
     match state.jobs.get(&job_id) {
         Some(job) => HttpResponse::Ok().json(serde_json::json!({
@@ -2319,83 +2368,7 @@ struct ComplianceThresholds {
 }
 
 async fn compliance_config() -> impl Responder {
-    let regulations = vec![
-        ComplianceRegulation {
-            name: "EU AI Act Phase 1".to_string(),
-            year: 2027,
-            limit: Some(300.0),
-            unit: Some("GFLOPs/request".to_string()),
-            status: "upcoming".to_string(),
-            description: "General-purpose AI models trained with >10²⁵ FLOPs must comply with transparency and safety obligations.".to_string(),
-            region: "EU".to_string(),
-        },
-        ComplianceRegulation {
-            name: "EU AI Act Phase 2".to_string(),
-            year: 2028,
-            limit: Some(150.0),
-            unit: Some("GFLOPs/request".to_string()),
-            status: "upcoming".to_string(),
-            description: "Stricter limits for high-risk AI applications in critical infrastructure, law enforcement, and biometrics.".to_string(),
-            region: "EU".to_string(),
-        },
-        ComplianceRegulation {
-            name: "Carbon Reporting (CSRD)".to_string(),
-            year: 2026,
-            limit: None,
-            unit: None,
-            status: "active".to_string(),
-            description: "Corporate Sustainability Reporting Directive requires disclosure of energy consumption and CO₂ emissions for large companies.".to_string(),
-            region: "EU".to_string(),
-        },
-        ComplianceRegulation {
-            name: "Digital Services Act".to_string(),
-            year: 2026,
-            limit: None,
-            unit: None,
-            status: "active".to_string(),
-            description: "Requires transparency reporting for very large online platforms using AI, including compute disclosure.".to_string(),
-            region: "EU".to_string(),
-        },
-        ComplianceRegulation {
-            name: "US AI Executive Order".to_string(),
-            year: 2024,
-            limit: Some(1e26),
-            unit: Some("FLOPs (training)".to_string()),
-            status: "active".to_string(),
-            description: "Companies must report AI models trained with compute exceeding 10²⁶ FLOPs or biological sequence models above defined thresholds.".to_string(),
-            region: "US".to_string(),
-        },
-        ComplianceRegulation {
-            name: "Canada AIDA".to_string(),
-            year: 2027,
-            limit: None,
-            unit: None,
-            status: "proposed".to_string(),
-            description: "Artificial Intelligence and Data Act — high-impact AI systems must meet safety, transparency, and monitoring requirements.".to_string(),
-            region: "Canada".to_string(),
-        },
-    ];
-
-    let thresholds = ComplianceThresholds {
-        high_risk_gflops: 300.0,
-        carbon_report_tonnes: 50.0,
-        dsa_disclosure_flops: 1e25,
-        cost_review_usd: 100_000.0,
-    };
-
-    let recommendations = vec![
-        "Monitor EU AI Act Phase 1 compliance for models exceeding 300 GFLOPs/request".to_string(),
-        "Prepare CSRD carbon reporting for training runs exceeding 50 tonnes CO₂e/year".to_string(),
-        "Consider FP8 or INT8 quantization to reduce inference compute below regulatory thresholds".to_string(),
-        "Document all training compute for models above 10²⁵ FLOPs (US EO requirement)".to_string(),
-        "Implement energy monitoring for GPU clusters to track real-time carbon footprint".to_string(),
-    ];
-
-    HttpResponse::Ok().json(ComplianceConfig {
-        regulations,
-        thresholds,
-        recommendations,
-    })
+    HttpResponse::Ok().json(get_compliance_data())
 }
 
 // ─── API Key Management ─────────────────────────────────────────────
@@ -2597,7 +2570,9 @@ async fn agent_inference(req: HttpRequest, state: web::Data<AppState>, body: web
     };
 
     // Extract inference params from request or use defaults
-    let params = neurax_ir::inference::InferenceParams::default();
+    let params: neurax_ir::inference::InferenceParams = body.get("params")
+        .and_then(|p| serde_json::from_value(p.clone()).ok())
+        .unwrap_or_default();
     let inference_report = neurax_ir::inference::InferencePass::run(&params);
 
     // Also run analysis to get the full report
@@ -2620,11 +2595,7 @@ async fn agent_inference(req: HttpRequest, state: web::Data<AppState>, body: web
 }
 
 /// POST /agent/compare — Compare multiple hardware configs
-/// Delegates to analyze_compare after API key auth check
-async fn agent_compare(http_req: HttpRequest, body: web::Json<CompareRequest>) -> impl Responder {
-    // Auth is handled by analyze_compare internally
-    analyze_compare(http_req, body).await
-}
+/// Now uses the unified analyze_compare handler (supports both JWT and API key auth)
 
 /// GET /agent/audit — Audit a model: run analysis + inference + compliance check
 async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Json<serde_json::Value>) -> impl Responder {
@@ -2725,7 +2696,7 @@ async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Js
 
     // Check inference stability
     let stability_score = inference_report.stability_index.score;
-    if stability_score < 50.0 {
+    if stability_score < 0.5 {
         audit_issues.push(serde_json::json!({
             "category": "inference",
             "severity": "warning",
@@ -2755,7 +2726,7 @@ async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Js
     }))
 }
 
-/// GET /agent/carbon — Get carbon/cost analysis for a model
+/// POST /agent/carbon — Get carbon/cost analysis for a model
 async fn agent_carbon(req: HttpRequest, state: web::Data<AppState>, body: web::Json<serde_json::Value>) -> impl Responder {
     let _user_id = match auth_any(&req, &state).await {
         Ok(id) => id,
@@ -3061,7 +3032,7 @@ async fn main() -> std::io::Result<()> {
             // ─── Agent Control Endpoints (API key auth) ─────────────
             .route("/agent/analyze", web::post().to(agent_analyze))
             .route("/agent/inference", web::post().to(agent_inference))
-            .route("/agent/compare", web::post().to(agent_compare))
+            .route("/agent/compare", web::post().to(analyze_compare))
             .route("/agent/audit", web::post().to(agent_audit))
             .route("/agent/carbon", web::post().to(agent_carbon))
             .route("/agent/compliance", web::get().to(agent_compliance))

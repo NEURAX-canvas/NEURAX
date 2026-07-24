@@ -179,18 +179,18 @@ const Hero = () => (
       <div className="nx-fade-up inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full" style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.accent }} />
         <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
-          Analytical Compiler v0.1 — Open Source
+          AI Architecture Compiler · Research-Grade · Open Source
         </span>
       </div>
 
       <h1 className="nx-fade-up-1 text-[48px] sm:text-[60px] lg:text-[76px] font-bold leading-[1.05] tracking-[-0.03em] mb-6 text-balance" style={{ color: C.text }}>
-        Know your model's cost{' '}
-        <span className="nx-shimmer">before you train.</span>
+        Design AI that{' '}
+        <span className="nx-shimmer">actually ships.</span>
       </h1>
 
-      <p className="nx-fade-up-2 max-w-[640px] mx-auto text-[17px] leading-[1.6] mb-10 text-balance" style={{ color: C.muted }}>
-        NEURAX is the analytical compiler that predicts cost, memory, speed, and feasibility
-        of any neural architecture — before a single GPU hour is spent. <span className="font-semibold" style={{ color: C.text }}>100% open source.</span>
+      <p className="nx-fade-up-2 max-w-[680px] mx-auto text-[17px] leading-[1.6] mb-10 text-balance" style={{ color: C.muted }}>
+        NEURAX is a free, open-source architecture compiler that <span className="font-semibold" style={{ color: C.text }}>covers 11 architecture families and 680+ configurable block types</span> —
+        from Transformers to SSMs, Diffusion to SNNs. Research-grade, deterministic, and interoperable with every major framework.
       </p>
 
       <div className="nx-fade-up-3 flex flex-wrap items-center justify-center gap-4 mb-16">
@@ -199,7 +199,7 @@ const Hero = () => (
           style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}
         >
           <Link to="/app">
-            Start Analyzing Free
+            Start Building Free
             <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
           </Link>
         </Button>
@@ -213,10 +213,10 @@ const Hero = () => (
 
       <div className="nx-fade-up-4 grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-[760px] mx-auto">
         {[
-          { display: '±3–8%', label: 'Accuracy vs Real HW' },
+          { display: true, target: 11, suffix: '', label: 'Architecture Families' },
+          { display: true, target: 680, suffix: '+', label: 'Configurable Block Types' },
           { display: true, target: 55, suffix: '+', label: 'Metrics per Analysis' },
-          { display: true, target: 80, suffix: '+', label: 'Architecture Families' },
-          { display: '<50ms', label: 'Analysis Time' },
+          { display: '<50ms', label: 'End-to-End Analysis' },
         ].map((s) => (
           <div key={s.label}
             className="group rounded-[10px] p-4 text-center transition-all duration-200 hover:scale-[1.03] hover:-translate-y-0.5"
@@ -237,9 +237,9 @@ const Hero = () => (
    PROBLEM SECTION
    ═══════════════════════════════════════════════════════ */
 const PROBLEMS = [
-  { icon: Cpu, title: 'Months of GPU time wasted', desc: 'Teams spend weeks training architectures that OOM at step 10,000.', stat: '$2M+', statLabel: 'avg. cost of a failed training run' },
-  { icon: Brain, title: 'Blind architecture decisions', desc: 'Choosing between architectures? Without cost estimates, you\'re guessing.', stat: '73%', statLabel: 'models that need redesign after first training' },
-  { icon: BarChart3, title: 'Production surprises', desc: 'Inference latency spikes. VRAM overflow. Discovered in production, not design.', stat: '5×', statLabel: 'cost overrun when issues surface late' },
+  { icon: Cpu, title: 'Architecture roulette', desc: 'Teams commit months to architectures that fail at step one — because nobody runs the numbers first.', stat: '$2M+', statLabel: 'average cost of a failed training run' },
+  { icon: Brain, title: 'Blind design decisions', desc: 'Transformer vs Mamba? 7B vs 13B? Without instant analysis, every architecture choice is a gamble.', stat: '73%', statLabel: 'of models need redesign after first training' },
+  { icon: BarChart3, title: 'Production fire drills', desc: 'Latency spikes, VRAM limits, hardware mismatches — discovered only after deployment.', stat: '5×', statLabel: 'cost overrun when issues surface in production' },
 ];
 
 const ProblemSection = () => (
@@ -247,12 +247,12 @@ const ProblemSection = () => (
     <div className="mx-auto max-w-[1100px] px-6 py-24">
       <div className="text-center mb-14">
         <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
-          Building AI is{' '}
-          <span style={{ color: C.muted }}>expensive guesswork.</span>
+          Most AI models never{' '}
+          <span style={{ color: C.muted }}>make it to production.</span>
         </h2>
         <p className="text-[16px] max-w-[600px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
-          Organizations waste millions on architectures that fail — not because the ideas are bad,
-          but because there's no way to predict before committing GPU hours.
+          Not because the ideas are bad — but because teams have no way to predict cost, memory, or
+          feasibility before committing GPU hours. NEURAX closes that gap.
         </p>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -290,12 +290,12 @@ const ProblemSection = () => (
    FEATURES
    ═══════════════════════════════════════════════════════ */
 const FEATURES = [
-  { icon: Layers, title: 'Architecture Simulation', desc: 'Real-time neural system modeling. Define any topology and get instant FLOPs, memory, and latency predictions.' },
-  { icon: Shield, title: 'Production Readiness', desc: 'Compile-ready architecture analysis in Rust. From design to deployment with deterministic cost estimates.' },
-  { icon: Zap, title: 'Inference Intelligence', desc: 'Predict inference stability, hallucination risk, and sampling volatility before serving a single request.' },
-  { icon: Boxes, title: 'Time Machine', desc: 'Rollback architecture states. Compare runs across hardware. Version your intelligence with full analytical history.' },
-  { icon: Network, title: '10-Pass Pipeline', desc: 'Run 10 deterministic IR passes from architecture to report. Parallel execution for independent passes.' },
-  { icon: Sparkles, title: 'Neurax Agent', desc: 'AI-powered assistant that helps you design and optimize architectures. Connect your own API key for intelligent guidance.' },
+  { icon: Layers, title: 'Instant Architecture Intelligence', desc: 'Design any neural topology and get instant FLOPs, memory, and latency predictions — no GPU required.' },
+  { icon: Shield, title: 'Production-Ready Analysis', desc: 'Deterministic cost engine built in Rust. Know exactly how your model will behave in production before writing a single training script.' },
+  { icon: Zap, title: 'Inference Quality Prediction', desc: 'Predict inference stability, hallucination risk, and sampling behavior before serving your first request.' },
+  { icon: Boxes, title: 'Time Machine', desc: 'Roll back architecture states, compare hardware profiles, and version your designs with complete analytical history.' },
+  { icon: Network, title: '10-Pass Compiler Pipeline', desc: 'A deterministic 10-pass IR pipeline transforms your architecture into a complete analytical report in under 50ms.' },
+  { icon: Sparkles, title: 'Neurax Agent', desc: 'AI-powered co-pilot that helps you design, analyze, and optimize architectures. Connect your preferred model — your key, your privacy.' },
 ];
 
 const FeaturesSection = () => (
@@ -303,10 +303,12 @@ const FeaturesSection = () => (
     <div className="mx-auto max-w-[1100px] px-6 py-24">
       <div className="text-center mb-14">
         <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
-          Everything you need to ship with confidence
+          Research-grade analysis.{' '}
+          <span style={{ color: C.muted }}>Deterministic by design.</span>
         </h2>
-        <p className="text-[16px] max-w-[550px] mx-auto" style={{ color: C.muted }}>
-          From architecture design to production deployment — one unified analytical platform.
+        <p className="text-[16px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          Every architecture family ever published — from foundational to experimental — can be modelled, analyzed, and exported
+          through NEURAX. <span className="font-semibold" style={{ color: C.text }}>Interoperable by default, reproducible every time.</span>
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -341,48 +343,69 @@ const FeaturesSection = () => (
    ARCHITECTURES
    ═══════════════════════════════════════════════════════ */
 const FAMILIES = [
-  { title: 'Transformer / LLM', ops: ['Multi-Head Attention', 'Feed Forward', 'LayerNorm', 'GQA', 'MQA', 'RoPE'], models: ['GPT-4', 'LLaMA 3', 'BERT', 'Mistral', 'DeepSeek'] },
-  { title: 'CNN / Vision', ops: ['Conv2D', 'MaxPool', 'BatchNorm', 'Depthwise Conv', 'Inception'], models: ['ResNet-152', 'YOLOv8', 'EfficientNet', 'U-Net'] },
-  { title: 'State Space (Mamba)', ops: ['SSM Block', 'Selective Scan', 'Gated MLP'], models: ['Mamba-2', 'S4', 'H3', 'RWKV'] },
-  { title: 'MoE', ops: ['Expert Router', 'Top-K Gate', 'Expert FFN', 'Load Balancer'], models: ['Mixtral 8×7B', 'Switch Transformer'] },
-  { title: 'Diffusion', ops: ['U-Net', 'Cross-Attention', 'Noise Scheduler', 'DiT'], models: ['Stable Diffusion 3', 'DALL-E 3', 'Imagen'] },
-  { title: 'GNN / RNN / More', ops: ['Message Passing', 'GAT', 'LSTM', 'GRU'], models: ['GCN', 'GraphSAGE', 'GAT', 'LSTM'] },
+  { title: 'Transformer / LLM', color: '#458588', ops: ['MHA / GQA / MLA', 'Flash Attention', 'SwiGLU FFN', 'RoPE / ALiBi', 'RMSNorm', 'LoRA / DoRA'], models: ['GPT-4', 'LLaMA 3', 'BERT', 'Mistral', 'DeepSeek'], blocks: '~66' },
+  { title: 'CNN / Vision', color: '#83a598', ops: ['Conv2D/3D', 'Depthwise / Deformable', 'BatchNorm / GroupNorm', 'ResNet / DenseNet', 'ViT Patch Embed', 'U-Net / FPN'], models: ['ResNet-152', 'YOLOv8', 'EfficientNet', 'U-Net'], blocks: '~116' },
+  { title: 'State Space (Mamba)', color: '#8ec07c', ops: ['S4 / S6 Block', 'Selective Scan', 'LRU / H3 / Hyena', 'VSS / Mamba-2', 'SSM Discretize', 'Gated MLP'], models: ['Mamba-2', 'S4', 'H3', 'RWKV'], blocks: '~97' },
+  { title: 'MoE', color: '#b16286', ops: ['Top-K Router', 'Expert-Choice', 'Noisy / PEER', 'FFN / Gated Expert', 'Load Balancing', 'Fine-Grained MoE'], models: ['Mixtral 8×7B', 'Switch Transformer', 'DeepSeek-V2'], blocks: '~67' },
+  { title: 'Diffusion Models', color: '#d65d0e', ops: ['U-Net Denoiser', 'DiT / MMDiT', 'Cross Attention', 'CFG / IP-Adapter', 'DDPM / DDIM', 'Flow Matching'], models: ['SD 3', 'DALL-E 3', 'Imagen', 'Flux'], blocks: '~75' },
+  { title: 'GAN', color: '#fabd2f', ops: ['Generator / Critic', 'StyleGAN Synthesis', 'BigGAN ResBlock', 'PatchGAN', 'Adversarial Loss', 'CycleGAN'], models: ['StyleGAN 3', 'BigGAN', 'CycleGAN', 'ESRGAN'], blocks: '~82' },
+  { title: 'GNN', color: '#fb4934', ops: ['GCNConv / GATConv', 'SAGEConv / GIN', 'Message Passing', 'TopK / SAG Pooling', 'RGCN / HGT', 'EdgeConv / DNA'], models: ['GCN', 'GraphSAGE', 'GAT'], blocks: '~46' },
+  { title: 'RNN / LSTM / GRU', color: '#fe8019', ops: ['LSTM / GRU Cell', 'BiLSTM / BiGRU', 'ConvLSTM / ST-LSTM', 'SRU / QRNN', 'Peephole / IndyLSTM', 'Seq2Seq Attention'], models: ['LSTM', 'GRU', 'ConvLSTM'], blocks: '~70' },
+  { title: 'Reinforcement Learning', color: '#cc241d', ops: ['Policy Head', 'Value Head', 'Actor-Critic', 'Dueling DQN', 'Advantage Stream', 'PPO Stream'], models: ['PPO', 'DQN', 'A2C'], blocks: '~12' },
+  { title: 'Spiking Neural Networks', color: '#d3869b', ops: ['LIF Neuron', 'Spike Encoder', 'Rate Encoding', 'STDP Synapse', 'Synaptic Layer', 'Neuromorphic'], models: ['SNN Classifier', 'Neuromorphic'], blocks: '~12' },
+  { title: 'Experimental', color: '#8f3f71', ops: ['Hybrid SSM+Attention', 'Custom Blocks', 'Research Primitives', 'Architecture Proposals', 'Experimental Macros', 'Custom Formulas'], models: ['Jamba', 'Lumina-Next', 'Custom Architectures'], blocks: '∞' },
 ];
 
 const ArchitecturesSection = () => (
   <section id="architectures" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
-    <div className="mx-auto max-w-[1100px] px-6 py-24">
+    <div className="mx-auto max-w-[1200px] px-6 py-24">
       <div className="text-center mb-14">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6" style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
+          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+            Research-Grade · 100% Reproducible
+          </span>
+        </div>
         <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
-          80+ architecture families, one canvas
+          11 architecture families.{' '}
+          <span style={{ color: C.muted }}>680+ configurable blocks.</span>
         </h2>
-        <p className="text-[16px] max-w-[550px] mx-auto" style={{ color: C.muted }}>
-          Design any model type with specialized blocks and family-specific analytical formulas.
+        <p className="text-[16px] max-w-[600px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          Every major neural architecture family — from Transformers to Spiking Neural Networks — is fully representable
+          on the NEURAX canvas. Design any model, in any framework, with full analytical fidelity.
         </p>
+        <div className="flex items-center justify-center gap-6 mt-8 text-[12px] font-mono" style={{ color: C.faint }}>
+          <span>Torch · ONNX · Rust/Burn · Triton · MLIR · Megatron-LM · JSON</span>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
         {FAMILIES.map((f) => (
           <div key={f.title}
-            className="rounded-[10px] p-5 transition-all duration-200 hover:-translate-y-0.5"
+            className="rounded-[10px] p-4 transition-all duration-200 hover:-translate-y-0.5"
             style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
           >
-            <h3 className="text-[14px] font-semibold mb-3" style={{ color: C.accent }}>
-              {f.title}
-            </h3>
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {f.ops.map((op) => (
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[14px] font-semibold" style={{ color: C.text }}>{f.title}</h3>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: `${f.color}20`, color: f.color }}>
+                {f.blocks}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1 mb-3">
+              {f.ops.slice(0, 4).map((op) => (
                 <span key={op}
-                  className="text-[10px] px-2 py-0.5 rounded-[4px] font-mono"
-                  style={{ color: C.muted, backgroundColor: C.bg, border: `1px solid ${C.border}` }}
+                  className="text-[9px] px-1.5 py-0.5 rounded-[3px] font-mono"
+                  style={{ color: f.color, backgroundColor: `${f.color}15` }}
                 >
                   {op}
                 </span>
               ))}
+              {f.ops.length > 4 && (
+                <span className="text-[9px] font-mono" style={{ color: C.faint }}>+{f.ops.length - 4}</span>
+              )}
             </div>
-            <div style={{ height: '1px', backgroundColor: C.border, margin: '12px 0' }} />
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
+            <div style={{ height: '1px', backgroundColor: C.border, margin: '8px 0' }} />
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
               {f.models.map((m) => (
-                <span key={m} className="text-[12px] font-medium" style={{ color: C.muted }}>{m}</span>
+                <span key={m} className="text-[11px]" style={{ color: C.muted }}>{m}</span>
               ))}
             </div>
           </div>
@@ -396,9 +419,9 @@ const ArchitecturesSection = () => (
    PIPELINE
    ═══════════════════════════════════════════════════════ */
 const STEPS = [
-  { num: '01', title: 'Define your topology', desc: 'Write a topology.json with blocks and shapes. Or import from HuggingFace. Or use the visual canvas.', icon: '○' },
-  { num: '02', title: 'Run the 10-pass analysis', desc: 'NEURAX compiles your architecture through 10 IR passes — from Architecture to Report — in milliseconds.', icon: '◉' },
-  { num: '03', title: 'Get the full report', desc: '55+ metrics: FLOPs, VRAM, latency, per-layer breakdown, OOM risk, cost projections, and more.', icon: '◎' },
+  { num: '01', title: 'Define your architecture', desc: 'Use the visual canvas, write a topology.json, or import from HuggingFace. Design any model in seconds.', icon: '○' },
+  { num: '02', title: 'Run the 10-pass analysis', desc: 'NEURAX compiles your design through a deterministic pipeline — 10 IR passes, 55+ metrics, under 50ms.', icon: '◉' },
+  { num: '03', title: 'Ship with a full report', desc: 'Get FLOPs, VRAM, latency, per-layer breakdown, OOM risk, hardware fit, and cost projections — before spending a cent.', icon: '◎' },
 ];
 
 const PipelineSection = () => (
@@ -406,10 +429,11 @@ const PipelineSection = () => (
     <div className="mx-auto max-w-[900px] px-6 py-24">
       <div className="text-center mb-14">
         <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
-          From JSON to full report in milliseconds
+          Design. Analyze. Export.
         </h2>
-        <p className="text-[16px] max-w-[520px] mx-auto" style={{ color: C.muted }}>
-          Three steps. No GPU required. Deterministic results every time.
+        <p className="text-[16px] max-w-[560px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          10 compiler passes. 55+ metrics. Export to PyTorch, ONNX, Rust/Burn, Triton, MLIR, or Megatron-LM.
+          <span className="font-semibold" style={{ color: C.text }}> Zero GPU time. Fully deterministic.</span>
         </p>
       </div>
       <div className="relative">
@@ -466,17 +490,17 @@ const AgentSetupPreview = () => {
 
 const RustSection = () => {
   const RUST_POINTS = [
-    { label: 'Memory Safety', desc: 'No runtime GC pauses. Zero-cost abstractions. Built for a compiler.' },
-    { label: 'Blazing Performance', desc: 'FLOPs analysis on 8B params in <50ms. Benchmarked with criterion.' },
-    { label: 'Deterministic', desc: 'Same topology always produces the same report. No probabilistic surprises.' },
-    { label: 'Concurrent by Design', desc: 'Per-layer analysis parallelized with rayon. DAG via petgraph.' },
+    { label: 'Memory Safety', desc: 'No GC pauses, no undefined behavior. The engine is built for correctness from the ground up.' },
+    { label: 'Blazing Performance', desc: 'Full analysis on 8B-param architectures in under 50ms. Benchmarked and battle-tested.' },
+    { label: 'Deterministic by Design', desc: 'Same topology always produces the identical report. No randomness, no surprises.' },
+    { label: 'Concurrent by Default', desc: 'Per-layer analysis parallelized with rayon. DAG resolved via petgraph.' },
   ];
 
   const AGENT_FEATURES = [
-    { label: 'AI-Powered Design Help', desc: 'Ask Neurax Agent to suggest optimal architectures for your use case.' },
-    { label: 'Your API Key, Your Model', desc: 'Connect OpenAI, Anthropic, Google, or Mistral — your key, your privacy.' },
-    { label: 'Analysis Explanations', desc: 'Get plain-English explanations of metrics, bottlenecks, and trade-offs.' },
-    { label: 'Automated Optimization', desc: 'Agent recommends architecture changes to reduce cost and improve efficiency.' },
+    { label: 'Intelligent Design Assistance', desc: 'Describe your use case, and Neurax Agent suggests optimal architectures with full cost breakdowns.' },
+    { label: 'Your Model, Your Privacy', desc: 'Connect OpenAI, Anthropic, Google, or Mistral. Your API key stays in your browser — never on our servers.' },
+    { label: 'Plain-English Explanations', desc: 'Complex metrics, bottlenecks, and trade-offs explained in language anyone can understand.' },
+    { label: 'Automated Optimization', desc: 'Agent analyzes your design and recommends changes to reduce cost, improve speed, and fit your hardware.' },
   ];
 
   return (
@@ -486,19 +510,22 @@ const RustSection = () => {
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full" style={{ backgroundColor: `${C.green}15`, border: `1px solid ${C.green}30` }}>
             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.green }} />
             <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.green }}>
-              100% Open Source — MIT Licensed
+              Enterprise-Grade · 100% Open Source
             </span>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center mb-24">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.accent }}>Powered by Rust</div>
+            <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.accent }}>Deterministic Engine · 100% Rust</div>
             <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4 leading-[1.2]" style={{ color: C.text }}>
-              Built on <span style={{ color: C.accent }}>Rust</span>.
+              10-pass IR compiler.{' '}
+              <span style={{ color: C.muted }}>680+ block types.</span>
             </h2>
             <p className="text-[15px] leading-[1.6] mb-8" style={{ color: C.muted }}>
-              The entire analytical compiler — parser, cost engine, dialect router — runs in pure Rust with zero runtime surprises.
+              Every analysis pass — parser, cost engine, dialect router, hardware mapper — runs in pure Rust.
+              From 11 architecture families to production code: NEURAX is the only open-source compiler that
+              covers the entire neural architecture design space with deterministic fidelity.
             </p>
             <div className="space-y-4">
               {RUST_POINTS.map((pt) => (
@@ -518,23 +545,23 @@ const RustSection = () => {
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#cc241d' }} />
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: C.accent }} />
                 <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: C.green }} />
-                <span className="ml-3 text-[10px] font-mono" style={{ color: C.faint }}>neurax-core/src/engine.rs</span>
+                <span className="ml-3 text-[10px] font-mono" style={{ color: C.faint }}>neurax-engine/src/analysis.rs</span>
               </div>
               <pre className="overflow-x-auto p-5 text-[11px] leading-[1.65] font-mono" style={{ color: C.muted }}>
-                {`pub fn run_analysis(config: &ModelConfig) -> AnalysisResult {
+                {`pub fn analyze(config: &ModelConfig) -> Result<AnalysisReport> {
   let ctx = NeuraxContext::new(config, gpu_db);
-  let arch  = ArchitecturePass::build(&ctx)?;
-  let graph = GraphPass::build(&ctx, &arch)?;
+  let arch   = ArchitecturePass::build(&ctx)?;
+  let graph  = GraphPass::build(&ctx, &arch)?;
   let tensor = TensorPass::build(&ctx, &graph)?;
-  let ops   = OperatorPass::build(&ctx, &tensor)?;
+  let ops    = OperatorPass::build(&ctx, &tensor)?;
   let compute = ComputePass::build(&ctx, &ops)?;
-  let memory  = MemoryPass::build(&ctx, &compute)?;
-  let (par, hw) = rayon::join(
+  let memory = MemoryPass::build(&ctx, &compute)?;
+  let (parallel, hardware) = rayon::join(
     || ParallelismPass::build(&ctx, &memory),
     || HardwarePass::build(&ctx, &memory),
   );
-  let cost   = CostPass::build(&ctx, &hw)?;
-  let report = ReportPass::build_report(&ctx, &all_metrics);
+  let cost  = CostPass::build(&ctx, &hardware)?;
+  let report = ReportPass::build(&ctx, &all_metrics);
   Ok(report)
 }`.split('\n').map((line, i) => (
                   <div key={i} className="flex gap-3">
@@ -549,16 +576,16 @@ const RustSection = () => {
 
         <div id="agent" className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.cyan }}>NEW — Neurax Agent</div>
+            <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.cyan }}>Featured — Neurax Agent</div>
             <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4 leading-[1.2]" style={{ color: C.text }}>
-              Your AI co-pilot for{' '}
+              An AI co-pilot for{' '}
               <span className="bg-gradient-to-r from-[#83a598] to-[#d79921] bg-clip-text text-transparent">
                 architecture design.
               </span>
             </h2>
             <p className="text-[15px] leading-[1.6] mb-8" style={{ color: C.muted }}>
-              Bring your own API key to unlock the full power of Neurax Agent. Get intelligent
-              architecture recommendations, metric explanations, and optimization suggestions — powered by your preferred AI model.
+              Bring your own API key to unlock Neurax Agent. Get intelligent design suggestions,
+              plain-English metric explanations, and automated optimization recommendations — powered by your preferred AI model.
             </p>
             <div className="space-y-4">
               {AGENT_FEATURES.map((pt) => (
@@ -575,7 +602,7 @@ const RustSection = () => {
           <div>
             <div className="rounded-[10px] p-6" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
               <h3 className="text-[15px] font-semibold mb-4" style={{ color: C.text }}>
-                Connect Your AI Provider
+                Bring your own API key
               </h3>
               <AgentSetupPreview />
               <div className="mt-4 space-y-2">
@@ -607,29 +634,30 @@ const ClosingCTA = () => (
     <div className="mx-auto max-w-[700px] px-6 py-32 text-center">
       <NeuraxLogo size={48} showText={false} variant="mark" className="mx-auto mb-6 opacity-30" />
       <h2 className="text-[42px] sm:text-[48px] font-bold tracking-[-0.03em] mb-4 leading-[1.1]" style={{ color: C.text }}>
-        Stop guessing.
+        The future of AI is{' '}
         <br />
         <span className="bg-gradient-to-r from-[#d79921] to-[#83a598] bg-clip-text text-transparent">
-          Start compiling.
+          designed, not guessed.
         </span>
       </h2>
-      <p className="text-[17px] mb-10 max-w-[480px] mx-auto" style={{ color: C.muted }}>
-        The future of neural architecture design is analytical, deterministic, and instant. NEURAX makes it possible today.
+      <p className="text-[17px] mb-10 max-w-[560px] mx-auto" style={{ color: C.muted }}>
+        NEURAX is the free, open-source architecture compiler for the AI research community.
+        11 families. 680 blocks. Deterministic analysis. Research-grade. Free forever.
       </p>
       <Button asChild size="lg"
         className="h-[52px] px-10 text-[16px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02]"
         style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}
       >
         <Link to="/app">
-          Launch Studio Free
+          Start Building Free
           <ArrowRight className="w-4 h-4 ml-2" />
         </Link>
       </Button>
       <div className="mt-10 flex items-center justify-center gap-8 text-[10px] font-mono uppercase tracking-[0.1em]" style={{ color: C.faint }}>
-        <span>MIT Licensed</span>
-        <span>Rust Powered</span>
-        <span>±3–8% Accuracy</span>
-        <span>Open Source</span>
+        <span>11 Architecture Families</span>
+        <span>680+ Block Types</span>
+        <span>7 Export Formats</span>
+        <span>100% Open Source</span>
       </div>
     </div>
   </section>
@@ -641,14 +669,14 @@ const ClosingCTA = () => (
 const Footer = () => (
   <footer style={{ backgroundColor: '#1a1c1a', borderTop: `1px solid ${C.border}` }}>
     <div className="mx-auto max-w-[1200px] px-6 py-16">
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-10 mb-10">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-10 mb-10">
         <div className="md:col-span-2">
           <div className="flex items-center gap-3 mb-4">
             <NeuraxLogo size={20} showText={false} variant="mark" />
             <span className="text-[16px] font-bold tracking-[-0.02em]" style={{ color: C.text }}>NEURAX</span>
           </div>
           <p className="text-[13px] leading-relaxed max-w-sm" style={{ color: C.muted }}>
-            Analytical compiler for neural architectures. Predict cost, memory, speed, and feasibility before a single GPU hour is spent.
+            An open-source architecture compiler that covers the entire neural design space: 11 families, 680+ block types, 7 export formats, all deterministic.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
@@ -692,17 +720,13 @@ const Footer = () => (
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Technical</h4>
-          <div className="space-y-3">
-            {[
-              { label: '10 IR Passes', desc: 'Analysis depth' },
-              { label: '55+ Metrics', desc: 'Performance dimensions' },
-              { label: 'Rust Core', desc: 'High-performance engine' },
-              { label: 'MLIR Backend', desc: 'Multi-level IR' },
-            ].map(({ label, desc }) => (
-              <div key={label}>
-                <div className="text-[13px] font-medium" style={{ color: C.muted }}>{label}</div>
-                <div className="text-[10px] font-mono" style={{ color: C.faint }}>{desc}</div>
+          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Architecture Families</h4>
+          <div className="space-y-2">
+            {FAMILIES.map((f) => (
+              <div key={f.title} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: f.color }} />
+                <span className="text-[12px]" style={{ color: C.muted }}>{f.title}</span>
+                <span className="text-[9px] font-mono ml-auto" style={{ color: C.faint }}>{f.blocks}</span>
               </div>
             ))}
           </div>
@@ -739,7 +763,7 @@ const Footer = () => (
       </div>
       <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderTop: `1px solid ${C.border}` }}>
         <div className="text-[11px] font-mono" style={{ color: C.faint }}>
-          © {new Date().getFullYear()} NEURAX — Open Source Analytical Compiler
+          © {new Date().getFullYear()} NEURAX — AI Architecture Intelligence Platform
         </div>
         <div className="flex items-center gap-4 text-[11px] font-mono" style={{ color: C.faint }}>
           <span>Built with Rust + TypeScript</span>
