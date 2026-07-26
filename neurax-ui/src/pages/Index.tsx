@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
 import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
+import { HyperparameterOptPanel } from '@/components/panels/HyperparameterOptPanel.tsx';
 import { InferenceIntelligence } from '@/components/inference';
 import { ProductionWorkspace } from '@/components/production/ProductionWorkspace.tsx';
 import { SimulationWorkspace } from '@/components/simulation/SimulationWorkspace.tsx';
@@ -791,6 +792,7 @@ const Index = () => {
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
+  const [showOptimizePanel, setShowOptimizePanel] = useState(false);
 
   const [selectedArchitecture, setSelectedArchitecture] = useState<ArchitectureFamily>('transformer');
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>('architecture');
@@ -2223,6 +2225,7 @@ params: params as Record<string, ParameterValue>,
         onSaveCanvas={handleSaveCanvas}
         onExport={() => setShowExportPanel(true)}
         onImport={() => setShowImportPanel(true)}
+        onOptimize={() => setShowOptimizePanel(true)}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen((v) => !v)}
         selectedArchitecture={selectedArchitecture}
@@ -2299,6 +2302,12 @@ params: params as Record<string, ParameterValue>,
         isOpen={showImportPanel}
         onClose={() => setShowImportPanel(false)}
         onImport={handleImportArchitecture}
+      />
+
+      <HyperparameterOptPanel
+        isOpen={showOptimizePanel}
+        onClose={() => setShowOptimizePanel(false)}
+        family={selectedArchitecture}
       />
 
     </div>

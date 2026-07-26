@@ -173,6 +173,15 @@ NEURAX is a full‑stack platform with five integrated surfaces:
 - Validates against block catalogue, checks topology, lays out results
 - **Adjustable creativity** dial — from conservative to experimental
 
+### Hyperparameter Optimization ✨
+- **Per‑family search spaces** — 11 architecture families with min/max bounds, step sizes, and constraints
+- **3 search strategies**: Grid Search (exhaustive), Random Search (fast), Bayesian (adaptive refinement)
+- **6 optimization objectives**: minimize latency, memory, cost, parameters; maximize throughput; or balanced
+- **Hardware‑Aware recommendations**: GPU capacity analysis (VRAM, bandwidth, ridge point) → optimal precision, batch size, and model dimensions
+- **Built‑in analytical estimator** scores each candidate in milliseconds — no backend API call needed
+- **One‑click apply** — best configs automatically update the environment settings
+- **12‑GPU frontend database**: H100, H200, GH200, A100, L40, L40S, V100, RTX 4090/4080/3090, T4, A6000
+
 ---
 
 ## Supported Model Families
@@ -203,13 +212,14 @@ Each template includes 8–15 nodes with correct parameters, connections, and me
 
 ### Workspaces
 
-| Tab | Function |
-|---|---|
+| Tab / Feature | Function |
+|---|---|---|
 | **Architecture** | Visual canvas — drag‑and‑drop neural network layers, edit parameters, connect blocks |
 | **Simulation** | Run the analytical pipeline — instant metrics dashboard with 40+ measurements |
 | **Production** | Export to ONNX, download model definitions |
 | **Time Machine** | Multi‑year cost/carbon scaling projection with regulatory compliance overlay |
 | **Inference Intelligence** | Predict inference behavior — stability, hallucination risk, sampling quality |
+| **Hyperparameter Optimization** | Automated search across 11 families, 3 strategies, hardware‑aware recommendations |
 
 ### Key Components
 - **Drag‑and‑drop canvas** with connector system and parameter editing
@@ -220,6 +230,7 @@ Each template includes 8–15 nodes with correct parameters, connections, and me
 - **AI Chat Drawer** — natural language architecture suggestions
 - **Credits system** with plan‑based usage limits
 - **Export panel** for ONNX binary and JSON model definitions
+- **Hyperparameter Optimization** — 3 strategies, 6 objectives, GPU‑aware config search with instant scoring
 
 ### Tech Stack
 - **Framework**: React 18, TypeScript 5, Vite 8
@@ -438,6 +449,7 @@ For detailed instructions including reverse proxy setup (nginx), SSL termination
 | Web | Visual canvas, drag‑and‑drop, live metrics | ✅ |
 | Web | Time Machine cost/carbon projection | ✅ |
 | Web | AI Chat Drawer with agent integration | ✅ |
+| Web | Hyperparameter Optimization — 3 strategies, 6 objectives, 12 GPUs | ✅ |
 | Agent | Architecture planning via FastAPI + LangChain | ✅ |
 
 ### 🚧 In Progress
@@ -445,6 +457,7 @@ For detailed instructions including reverse proxy setup (nginx), SSL termination
 - Lower NEURAX‑MLIR to runnable kernels via IREE
 - Public benchmark suite (predictions vs. measured runs)
 - API key management UI in web frontend
+- Batch hyperparameter optimization via backend API
 
 ### 📋 Planned
 
@@ -453,6 +466,8 @@ For detailed instructions including reverse proxy setup (nginx), SSL termination
 - Model zoo with HuggingFace integration
 - Training data pipeline cost modeling
 - Fine‑tuning cost projections (LoRA, QLoRA, full)
+- Integration with actual training frameworks (PyTorch Lightning, HF Trainer)
+- Collaborative multi‑user editing with CRDT
 
 ---
 
