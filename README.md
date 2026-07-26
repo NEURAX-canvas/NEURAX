@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>⚡ NEURAX</h1>
+<h1>NEURAX</h1>
 
 ### The Pre‑Flight Compiler for Artificial Intelligence
 
@@ -25,36 +25,6 @@
 ![Tests](https://img.shields.io/badge/tests-126%20passing-success?style=flat-square)
 [![Version](https://img.shields.io/badge/version-0.5.0-blue?style=flat-square)](CHANGELOG.md)
 
-</div>
-
-<div align="center">
-
-### 📸 Platform Screenshots
-
-<table>
-<tr>
-  <td align="center" width="50%">
-    <img src="screenshots/01-architecture.png" alt="Architecture Canvas" width="100%"><br/>
-    <sub><b>Architecture Canvas</b> — Visual drag‑and‑drop model designer</sub>
-  </td>
-  <td align="center" width="50%">
-    <img src="screenshots/03-simulation.png" alt="Simulation" width="100%"><br/>
-    <sub><b>Simulation Dashboard</b> — 40+ metrics, instant analytical results</sub>
-  </td>
-</tr>
-<tr>
-  <td align="center" width="50%">
-    <img src="screenshots/06-inference.png" alt="Inference Intelligence" width="100%"><br/>
-    <sub><b>Inference Intelligence</b> — Stability prediction, hallucination risk, 10 widgets</sub>
-  </td>
-  <td align="center" width="50%">
-    <img src="screenshots/05-timemachine.png" alt="Time Machine" width="100%"><br/>
-    <sub><b>Time Machine</b> — Multi‑year cost, carbon & compliance projection</sub>
-  </td>
-</tr>
-</table>
-
-</div>
 
 ---
 
