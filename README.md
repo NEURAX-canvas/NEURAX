@@ -50,17 +50,25 @@
 
 NEURAX is an **analytical compiler** for neural network architectures. It operates like a traditional compiler — front‑end (parser), multi‑stage intermediate representation (IR), optimization passes, and code‑generation backend — but instead of emitting machine code to be *executed*, it emits a complete **engineering report** of the model's behaviour on target hardware, **plus** real MLIR for downstream lowering.
 
-```
-             ┌──────────────┐      ┌────────────────────────────────┐      ┌──────────────┐
-   model.json│   PARSER     │ AST  │      ANALYTICAL IR PIPELINE     │  IR  │   REPORT     │   40+ metrics
-  ──────────▶│ typed config │─────▶│ arch ▸ graph ▸ tensor ▸ op ▸    │─────▶│  JSON / MD   │──────────▶
-             └──────────────┘      │ compute ▸ memory ▸ paral ▸      │      └──────────────┘
-                                   │ hardware ▸ cost ▸ report        │              │
-                                   └────────────────────────────────┘              ▼
-                                                   │                        ┌──────────────┐
-                                                   └───────────────────────▶│  NEURAX-MLIR │  model.mlir
-                                                        code generation      │   LLVM 18    │──────────▶
-                                                                             └──────────────┘
+```mermaid
+flowchart LR
+    JSON["model.json"] --> PARSER["Parser<br/>neurax-parser"]
+    PARSER --> AST["ModelConfig<br/>Typed AST"]
+    AST --> PIPELINE["Analytical IR Pipeline<br/>10 passes"]
+    
+    subgraph PIPELINE_CONTENT [" "]
+        direction LR
+        A["Arch.\nIR"] --> G["Graph\nIR"] --> T["Tensor\nIR"] --> O["Op\nIR"] --> C["Compute\nIR"]
+        C --> M["Memory\nIR"] --> P["Parall.\nIR"] --> H["Hardware\nIR"] --> CO["Cost\nIR"] --> R["Report\nIR"]
+    end
+    
+    PIPELINE --> REPORT["Report<br/>40+ metrics<br/>JSON / Markdown"]
+    PIPELINE --> MLIR_OUT["NEURAX-MLIR<br/>model.mlir"]
+    MLIR_OUT --> LLVM["LLVM 18 / IREE<br/>CPU • CUDA • ROCm<br/>Metal • Vulkan"]
+    
+    style JSON fill:#4a90d9,color:#fff
+    style REPORT fill:#2ecc71,color:#fff
+    style MLIR_OUT fill:#e74c3c,color:#fff
 ```
 
 **Why NEURAX?** Training a modern LLM costs millions of dollars. A single failed hyperparameter configuration can waste weeks and tens of thousands in GPU time. NEURAX lets you answer the critical questions *before* you commit resources:
@@ -78,27 +86,55 @@ NEURAX is an **analytical compiler** for neural network architectures. It operat
 
 NEURAX is a full‑stack platform with five integrated surfaces:
 
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                              NEURAX PLATFORM                                  │
-├────────────┬──────────┬────────────────┬──────────────┬──────────────────────┤
-│   CLI      │   TUI    │   Web UI       │  HTTP API    │   AI Copilot Agent   │
-│  (Rust)    │ (Ratatui)│ (React/TS)     │ (Actix-Web)  │  (Python/FastAPI)    │
-│            │          │                │              │                      │
-│ analyze    │ browser  │ Visual canvas   │ 37 REST      │ Planning + design    │
-│ compile    │ explorer │ Drag & drop     │ endpoints    │ suggestions via SSE  │
-│ validate   │ metrics  │ Live metrics    │ Streaming SSE│ LangChain powered    │
-│ export     │          │ 88 templates    │ Auth+billing │                      │
-└────────────┴──────────┴────────────────┴──────────────┴──────────────────────┘
-                                      │
-                                      ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           ANALYTICAL ENGINE (Rust)                            │
-│                                                                              │
-│  neurax-parser ──▶ neurax-ir ──▶ neurax-core ──▶ neurax-mlir ──▶ IREE/LLVM  │
-│                                                                              │
-│  Backed by: neurax-formulas (FLOPs/params) + neurax-hardware-db (20 GPUs)    │
-└──────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph "Presentation Layer"
+        CLI["CLI<br/>Rust • analyze/compile/validate/export"]
+        TUI["TUI<br/>Ratatui • browser/metrics"]
+        WEB_UI["Web UI<br/>React 18 + TypeScript + Vite"]
+    end
+    
+    subgraph "Service Layer"
+        HTTP_API["HTTP API<br/>Actix-Web • 37 REST endpoints<br/>SSE streaming • Auth • Billing"]
+        AI_AGENT["AI Copilot Agent<br/>FastAPI + LangChain<br/>Natural language → architecture"]
+    end
+    
+    subgraph "Analytical Engine (Rust)"
+        PARSER["neurax-parser<br/>JSON → ModelConfig"]
+        IR["neurax-ir<br/>10-dialect IR pipeline<br/>+ inference pass"]
+        CORE["neurax-core<br/>Pipeline orchestrator<br/>+ ONNX export"]
+        FORMULAS["neurax-formulas<br/>FLOPs / params / memory"]
+        HWDB["neurax-hardware-db<br/>20 GPUs • CPUs • interconnects"]
+        MLIR["neurax-mlir<br/>15 custom dialects<br/>LLVM 18 • IREE lowering"]
+    end
+    
+    subgraph "External Services"
+        SUPABASE["Supabase<br/>Auth • Storage"]
+        STRIPE["Stripe<br/>Billing • Subscriptions"]
+        GITHUB["GitHub API<br/>Push • PR creation"]
+    end
+
+    CLI --> HTTP_API
+    TUI --> HTTP_API
+    WEB_UI --> HTTP_API
+    WEB_UI --> AI_AGENT
+    
+    HTTP_API --> CORE
+    AI_AGENT --> CORE
+    
+    CORE --> PARSER
+    CORE --> IR
+    CORE --> FORMULAS
+    CORE --> HWDB
+    CORE --> MLIR
+    CORE --> GITHUB
+    
+    HTTP_API --> SUPABASE
+    HTTP_API --> STRIPE
+    
+    style CORE fill:#2ecc71,color:#fff
+    style IR fill:#3498db,color:#fff
+    style MLIR fill:#e74c3c,color:#fff
 ```
 
 ### Core Engine
@@ -144,6 +180,46 @@ NEURAX is a full‑stack platform with five integrated surfaces:
 - **Adjustable creativity** dial — from conservative to experimental
 
 ### Hyperparameter Optimization ✨
+
+```mermaid
+flowchart TB
+    START(["Select Family\n& Hardware"]) --> DEFS["Search Space\nhyperparameterDefs.ts"]
+    DEFS --> STRATEGY{"Search Strategy"}
+    
+    STRATEGY --> GRID["Grid Search\nExhaustive grid\n+ smart sampling"]
+    STRATEGY --> RANDOM["Random Search\nUniform batch\nsampling"]
+    STRATEGY --> BAYESIAN["Bayesian\nRandom init +\nlocal refinement"]
+    
+    subgraph HARDWARE["Hardware-Aware Layer"]
+        HWDB2["GPU Database\n12 GPUs (H100 → T4)"]
+        ANALYZE2["Capacity Analysis\nVRAM • bandwidth • ridge"]
+        RECOMMEND2["Precision & Batch\nOptimal settings"]
+    end
+    
+    GRID --> CANDIDATES["Candidate Configs"]
+    RANDOM --> CANDIDATES
+    BAYESIAN --> CANDIDATES
+    HARDWARE --> CANDIDATES
+    
+    CANDIDATES --> ESTIMATE["Local Estimator\nhyperparameterOptimizer.ts"]
+    ESTIMATE --> SCORE{"Score by Objective"}
+    SCORE --> LATENCY["⚡ Minimize Latency"]
+    SCORE --> MEMORY2["💾 Minimize Memory"]
+    SCORE --> THROUGHPUT["📈 Maximize Throughput"]
+    SCORE --> COST2["💰 Minimize Cost"]
+    SCORE --> PARAMS["📐 Minimize Params"]
+    SCORE --> BALANCED["⚖️ Balanced"]
+    
+    LATENCY --> RANKED
+    MEMORY2 --> RANKED
+    THROUGHPUT --> RANKED
+    COST2 --> RANKED
+    PARAMS --> RANKED
+    BALANCED --> RANKED
+    
+    RANKED["Ranked Results\nScore 0-100"] --> APPLY(["Apply Best Config\n→ 1-click update"])
+```
+
 - **Per‑family search spaces** — 11 architecture families with min/max bounds, step sizes, and constraints
 - **3 search strategies**: Grid Search (exhaustive), Random Search (fast), Bayesian (adaptive refinement)
 - **6 optimization objectives**: minimize latency, memory, cost, parameters; maximize throughput; or balanced
@@ -180,13 +256,65 @@ Each template includes 8–15 nodes with correct parameters, connections, and me
 
 `neurax-ui` is a modern **React 18 + TypeScript + Vite** single‑page application providing a visual architecture design experience.
 
+```mermaid
+graph TB
+    subgraph "Pages"
+        LANDING["Landing Page<br/>Marketing • Hero • Demos"]
+        INDEX["Main Workspace<br/>Canvas + Panels + AI"]
+        ACCOUNT["Account<br/>Billing • API Keys"]
+    end
+    
+    subgraph "Top Navigation"
+        TOPNAV["TopNav<br/>Family selector • Templates<br/>Save/Load • Export • Optimize"]
+        PALETTE["LayerPalette<br/>11 families • 400+ blocks<br/>Search • Drag & drop"]
+        ENV["EnvironmentSettings<br/>Hyperparameters per family<br/>Hardware config • Validation"]
+    end
+    
+    subgraph "Canvas"
+        CANVAS["ArchitectureCanvas<br/>React Flow"]
+        NODE["CanvasNode<br/>Param editing"]
+        GROUP["GroupNode<br/>Repeat • Collapse"]
+        MINIMAP["Minimap"]
+    end
+    
+    subgraph "Right Panel"
+        RPTABS["RightPanelTabs"]
+        METRICS["MetricsDashboard<br/>40+ metrics • Charts<br/>Warnings • Recommendations"]
+        HPO["HyperparameterOptPanel<br/>3 strategies • 6 objectives<br/>Hardware-aware • 1-click apply"]
+    end
+    
+    subgraph "AI & Exports"
+        CHAT["AIChatDrawer<br/>Natural language design<br/>SSE streaming • Auto-fix"]
+        EXPORT["ExportPanel<br/>JSON • ONNX • Network Graph"]
+        GHEXPORT["GitHubExportPanel<br/>Push • PR creation"]
+    end
+
+    INDEX --> TOPNAV
+    INDEX --> PALETTE
+    INDEX --> ENV
+    INDEX --> CANVAS
+    INDEX --> RPTABS
+    INDEX --> CHAT
+    TOPNAV --> EXPORT
+    TOPNAV --> GHEXPORT
+    RPTABS --> METRICS
+    RPTABS --> HPO
+    CANVAS --> NODE
+    CANVAS --> GROUP
+    CANVAS --> MINIMAP
+    
+    style INDEX fill:#1a1a2e,color:#fff
+    style CANVAS fill:#16213e,color:#fff
+    style HPO fill:#0f3460,color:#fff
+```
+
 ### Workspaces
 
 | Tab / Feature | Function |
-|---|---|---|
+|---|---|
 | **Architecture** | Visual canvas — drag‑and‑drop neural network layers, edit parameters, connect blocks |
 | **Simulation** | Run the analytical pipeline — instant metrics dashboard with 40+ measurements |
-| **Production** | Export to ONNX, download model definitions |
+| **Production** | Export to ONNX, JSON, Network Graph; push to GitHub with PR |
 | **Time Machine** | Multi‑year cost/carbon scaling projection with regulatory compliance overlay |
 | **Inference Intelligence** | Predict inference behavior — stability, hallucination risk, sampling quality |
 | **Hyperparameter Optimization** | Automated search across 11 families, 3 strategies, hardware‑aware recommendations |
@@ -197,9 +325,10 @@ Each template includes 8–15 nodes with correct parameters, connections, and me
 - **Real‑time metrics** — per‑layer breakdown, comparison charts, pie/bar visualizations
 - **Hardware selector** — 20 GPUs with full specifications
 - **Project management** — save, load, and delete cloud projects
-- **AI Chat Drawer** — natural language architecture suggestions
+- **AI Chat Drawer** — natural language architecture suggestions with auto-fix
 - **Credits system** with plan‑based usage limits
-- **Export panel** for ONNX binary and JSON model definitions
+- **Export panel** for ONNX binary, JSON schema, and interactive network graph HTML
+- **GitHub Export** — push model files directly to any repo, optionally create a PR
 - **Hyperparameter Optimization** — 3 strategies, 6 objectives, GPU‑aware config search with instant scoring
 
 ### Tech Stack
@@ -223,7 +352,7 @@ Each template includes 8–15 nodes with correct parameters, connections, and me
 | **Inference** | `POST /inference/simulate` | Predict inference stability, hallucination risk, volatility |
 | **Time Machine** | `POST /timemachine` | Multi‑year cost/carbon projection |
 | **Projects** | `GET/POST /projects`, `GET/PUT/DELETE /projects/{id}` | Full CRUD for cloud project persistence |
-| **Export** | `POST /export/onnx` | Binary ONNX protobuf export |
+| **Export** | `POST /export/onnx`, `POST /export/github` | Binary ONNX protobuf + GitHub push with PR |
 | **Presets** | `GET /presets`, `GET /presets/{id}` | Architecture reference templates |
 | **Hardware** | `GET /hardware` | GPU specifications (20 GPUs, full specs) |
 | **Billing** | `POST /billing/checkout`, `POST /billing/portal`, `POST /stripe/webhook` | Stripe checkout, billing portal, webhook |
@@ -273,14 +402,24 @@ Conceptor/
 
 ### Rust Dependency Graph
 
-```
-neurax-cli ──┬──▶ neurax-core ──┬──▶ neurax-ir ──▶ neurax-formulas
-             │                  ├──▶ neurax-parser
-             │                  └──▶ neurax-hardware-db
-             └──▶ neurax-mlir ──▶ neurax-parser              (feature "mlir")
-
-neurax-tui / neurax-service ──▶ neurax-core
-neurax-ui ──HTTP──▶ neurax-service ◀──HTTP── neurax-agent
+```mermaid
+graph RL
+    CLI["neurax-cli"] --> CORE["neurax-core"]
+    TUI["neurax-tui"] --> CORE
+    SVC["neurax-service"] --> CORE
+    MLIR["neurax-mlir"] --> PARSER["neurax-parser"]
+    CORE --> IR["neurax-ir"]
+    CORE --> PARSER
+    CORE --> HWDB["neurax-hardware-db"]
+    CORE --> MLIR
+    IR --> FORM["neurax-formulas"]
+    
+    UI["neurax-ui<br/>React/TypeScript"] -. HTTP .-> SVC
+    AGENT["neurax-agent<br/>Python/FastAPI"] -. HTTP .-> SVC
+    
+    style CORE fill:#2ecc71,color:#fff
+    style IR fill:#3498db,color:#fff
+    style MLIR fill:#e74c3c,color:#fff
 ```
 
 ---
@@ -401,6 +540,46 @@ For detailed instructions including reverse proxy setup (nginx), SSL termination
 
 ## Roadmap
 
+```mermaid
+gantt
+    title NEURAX Development Vision
+    dateFormat  YYYY-MM
+    axisFormat  %Y Q%q
+    
+    section Foundation
+    Analytical IR Pipeline           :done, f1, 2024-06, 2024-12
+    MLIR Compiler Backend            :done, f2, 2024-06, 2024-12
+    Hardware Database (20 GPUs)      :done, f3, 2024-09, 2024-12
+    88 Reference Templates           :done, f4, 2024-10, 2025-01
+    CLI • TUI • validate/export      :done, f5, 2024-08, 2025-01
+    
+    section Web Platform
+    Visual Canvas + React Flow       :done, w1, 2024-10, 2025-02
+    Real-time Metrics Dashboard      :done, w2, 2024-11, 2025-02
+    Streaming SSE Analysis           :done, w3, 2024-12, 2025-02
+    AI Chat + Agent Integration      :done, w4, 2025-01, 2025-03
+    
+    section Advanced Features
+    Inference Intelligence           :done, a1, 2025-01, 2025-03
+    Time Machine Projections         :done, a2, 2025-02, 2025-04
+    Multi-Hardware Comparison        :done, a3, 2025-03, 2025-05
+    ONNX Export • GitHub Push        :done, a4, 2025-04, 2025-06
+    Hyperparameter Optimization      :done, a5, 2025-06, 2025-09
+    
+    section In Progress
+    NEURAX-MLIR → IREE Kernels      :active, p1, 2025-06, 2025-12
+    Public Benchmark Suite           :active, p2, 2025-07, 2025-12
+    Batch HPO Backend API            :active, p3, 2025-08, 2025-11
+    
+    section Planned
+    PostgreSQL Persistence           :planned, r1, 2025-10, 2026-03
+    Distributed Training Backend     :planned, r2, 2025-12, 2026-06
+    Model Hub + Community            :planned, r3, 2026-01, 2026-06
+    AutoML + Neural Architecture Search :planned, r4, 2026-03, 2026-09
+    Kubernetes + Production Deploy   :planned, r5, 2026-04, 2026-09
+    Collaborative Editing (CRDT)     :planned, r6, 2026-06, 2026-12
+```
+
 ### ✅ Complete (v0.5.0)
 
 | Phase | Feature | Status |
@@ -413,7 +592,7 @@ For detailed instructions including reverse proxy setup (nginx), SSL termination
 | Phase 2 | Streaming SSE analysis with auth | ✅ |
 | Phase 3 | Multi‑hardware comparison (up to 8 configs) | ✅ |
 | Phase 4 | Cloud project CRUD | ✅ |
-| Phase 5 | ONNX binary export | ✅ |
+| Phase 5 | ONNX binary export • GitHub push with PR | ✅ |
 | Phase 6 | Billing, credits, compliance, Docker | ✅ |
 | Web | 88 reference architecture templates | ✅ |
 | Web | Visual canvas, drag‑and‑drop, live metrics | ✅ |
