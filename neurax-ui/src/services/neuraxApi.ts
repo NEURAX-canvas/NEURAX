@@ -734,3 +734,36 @@ export interface ComplianceConfig {
 export async function getComplianceConfig(): Promise<ComplianceConfig> {
   return request<ComplianceConfig>('/compliance/config');
 }
+
+// ─── GitHub Export ─────────────────────────────────────────────────────────
+
+export interface ExportGitHubFile {
+  path: string;
+  content: string;
+}
+
+export interface ExportGitHubRequest {
+  files: ExportGitHubFile[];
+  github_token: string;
+  repo: string;
+  branch?: string;
+  commit_message?: string;
+  create_pr?: boolean;
+  pr_branch?: string;
+}
+
+export interface ExportGitHubResponse {
+  success: boolean;
+  file_urls: string[];
+  pr_url: string | null;
+  error: string | null;
+}
+
+export async function exportToGitHub(
+  body: ExportGitHubRequest,
+): Promise<ExportGitHubResponse> {
+  return request<ExportGitHubResponse>('/export/github', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}

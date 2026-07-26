@@ -1,15 +1,16 @@
-import { useState } from 'react';
-import { 
-  Github, 
-  FolderGit2, 
-  GitBranch, 
+import { useState, useCallback } from 'react';
+import {
+  Github,
+  FolderGit2,
+  GitBranch,
   FileCode,
   Check,
   X,
   Loader2,
   ExternalLink,
-  Plus,
-  Lock
+  Lock,
+  Eye,
+  Key,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
@@ -36,6 +37,8 @@ import { useToast } from '@/hooks/use-toast.ts';
 
 import { CanvasNode, Connection } from '@/types/architecture.ts';
 import { generateCode, GeneratedCode } from '@/utils/codeGenerators.ts';
+import { exportToGitHub, ExportGitHubFile } from '@/services/neuraxApi.ts';
+import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { cn } from '@/lib/utils.ts';
 
 interface GitHubExportPanelProps {
@@ -63,58 +66,81 @@ const EXPORT_FORMATS: ExportFormatOption[] = [
   { id: 'triton', name: 'Triton Kernels', extension: '.py', description: 'Optimized GPU kernels' },
 ];
 
-export function GitHubExportPanel({ 
-  isOpen, 
-  onClose, 
-  nodes, 
+export function GitHubExportPanel({
+  isOpen,
+  onClose,
+  nodes,
   connections,
   modelName = 'GeneratedModel'
 }: GitHubExportPanelProps) {
   const { toast } = useToast();
   // GitHub connection state
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting] = useState(false);
-  
+  const [githubToken, setGithubToken] = useState('');
+
   // Export configuration
-  const [selectedRepo, setSelectedRepo] = useState<string>('');
+  const [selectedRepo, setSelectedRepo] = useState('');
   const [branch, setBranch] = useState('main');
   const [directory, setDirectory] = useState('models/');
   const [commitMessage, setCommitMessage] = useState(`Add ${modelName} architecture from NEURAX`);
   const [createPR, setCreatePR] = useState(false);
-  const [prBranch, setPrBranch] = useState(`neurax/${modelName.toLowerCase()}`);
-  
+  const [prBranch, setPrBranch] = useState(`neurax/${modelName.toLowerCase().replace(/\s+/g, '-')}`);
+
   // Selected formats
   const [selectedFormats, setSelectedFormats] = useState<ExportFormat[]>(['pytorch', 'json']);
-  
+
   // Export state
-  const [isExporting] = useState(false);
-  const [exportResult, setExportResult] = useState<{ success: boolean; url?: string } | null>(null);
-  
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportResult, setExportResult] = useState<{ success: boolean; url?: string; error?: string; fileUrls?: string[] } | null>(null);
+
   // Preview state
   const [previewCode, setPreviewCode] = useState<GeneratedCode | null>(null);
 
-  const repos: Array<{ id: string; name: string; fullName: string; private: boolean }> = [];
+  // Repo list (user enters owner/repo manually)
+  const repoPresets = [
+    { id: 'user/model-hub', name: 'model-hub', fullName: 'user/model-hub' },
+  ];
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
+    const token = githubToken.trim();
+    if (!token) {
+      toast({
+        title: 'Token Required',
+        description: 'Enter a GitHub Personal Access Token with repo scope.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    // Validate token format (must be a GitHub PAT starting with ghp_ or github_pat_)
+    if (!token.startsWith('ghp_') && !token.startsWith('github_pat_') && !token.startsWith('gho_')) {
+      toast({
+        title: 'Invalid Token Format',
+        description: 'GitHub PATs start with "ghp_", "github_pat_", or "gho_".',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIsConnected(true);
     toast({
-      title: "GitHub Integration Not Available",
-      description: "GitHub OAuth/repo listing is not implemented yet.",
-      variant: "destructive",
+      title: 'GitHub Connected',
+      description: 'Token accepted. Select your repository and formats.',
     });
   };
 
   const handleDisconnect = () => {
     setIsConnected(false);
+    setGithubToken('');
     setSelectedRepo('');
+    setExportResult(null);
     toast({
-      title: "GitHub Disconnected",
-      description: "Your GitHub account has been unlinked",
+      title: 'GitHub Disconnected',
+      description: 'Your GitHub token has been cleared.',
     });
   };
 
   const toggleFormat = (format: ExportFormat) => {
-    setSelectedFormats(prev => 
-      prev.includes(format) 
+    setSelectedFormats(prev =>
+      prev.includes(format)
         ? prev.filter(f => f !== format)
         : [...prev, format]
     );
@@ -125,22 +151,96 @@ export function GitHubExportPanel({
     setPreviewCode(code);
   };
 
+  /** Build file list from selected export formats */
+  const buildFiles = useCallback((): ExportGitHubFile[] => {
+    const files: ExportGitHubFile[] = [];
+    const dir = directory.replace(/\/+$/, ''); // strip trailing slash
+
+    for (const fmt of selectedFormats) {
+      const code = generateCode(fmt, nodes, connections, { modelName });
+      files.push({
+        path: `${dir}/${code.filename}`,
+        content: code.content,
+      });
+    }
+
+    // Always include the NEURAX IR JSON for reproducibility
+    const ir = compileToNeuraxIR(nodes, connections);
+    files.push({
+      path: `${dir}/${modelName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`,
+      content: JSON.stringify(ir, null, 2),
+    });
+
+    return files;
+  }, [selectedFormats, directory, nodes, connections, modelName]);
+
   const handleExport = async () => {
-    if (!selectedRepo || selectedFormats.length === 0) {
+    if (!selectedRepo) {
       toast({
-        title: "Missing Configuration",
-        description: "Please select a repository and at least one format",
-        variant: "destructive",
+        title: 'Repository Required',
+        description: 'Enter your GitHub repository as "owner/repo".',
+        variant: 'destructive',
       });
       return;
     }
 
-    toast({
-      title: "Export Not Available",
-      description: "GitHub export is disabled until GitHub integration is implemented.",
-      variant: "destructive",
-    });
-    return;
+    if (selectedFormats.length === 0) {
+      toast({
+        title: 'No Formats Selected',
+        description: 'Please select at least one export format.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsExporting(true);
+    setExportResult(null);
+
+    try {
+      const files = buildFiles();
+
+      const result = await exportToGitHub({
+        files,
+        github_token: githubToken,
+        repo: selectedRepo,
+        branch: branch || 'main',
+        commit_message: commitMessage,
+        create_pr: createPR,
+        pr_branch: createPR ? prBranch : undefined,
+      });
+
+      if (result.success) {
+        setExportResult({
+          success: true,
+          url: result.pr_url || result.file_urls[0] || undefined,
+          fileUrls: result.file_urls,
+        });
+        toast({
+          title: 'Export Successful!',
+          description: `${files.length} files pushed to ${selectedRepo}/${branch}`,
+        });
+      } else {
+        setExportResult({
+          success: false,
+          error: result.error || 'Unknown error occurred',
+        });
+        toast({
+          title: 'Export Failed',
+          description: result.error || 'Unknown error',
+          variant: 'destructive',
+        });
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      setExportResult({ success: false, error: message });
+      toast({
+        title: 'Export Failed',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleClose = () => {
@@ -163,7 +263,7 @@ export function GitHubExportPanel({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-6 py-4">
-          {/* GitHub Connection Status */}
+          {/* GitHub Token Input */}
           <div className="p-4 rounded-lg border border-border bg-secondary/20">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -181,49 +281,97 @@ export function GitHubExportPanel({
                     {isConnected ? 'GitHub Connected' : 'Connect GitHub'}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {isConnected 
-                      ? 'Ready to push code to your repositories' 
-                      : 'Link your GitHub account to export code'
+                    {isConnected
+                      ? 'Ready to push code to your repositories'
+                      : 'Enter a Personal Access Token (classic or fine-grained)'
                     }
                   </div>
                 </div>
               </div>
-              
+
               {isConnected ? (
                 <Button variant="outline" size="sm" onClick={handleDisconnect}>
                   Disconnect
                 </Button>
               ) : (
-                <Button 
-                  size="sm" 
-                  onClick={handleConnect}
-                  disabled={isConnecting}
-                >
-                  {isConnecting ? (
-                    <>
-                      <Loader2 key="loader" className="w-4 h-4 mr-2 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Github key="github" className="w-4 h-4 mr-2" />
-                      Connect
-                    </>
-                  )}
-                </Button>
+                <span />
               )}
             </div>
+
+            {!isConnected && (
+              <div className="mt-3 flex gap-2">
+                <div className="relative flex-1">
+                  <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    type="password"
+                    value={githubToken}
+                    onChange={(e) => setGithubToken(e.target.value)}
+                    className="pl-9 pr-9 font-mono text-xs"
+                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => {
+                      const input = document.querySelector<HTMLInputElement>('#github-token-input');
+                      if (input) input.type = input.type === 'password' ? 'text' : 'password';
+                    }}
+                    title="Toggle visibility"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                </div>
+                <Button size="sm" onClick={handleConnect}>
+                  Connect
+                </Button>
+              </div>
+            )}
           </div>
 
           {isConnected && (
             <>
+              {/* Repository Input */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium">Repository</Label>
+                <Select value={selectedRepo} onValueChange={setSelectedRepo}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Type owner/repo (e.g. user/my-model)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {repoPresets.map((repo) => (
+                      <SelectItem key={repo.id} value={repo.fullName}>
+                        <div className="flex items-center gap-2">
+                          <FolderGit2 className="w-4 h-4" />
+                          <span className="truncate">{repo.fullName}</span>
+                          <Lock className="w-3 h-3 text-muted-foreground" />
+                        </div>
+                      </SelectItem>
+                    ))}
+                    {/* Custom repo input */}
+                    <div className="p-2 border-t border-border">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="owner/repo-name"
+                          value={repoPresets.includes({ id: selectedRepo } as any) ? '' : selectedRepo}
+                          onChange={(e) => setSelectedRepo(e.target.value)}
+                          className="text-xs h-8"
+                        />
+                      </div>
+                    </div>
+                  </SelectContent>
+                </Select>
+                <div className="text-[10px] text-muted-foreground">
+                  Enter the full repository name, e.g. <code className="bg-muted px-1 rounded">my-org/my-model</code>
+                </div>
+              </div>
+
               {/* Export Formats Selection */}
               <div className="space-y-3">
                 <Label className="text-sm font-medium">Export Formats</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {EXPORT_FORMATS.map((format) => {
                     const isSelected = selectedFormats.includes(format.id);
-                    
+
                     return (
                       <div
                         key={format.id}
@@ -235,7 +383,7 @@ export function GitHubExportPanel({
                         )}
                         onClick={() => toggleFormat(format.id)}
                       >
-                        <Checkbox 
+                        <Checkbox
                           checked={isSelected}
                         />
                         <div className="flex-1 min-w-0">
@@ -266,40 +414,13 @@ export function GitHubExportPanel({
                 </div>
               </div>
 
-              {/* Repository Selection */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Repository</Label>
-                <Select value={selectedRepo} onValueChange={setSelectedRepo}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a repository" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {repos.map((repo) => (
-                      <SelectItem key={repo.id} value={repo.id}>
-                        <div className="flex items-center gap-2">
-                          <FolderGit2 className="w-4 h-4" />
-                          <span className="truncate">{repo.fullName}</span>
-                          {repo.private && <Lock className="w-3 h-3 text-muted-foreground" />}
-                        </div>
-                      </SelectItem>
-                    ))}
-                    <div className="p-2 border-t border-border">
-                      <Button variant="ghost" size="sm" className="w-full justify-start text-muted-foreground">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Create new repository
-                      </Button>
-                    </div>
-                  </SelectContent>
-                </Select>
-              </div>
-
               {/* Branch & Directory */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm">Branch</Label>
                   <div className="relative">
                     <GitBranch className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
+                    <Input
                       value={branch}
                       onChange={(e) => setBranch(e.target.value)}
                       className="pl-9"
@@ -311,7 +432,7 @@ export function GitHubExportPanel({
                   <Label className="text-sm">Directory</Label>
                   <div className="relative">
                     <FileCode className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                    <Input 
+                    <Input
                       value={directory}
                       onChange={(e) => setDirectory(e.target.value)}
                       className="pl-9"
@@ -324,7 +445,7 @@ export function GitHubExportPanel({
               {/* Commit Message */}
               <div className="space-y-2">
                 <Label className="text-sm">Commit Message</Label>
-                <Input 
+                <Input
                   value={commitMessage}
                   onChange={(e) => setCommitMessage(e.target.value)}
                   placeholder="Add model architecture"
@@ -345,7 +466,7 @@ export function GitHubExportPanel({
               {createPR && (
                 <div className="space-y-2 pl-4 border-l-2 border-primary/30">
                   <Label className="text-sm">PR Branch Name</Label>
-                  <Input 
+                  <Input
                     value={prBranch}
                     onChange={(e) => setPrBranch(e.target.value)}
                     placeholder="neurax/model-name"
@@ -360,8 +481,8 @@ export function GitHubExportPanel({
                     <Label className="text-sm font-medium">
                       Preview: {previewCode.filename}
                     </Label>
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => setPreviewCode(null)}
                     >
@@ -380,8 +501,8 @@ export function GitHubExportPanel({
               {exportResult && (
                 <div className={cn(
                   "p-4 rounded-lg border",
-                  exportResult.success 
-                    ? "bg-success/10 border-success/30" 
+                  exportResult.success
+                    ? "bg-success/10 border-success/30"
                     : "bg-destructive/10 border-destructive/30"
                 )}>
                   <div className="flex items-center gap-2">
@@ -393,15 +514,31 @@ export function GitHubExportPanel({
                           <div className="text-xs text-muted-foreground">
                             Your code has been pushed to GitHub
                           </div>
+                          {exportResult.fileUrls && exportResult.fileUrls.length > 0 && (
+                            <div className="mt-2 space-y-0.5">
+                              {exportResult.fileUrls.map((url, i) => (
+                                <a
+                                  key={i}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline flex items-center gap-1"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  {url.split('/').pop()}
+                                </a>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         {exportResult.url && (
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="sm"
                             onClick={() => window.open(exportResult.url, '_blank')}
                           >
                             <ExternalLink className="w-4 h-4 mr-1" />
-                            View
+                            {exportResult.fileUrls && exportResult.fileUrls.length > 1 ? 'PR' : 'View'}
                           </Button>
                         )}
                       </>
@@ -411,7 +548,7 @@ export function GitHubExportPanel({
                         <div className="flex-1">
                           <div className="font-medium text-sm text-destructive">Export Failed</div>
                           <div className="text-xs text-muted-foreground">
-                            Please check your connection and try again
+                            {exportResult.error || 'Please check your connection and try again'}
                           </div>
                         </div>
                       </>
@@ -427,7 +564,7 @@ export function GitHubExportPanel({
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>
-          <Button 
+          <Button
             onClick={handleExport}
             disabled={!isConnected || !selectedRepo || selectedFormats.length === 0 || isExporting}
           >

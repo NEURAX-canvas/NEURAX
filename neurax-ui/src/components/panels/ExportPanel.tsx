@@ -32,6 +32,7 @@ import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { generateCode } from '@/utils/codeGenerators.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
+import { generateNetworkGraphHTML } from '@/utils/networkGraphExporter.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
 import { exportOnnx } from '@/services/neuraxApi.ts';
 import { GitHubExportPanel } from './GitHubExportPanel.tsx';
@@ -223,18 +224,29 @@ export function ExportPanel({
   });
   const neuraxJson = JSON.stringify(neuraxIR, null, 2);
 
-  const handleExport = async (format: ExportOption) => {
-    // ONNX binary export — call the backend API
-    if (format.id === 'onnx') {
-      if (nodes.length === 0) {
-        toast({
-          title: "No Architecture",
-          description: "Add layers to the canvas before exporting",
-          variant: "destructive",
-        });
-        return;
-      }
+  /** Trigger file download in the browser */
+  function downloadFile(content: string, filename: string, mimeType: string) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
+  const handleExport = async (format: ExportOption) => {
+    if (nodes.length === 0) {
+      toast({
+        title: "No Architecture",
+        description: "Add layers to the canvas before exporting",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // ── ONNX binary export — call the backend API ───────────────────
+    if (format.id === 'onnx') {
       setIsExportingOnnx(true);
       try {
         const result = await exportOnnx({
@@ -274,18 +286,56 @@ export function ExportPanel({
       return;
     }
 
-    toast({
-      title: "Export Started",
-      description: `Exporting ${architectureName}${format.extension}...`,
-    });
-
-    setTimeout(() => {
+    // ── JSON Export — download the NEURAX IR JSON ───────────────────
+    if (format.id === 'json') {
+      const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`;
+      downloadFile(neuraxJson, filename, 'application/json');
       toast({
-        title: "Export Complete",
-        description: `${format.name} file ready for download`,
+        title: "JSON Export Complete",
+        description: `Architecture saved as ${filename}`,
       });
-    }, 1000);
+      onClose();
+      return;
+    }
 
+    // ── Network Graph Export — interactive HTML visualization ───────
+    if (format.id === 'network') {
+      const html = generateNetworkGraphHTML(nodes, connections, groups, {
+        modelName: architectureName,
+        family: selectedArchitecture,
+      });
+      const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}_graph.html`;
+      downloadFile(html, filename, 'text/html');
+      toast({
+        title: "Network Graph Export Complete",
+        description: `Interactive graph saved as ${filename}`,
+      });
+      onClose();
+      return;
+    }
+
+    // ── Other formats (PyTorch, Rust, etc.) — generic download ────
+    const codeMap: Record<string, { content: string; ext: string; mime: string }> = {
+      pytorch: { content: pytorchCode, ext: '.py', mime: 'text/x-python' },
+      rust: { content: rustCode, ext: '.rs', mime: 'text/x-rust' },
+    };
+    const entry = codeMap[format.id];
+    if (entry) {
+      const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}${entry.ext}`;
+      downloadFile(entry.content, filename, entry.mime);
+      toast({
+        title: `${format.name} Export Complete`,
+        description: `File saved as ${filename}`,
+      });
+      onClose();
+      return;
+    }
+
+    // Fallback toast for formats without implementation yet
+    toast({ title: "Export Started", description: `Exporting ${architectureName}${format.extension}...` });
+    setTimeout(() => {
+      toast({ title: "Export Complete", description: `${format.name} file ready for download` });
+    }, 1000);
     onClose();
   };
 

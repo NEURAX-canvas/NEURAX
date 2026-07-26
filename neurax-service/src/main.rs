@@ -1315,6 +1315,332 @@ async fn export_onnx(
     }
 }
 
+// ─── GitHub Export ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+struct ExportGitHubFile {
+    path: String,
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExportGitHubRequest {
+    /// Files to push to the repository
+    files: Vec<ExportGitHubFile>,
+    /// GitHub Personal Access Token
+    github_token: String,
+    /// Repository in "owner/repo" format
+    repo: String,
+    /// Branch to push to (default "main")
+    branch: Option<String>,
+    /// Commit message
+    commit_message: Option<String>,
+    /// Whether to create a PR instead of pushing directly
+    create_pr: Option<bool>,
+    /// Branch name for the PR (ignored unless create_pr is true)
+    pr_branch: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ExportGitHubResponse {
+    success: bool,
+    /// URLs of the created/updated files on GitHub
+    file_urls: Vec<String>,
+    /// PR URL if create_pr was true
+    pr_url: Option<String>,
+    /// Error message if success is false
+    error: Option<String>,
+}
+
+async fn export_github(
+    http_req: HttpRequest,
+    req: web::Json<ExportGitHubRequest>,
+) -> impl Responder {
+    let start = std::time::Instant::now();
+    tracing::info!("[EXPORT GITHUB] Request received");
+
+    if let Err(resp) = require_verified_email(&http_req).await {
+        tracing::warn!("[EXPORT GITHUB] Auth failed after {}ms", start.elapsed().as_millis());
+        return resp;
+    }
+
+    let branch = req.branch.clone().unwrap_or_else(|| "main".to_string());
+    let commit_message = req.commit_message.clone().unwrap_or_else(|| {
+        "Add model architecture from NEURAX".to_string()
+    });
+    let create_pr = req.create_pr.unwrap_or(false);
+    let pr_branch = req.pr_branch.clone().unwrap_or_else(|| {
+        format!("neurax/update-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"))
+    });
+
+    let github_token = req.github_token.trim().to_string();
+    let repo = req.repo.trim().to_string();
+
+    if github_token.is_empty() || repo.is_empty() {
+        return HttpResponse::build(StatusCode::BAD_REQUEST)
+            .json(ExportGitHubResponse {
+                success: false,
+                file_urls: vec![],
+                pr_url: None,
+                error: Some("GitHub token and repository are required".to_string()),
+            });
+    }
+
+    if req.files.is_empty() {
+        return HttpResponse::build(StatusCode::BAD_REQUEST)
+            .json(ExportGitHubResponse {
+                success: false,
+                file_urls: vec![],
+                pr_url: None,
+                error: Some("No files to export".to_string()),
+            });
+    }
+
+    let client = reqwest::Client::new();
+    let api_base = format!("https://api.github.com/repos/{}", repo);
+
+    // Determine the target branch (use pr_branch if creating a PR)
+    let target_branch = if create_pr { &pr_branch } else { &branch };
+
+    // If creating a PR, first get the SHA of the base branch to create a new branch
+    let base_sha = if create_pr {
+        let branch_url = format!("{}/git/ref/heads/{}", api_base, branch);
+        match client
+            .get(&branch_url)
+            .header("Authorization", format!("Bearer {}", github_token))
+            .header("User-Agent", "NEURAX-Export")
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() => {
+                let data: serde_json::Value = match resp.json().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!("[EXPORT GITHUB] Failed to parse branch response: {}", e);
+                        return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                            .json(ExportGitHubResponse {
+                                success: false,
+                                file_urls: vec![],
+                                pr_url: None,
+                                error: Some(format!("Failed to read base branch: {}", e)),
+                            });
+                    }
+                };
+                let sha = data["object"]["sha"].as_str().map(|s| s.to_string());
+                match sha {
+                    Some(s) => s,
+                    None => {
+                        return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                            .json(ExportGitHubResponse {
+                                success: false,
+                                file_urls: vec![],
+                                pr_url: None,
+                                error: Some("Could not resolve base branch SHA".to_string()),
+                            });
+                    }
+                }
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                tracing::error!("[EXPORT GITHUB] Failed to get branch: {} - {}", status, body);
+                return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                    .json(ExportGitHubResponse {
+                        success: false,
+                        file_urls: vec![],
+                        pr_url: None,
+                        error: Some(format!("GitHub API error ({}): {}", status, body)),
+                    });
+            }
+            Err(e) => {
+                tracing::error!("[EXPORT GITHUB] Request failed: {}", e);
+                return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                    .json(ExportGitHubResponse {
+                        success: false,
+                        file_urls: vec![],
+                        pr_url: None,
+                        error: Some(format!("GitHub API request failed: {}", e)),
+                    });
+            }
+        }
+    } else {
+        String::new()
+    };
+
+    // If creating a PR, create the new branch
+    if create_pr {
+        let ref_url = format!("{}/git/refs", api_base);
+        let create_ref_body = serde_json::json!({
+            "ref": format!("refs/heads/{}", pr_branch),
+            "sha": base_sha,
+        });
+        match client
+            .post(&ref_url)
+            .header("Authorization", format!("Bearer {}", github_token))
+            .header("User-Agent", "NEURAX-Export")
+            .json(&create_ref_body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 422 => {
+                // 422 = already exists, which is fine
+                tracing::info!("[EXPORT GITHUB] Branch {} ready", pr_branch);
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                tracing::error!("[EXPORT GITHUB] Failed to create branch: {} - {}", status, body);
+                return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                    .json(ExportGitHubResponse {
+                        success: false,
+                        file_urls: vec![],
+                        pr_url: None,
+                        error: Some(format!("Failed to create branch ({}): {}", status, body)),
+                    });
+            }
+            Err(e) => {
+                tracing::error!("[EXPORT GITHUB] Request failed: {}", e);
+                return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                    .json(ExportGitHubResponse {
+                        success: false,
+                        file_urls: vec![],
+                        pr_url: None,
+                        error: Some(format!("GitHub API request failed: {}", e)),
+                    });
+            }
+        }
+    }
+
+    // Push each file to GitHub
+    let mut file_urls: Vec<String> = vec![];
+
+    for file in &req.files {
+        let content_base64 = base64::engine::general_purpose::STANDARD.encode(file.content.as_bytes());
+        let put_url = format!("{}/contents/{}", api_base, file.path);
+
+        // Check if file already exists to get the SHA
+        let existing_sha: Option<String> = {
+            let check_resp = client
+                .get(&put_url)
+                .query(&[("ref", target_branch)])
+                .header("Authorization", format!("Bearer {}", github_token))
+                .header("User-Agent", "NEURAX-Export")
+                .send()
+                .await;
+            match check_resp {
+                Ok(resp) if resp.status().is_success() => {
+                    resp.json::<serde_json::Value>().await
+                        .ok()
+                        .and_then(|data| data["sha"].as_str().map(|s| s.to_string()))
+                }
+                _ => None,
+            }
+        };
+
+        let mut body = serde_json::json!({
+            "message": commit_message,
+            "content": content_base64,
+            "branch": target_branch,
+        });
+        if let Some(sha) = existing_sha {
+            body["sha"] = serde_json::Value::String(sha);
+        }
+
+        match client
+            .put(&put_url)
+            .header("Authorization", format!("Bearer {}", github_token))
+            .header("User-Agent", "NEURAX-Export")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 201 => {
+                let data: serde_json::Value = resp.json().await.unwrap_or_default();
+                if let Some(html_url) = data["content"]["html_url"].as_str() {
+                    file_urls.push(html_url.to_string());
+                }
+                tracing::info!("[EXPORT GITHUB] Pushed {}", file.path);
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let response_body = resp.text().await.unwrap_or_default();
+                tracing::error!("[EXPORT GITHUB] Failed to push {}: {} - {}", file.path, status, response_body);
+                return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                    .json(ExportGitHubResponse {
+                        success: false,
+                        file_urls,
+                        pr_url: None,
+                        error: Some(format!("Failed to push {} ({}): {}", file.path, status, response_body)),
+                    });
+            }
+            Err(e) => {
+                tracing::error!("[EXPORT GITHUB] Request failed for {}: {}", file.path, e);
+                return HttpResponse::build(StatusCode::BAD_GATEWAY)
+                    .json(ExportGitHubResponse {
+                        success: false,
+                        file_urls,
+                        pr_url: None,
+                        error: Some(format!("GitHub API request failed for {}: {}", file.path, e)),
+                    });
+            }
+        }
+    }
+
+    // If creating a PR, open it
+    let pr_url: Option<String> = if create_pr {
+        let pr_create_url = format!("{}/pulls", api_base);
+        let pr_body = serde_json::json!({
+            "title": commit_message,
+            "head": pr_branch,
+            "base": branch,
+            "body": "This PR was automatically generated by NEURAX — the AI architecture design platform.\n\nChanges include the model architecture files as designed in the NEURAX canvas.",
+        });
+        match client
+            .post(&pr_create_url)
+            .header("Authorization", format!("Bearer {}", github_token))
+            .header("User-Agent", "NEURAX-Export")
+            .json(&pr_body)
+            .send()
+            .await
+        {
+            Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 201 => {
+                let data: serde_json::Value = resp.json().await.unwrap_or_default();
+                let url = data["html_url"].as_str().map(|s| s.to_string());
+                tracing::info!("[EXPORT GITHUB] PR created: {:?}", url);
+                url
+            }
+            Ok(resp) => {
+                let status = resp.status();
+                let body = resp.text().await.unwrap_or_default();
+                tracing::warn!("[EXPORT GITHUB] Failed to create PR: {} - {}", status, body);
+                None
+            }
+            Err(e) => {
+                tracing::warn!("[EXPORT GITHUB] Failed to create PR: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let elapsed = start.elapsed();
+    tracing::info!(
+        "[EXPORT GITHUB] Success in {}ms - {} files pushed to {}/{}",
+        elapsed.as_millis(),
+        req.files.len(),
+        repo,
+        target_branch,
+    );
+
+    HttpResponse::Ok().json(ExportGitHubResponse {
+        success: true,
+        file_urls,
+        pr_url,
+        error: None,
+    })
+}
+
 async fn analyze(http_req: HttpRequest, req: web::Json<AnalyzeRequest>) -> impl Responder {
     let start = std::time::Instant::now();
     tracing::info!("[ANALYZE] Request received");
@@ -3017,6 +3343,7 @@ async fn main() -> std::io::Result<()> {
             .route("/timemachine", web::post().to(time_machine))
             .route("/inference/simulate", web::post().to(inference_simulate))
             .route("/export/onnx", web::post().to(export_onnx))
+            .route("/export/github", web::post().to(export_github))
             .route("/projects", web::get().to(projects_list))
             .route("/projects", web::post().to(projects_create))
             .route("/projects/{id}", web::get().to(projects_get))
