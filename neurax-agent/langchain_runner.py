@@ -43,6 +43,12 @@ def make_chat_model(temperature: float = 0.0, max_tokens: int = 2048):
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
     llm_model = os.getenv("LLM_MODEL", "").strip() or os.getenv("LLAMA_MODEL", "")
 
+    # Ensure langchain can find the API key via env var
+    if llm_api_key and not os.environ.get("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = llm_api_key
+    if anthropic_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
+
     # Auto-detect provider if not explicitly set
     if not llm_provider:
         if llm_model:
@@ -98,7 +104,7 @@ def make_chat_model(temperature: float = 0.0, max_tokens: int = 2048):
     return ChatOpenAI(
         model=openai_model,
         base_url=base_url,
-        api_key=llm_api_key or "EMPTY",
+        openai_api_key=llm_api_key or "EMPTY",
         temperature=temperature,
         timeout=timeout,
         max_tokens=max_tokens,
