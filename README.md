@@ -22,7 +22,7 @@
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)
 
 ![Build](https://img.shields.io/badge/build-passing-success?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-126%20passing-success?style=flat-square)
+![Tests](https://img.shields.io/badge/tests-173%2B%20passing-success?style=flat-square)
 [![Version](https://img.shields.io/badge/version-0.5.0-blue?style=flat-square)](CHANGELOG.md)
 
 
@@ -95,7 +95,7 @@ graph TB
     end
     
     subgraph "Service Layer"
-        HTTP_API["HTTP API<br/>Actix-Web • 37 REST endpoints<br/>SSE streaming • Auth • Billing"]
+        HTTP_API["HTTP API<br/>Actix-Web • 38 REST routes<br/>SSE streaming • Auth • Billing"]
         AI_AGENT["AI Copilot Agent<br/>FastAPI + LangChain<br/>Natural language → architecture"]
     end
     
@@ -105,7 +105,7 @@ graph TB
         CORE["neurax-core<br/>Pipeline orchestrator<br/>+ ONNX export"]
         FORMULAS["neurax-formulas<br/>FLOPs / params / memory"]
         HWDB["neurax-hardware-db<br/>20 GPUs • CPUs • interconnects"]
-        MLIR["neurax-mlir<br/>15 custom dialects<br/>LLVM 18 • IREE lowering"]
+        MLIR["neurax-mlir<br/>13 custom dialects<br/>LLVM 18 • IREE lowering"]
     end
     
     subgraph "External Services"
@@ -144,7 +144,7 @@ graph TB
 | `neurax-parser` | JSON schema ingestion → strongly‑typed `ModelConfig` |
 | `neurax-ir` | Analytical IR with inference pass, graph/tensor/compute/memory/hardware/cost dialects |
 | `neurax-core` | Pipeline orchestrator + ONNX export + streaming analysis |
-| `neurax-mlir` | MLIR compiler backend — 15 custom dialects via `melior` bindings on LLVM 18 |
+| `neurax-mlir` | MLIR compiler backend — 13 custom dialects via `melior` bindings on LLVM 18 |
 | `neurax-formulas` | Per‑architecture FLOPs, parameter count, and memory formulas |
 | `neurax-hardware-db` | GPU/CPU/interconnect specification database (H100, A100, RTX, MI300X…) |
 
@@ -164,7 +164,7 @@ graph TB
 - Fully deterministic analytical model — no GPU needed, answers in milliseconds
 
 ### MLIR Code Generation
-- **15 custom MLIR dialects** with lowering passes to LLVM IR
+- **13 custom MLIR dialects** with lowering passes to LLVM IR
 - Multi‑target backends: CPU, CUDA, ROCm, Metal, Vulkan — plus IREE integration
 - TableGen (ODS) dialect definitions alongside Rust implementation
 
@@ -191,7 +191,7 @@ flowchart TB
     STRATEGY --> BAYESIAN["Bayesian\nRandom init +\nlocal refinement"]
     
     subgraph HARDWARE["Hardware-Aware Layer"]
-        HWDB2["GPU Database\n12 GPUs (H100 → T4)"]
+        HWDB2["GPU Database\n14 GPUs (H200 → T4)"]
         ANALYZE2["Capacity Analysis\nVRAM • bandwidth • ridge"]
         RECOMMEND2["Precision & Batch\nOptimal settings"]
     end
@@ -226,7 +226,7 @@ flowchart TB
 - **Hardware‑Aware recommendations**: GPU capacity analysis (VRAM, bandwidth, ridge point) → optimal precision, batch size, and model dimensions
 - **Built‑in analytical estimator** scores each candidate in milliseconds — no backend API call needed
 - **One‑click apply** — best configs automatically update the environment settings
-- **12‑GPU frontend database**: H100, H200, GH200, A100, L40, L40S, V100, RTX 4090/4080/3090, T4, A6000
+- **14‑GPU frontend database**: H200, GH200, H100 SXM/PCIe, A100 SXM/PCIe, L40S, L40, V100, RTX 4090/4080/3090, RTX A6000, T4
 
 ---
 
@@ -342,7 +342,7 @@ graph TB
 
 ## API Reference
 
-`neurax-service` is a production **actix‑web** HTTP server (default `0.0.0.0:9098`) exposing 37 REST endpoints with CORS, gzip compression, and authentication via Supabase JWT or API keys.
+`neurax-service` is a production **actix‑web** HTTP server (default `0.0.0.0:9098`) exposing 38 REST routes with CORS, gzip compression, and authentication via Supabase JWT or API keys.
 
 ### Endpoint Summary
 
@@ -375,7 +375,7 @@ Conceptor/
 ├── Cargo.toml                     # Rust workspace (10+ crates)
 ├── docker-compose.yml             # 3‑service Docker orchestration
 ├── Dockerfile / .ui / .agent      # Multi‑service Dockerfiles
-├── API_REFERENCE.md               # Full API documentation (37 endpoints)
+├── API_REFERENCE.md               # Full API documentation (38 routes)
 ├── DEPLOYMENT.md                  # Deployment guide
 ├── DESIGN.md                      # Architecture design notes
 ├── CHANGELOG.md                   # Release history
@@ -383,13 +383,13 @@ Conceptor/
 ├── neurax-parser/                 # JSON ingestion → ModelConfig
 ├── neurax-ir/                     # Analytical IR + inference pass
 ├── neurax-core/                   # Pipeline orchestrator + ONNX export
-├── neurax-mlir/                   # MLIR compiler backend (15 dialects, LLVM 18)
+├── neurax-mlir/                   # MLIR compiler backend (13 dialects, LLVM 18)
 ├── neurax-formulas/               # Per‑architecture FLOPs/parameter formulas
 ├── neurax-hardware-db/            # GPU/CPU specification database
 │
 ├── neurax-cli/                    # `neurax` CLI (analyze, compile, validate, export)
 ├── neurax-tui/                    # Ratatui terminal interface
-├── neurax-service/                # actix‑web HTTP API (37 endpoints)
+├── neurax-service/                # actix‑web HTTP API (38 routes)
 ├── neurax-ui/                     # React 18 + TypeScript + Vite web frontend
 ├── neurax-agent/                  # Python/FastAPI/LangChain planning agent
 ├── neurax-mcp/                    # MCP (Model Context Protocol) integration
@@ -585,7 +585,7 @@ gantt
 | Phase | Feature | Status |
 |---|---|---|
 | Core | 10‑pass analytical IR pipeline | ✅ |
-| Core | MLIR compiler backend (15 dialects, LLVM 18) | ✅ |
+| Core | MLIR compiler backend (13 dialects, LLVM 18) | ✅ |
 | Core | CLI: `analyze`, `compile`, `validate`, `summary` | ✅ |
 | Core | Hardware database (20 GPUs) | ✅ |
 | Phase 1 | Inference Intelligence — 22 params, 10 widgets | ✅ |
@@ -598,7 +598,7 @@ gantt
 | Web | Visual canvas, drag‑and‑drop, live metrics | ✅ |
 | Web | Time Machine cost/carbon projection | ✅ |
 | Web | AI Chat Drawer with agent integration | ✅ |
-| Web | Hyperparameter Optimization — 3 strategies, 6 objectives, 12 GPUs | ✅ |
+| Web | Hyperparameter Optimization — 3 strategies, 6 objectives, 14 GPUs | ✅ |
 | Agent | Architecture planning via FastAPI + LangChain | ✅ |
 
 ### 🚧 In Progress
