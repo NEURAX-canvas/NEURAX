@@ -8,6 +8,7 @@ import { useApiKey } from '@/contexts/ApiKeyContext.tsx';
 import { NeuralParticles } from '@/components/landing/NeuralParticles.tsx';
 import SpiderLogo from '@/components/landing/SpiderLogo.tsx';
 import { ScreenshotCarousel } from '@/components/landing/ScreenshotCarousel.tsx';
+import { CanvasShowcase } from '@/components/landing/CanvasShowcase.tsx';
 import { ComparisonTable } from '@/components/landing/ComparisonTable.tsx';
 import { UseCaseGrid, SocialProofBanner } from '@/components/landing/UseCaseGrid.tsx';
 import { FAQAccordion } from '@/components/landing/FAQAccordion.tsx';
@@ -88,8 +89,8 @@ const Navbar = () => (
     <div className="mx-auto max-w-[1300px] px-6 h-[56px] flex items-center justify-between">
       <Link to="/" className="flex items-center gap-2.5 group shrink-0">
         <NeuraxLogo size={20} showText={false} variant="mark" />
-        <span className="text-[15px] font-bold tracking-[-0.02em]" style={{ color: C.text }}>NEURAX</span>
-        <span className="hidden sm:inline text-[9px] font-mono uppercase tracking-[0.2em]" style={{ color: C.faint }}>
+        <span className="text-[16px] font-bold tracking-[-0.02em]" style={{ color: C.text }}>NEURAX</span>
+        <span className="hidden sm:inline text-[10px] font-mono uppercase tracking-[0.2em]" style={{ color: C.faint }}>
           Analytic Compiler
         </span>
       </Link>
@@ -102,7 +103,7 @@ const Navbar = () => (
         ].map((item) => (
           <a
             key={item.label} href={item.href}
-            className="text-[13px] font-medium transition-colors duration-150"
+            className="text-[14px] font-medium transition-colors duration-150"
             style={{ color: C.muted }}
             onMouseEnter={(e) => e.currentTarget.style.color = C.text}
             onMouseLeave={(e) => e.currentTarget.style.color = C.muted}
@@ -113,19 +114,19 @@ const Navbar = () => (
         <a
           href="https://github.com/rustnew/NEURAX"
           target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-[13px] font-medium transition-colors duration-150"
+          className="flex items-center gap-1.5 text-[14px] font-medium transition-colors duration-150"
           style={{ color: C.faint }}
           onMouseEnter={(e) => e.currentTarget.style.color = C.accent}
           onMouseLeave={(e) => e.currentTarget.style.color = C.faint}
         >
-          <Github size={14} />
+          <Github size={15} />
           GitHub
         </a>
       </nav>
 
       <div className="flex items-center gap-3">
         <AuthControl triggerLabel="Sign in" triggerSize="sm" triggerVariant="ghost" />
-        <Button asChild size="sm" className="h-[34px] px-5 text-[13px] font-semibold rounded-[8px] border-0 transition-all duration-150 hover:scale-[1.02]" style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}>
+        <Button asChild size="sm" className="h-[36px] px-5 text-[14px] font-semibold rounded-[8px] border-0 transition-all duration-150 hover:scale-[1.02]" style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}>
           <Link to="/app">
             Launch Studio
             <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
@@ -183,24 +184,24 @@ const Hero = () => (
     <div className="relative z-10 mx-auto max-w-[1000px] px-6 pt-32 pb-20 text-center">
       <div className="nx-fade-up inline-flex items-center gap-2 mb-8 px-4 py-1.5 rounded-full" style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.accent }} />
-        <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+        <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
           AI Architecture Compiler · Research-Grade · Open Source
         </span>
       </div>
 
-      <h1 className="nx-fade-up-1 text-[48px] sm:text-[60px] lg:text-[76px] font-bold leading-[1.05] tracking-[-0.03em] mb-6 text-balance" style={{ color: C.text }}>
+      <h1 className="nx-fade-up-1 text-[54px] sm:text-[68px] lg:text-[84px] font-bold leading-[1.05] tracking-[-0.03em] mb-6 text-balance" style={{ color: C.text }}>
         Design AI that{' '}
         <span className="nx-shimmer">actually ships.</span>
       </h1>
 
-      <p className="nx-fade-up-2 max-w-[680px] mx-auto text-[17px] leading-[1.6] mb-10 text-balance" style={{ color: C.muted }}>
+      <p className="nx-fade-up-2 max-w-[680px] mx-auto text-[19px] leading-[1.6] mb-10 text-balance" style={{ color: C.muted }}>
         NEURAX is a free, open-source architecture compiler that <span className="font-semibold" style={{ color: C.text }}>covers 11 architecture families and 680+ configurable block types</span> —
         from Transformers to SSMs, Diffusion to SNNs. Research-grade, deterministic, and interoperable with every major framework.
       </p>
 
       <div className="nx-fade-up-3 flex flex-wrap items-center justify-center gap-4 mb-16">
         <Button asChild size="lg"
-          className="nx-btn-glow h-[48px] px-8 text-[15px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02] hover:shadow-lg"
+          className="nx-btn-glow h-[52px] px-9 text-[16px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02] hover:shadow-lg"
           style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}
         >
           <Link to="/app">
@@ -209,7 +210,7 @@ const Hero = () => (
           </Link>
         </Button>
         <Button asChild variant="outline" size="lg"
-          className="h-[48px] px-8 text-[15px] font-medium rounded-[10px] transition-all duration-150 hover:scale-[1.02] hover:bg-white/5"
+          className="h-[52px] px-9 text-[16px] font-medium rounded-[10px] transition-all duration-150 hover:scale-[1.02] hover:bg-white/5"
           style={{ backgroundColor: C.card, borderColor: C.border, color: C.text }}
         >
           <a href="#pipeline">See How It Works</a>
@@ -227,10 +228,10 @@ const Hero = () => (
             className="group rounded-[10px] p-4 text-center transition-all duration-200 hover:scale-[1.03] hover:-translate-y-0.5"
             style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
           >
-            <div className="text-[28px] font-bold tracking-[-0.5px] leading-none mb-1" style={{ color: C.accent }}>
+            <div className="text-[30px] font-bold tracking-[-0.5px] leading-none mb-1" style={{ color: C.accent }}>
               {typeof s.display === 'string' ? s.display : <><AnimatedCounter target={s.target} suffix={s.suffix} /></>}
             </div>
-            <div className="text-[11px]" style={{ color: C.muted }}>{s.label}</div>
+            <div className="text-[12px]" style={{ color: C.muted }}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -251,11 +252,11 @@ const ProblemSection = () => (
   <section style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
     <div className="mx-auto max-w-[1100px] px-6 py-24">
       <div className="text-center mb-14">
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           Most AI models never{' '}
           <span style={{ color: C.muted }}>make it to production.</span>
         </h2>
-        <p className="text-[16px] max-w-[600px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[600px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           Not because the ideas are bad — but because teams have no way to predict cost, memory, or
           feasibility before committing GPU hours. NEURAX closes that gap.
         </p>
@@ -271,17 +272,17 @@ const ProblemSection = () => (
               <div className="w-10 h-10 rounded-[8px] flex items-center justify-center mb-4" style={{ backgroundColor: `${C.accent}15` }}>
                 <Icon className="w-5 h-5" style={{ color: C.accent }} />
               </div>
-              <h3 className="text-[16px] font-semibold mb-2" style={{ color: C.text }}>
+              <h3 className="text-[17px] font-semibold mb-2" style={{ color: C.text }}>
                 {item.title}
               </h3>
-              <p className="text-[13px] leading-[1.6] mb-5" style={{ color: C.muted }}>
+              <p className="text-[14px] leading-[1.6] mb-5" style={{ color: C.muted }}>
                 {item.desc}
               </p>
               <div className="pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
-                <div className="text-[26px] font-bold tracking-[-0.02em]" style={{ color: C.accent }}>
+                <div className="text-[28px] font-bold tracking-[-0.02em]" style={{ color: C.accent }}>
                   {item.stat}
                 </div>
-                <div className="text-[11px] mt-1" style={{ color: C.faint }}>{item.statLabel}</div>
+                <div className="text-[12px] mt-1" style={{ color: C.faint }}>{item.statLabel}</div>
               </div>
             </div>
           );
@@ -307,11 +308,11 @@ const FeaturesSection = () => (
   <section id="features" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
     <div className="mx-auto max-w-[1100px] px-6 py-24">
       <div className="text-center mb-14">
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           Research-grade analysis.{' '}
           <span style={{ color: C.muted }}>Deterministic by design.</span>
         </h2>
-        <p className="text-[16px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           Every architecture family ever published — from foundational to experimental — can be modelled, analyzed, and exported
           through NEURAX. <span className="font-semibold" style={{ color: C.text }}>Interoperable by default, reproducible every time.</span>
         </p>
@@ -334,8 +335,8 @@ const FeaturesSection = () => (
               <div className="w-9 h-9 rounded-[7px] flex items-center justify-center mb-3" style={{ backgroundColor: `${C.accent}15` }}>
                 <Icon className="w-[18px] h-[18px]" style={{ color: C.accent }} />
               </div>
-              <h3 className="text-[15px] font-semibold mb-1.5" style={{ color: C.text }}>{f.title}</h3>
-              <p className="text-[13px] leading-[1.6]" style={{ color: C.muted }}>{f.desc}</p>
+              <h3 className="text-[16px] font-semibold mb-1.5" style={{ color: C.text }}>{f.title}</h3>
+              <p className="text-[14px] leading-[1.6]" style={{ color: C.muted }}>{f.desc}</p>
             </div>
           );
         })}
@@ -366,19 +367,19 @@ const ArchitecturesSection = () => (
     <div className="mx-auto max-w-[1200px] px-6 py-24">
       <div className="text-center mb-14">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6" style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
-          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+          <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
             Research-Grade · 100% Reproducible
           </span>
         </div>
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           11 architecture families.{' '}
           <span style={{ color: C.muted }}>680+ configurable blocks.</span>
         </h2>
-        <p className="text-[16px] max-w-[600px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[600px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           Every major neural architecture family — from Transformers to Spiking Neural Networks — is fully representable
           on the NEURAX canvas. Design any model, in any framework, with full analytical fidelity.
         </p>
-        <div className="flex items-center justify-center gap-6 mt-8 text-[12px] font-mono" style={{ color: C.faint }}>
+        <div className="flex items-center justify-center gap-6 mt-8 text-[13px] font-mono" style={{ color: C.faint }}>
           <span>Torch · ONNX · Rust/Burn · Triton · MLIR · Megatron-LM · JSON</span>
         </div>
       </div>
@@ -389,28 +390,28 @@ const ArchitecturesSection = () => (
             style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[14px] font-semibold" style={{ color: C.text }}>{f.title}</h3>
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: `${f.color}20`, color: f.color }}>
+              <h3 className="text-[15px] font-semibold" style={{ color: C.text }}>{f.title}</h3>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: `${f.color}20`, color: f.color }}>
                 {f.blocks}
               </span>
             </div>
             <div className="flex flex-wrap gap-1 mb-3">
               {f.ops.slice(0, 4).map((op) => (
                 <span key={op}
-                  className="text-[9px] px-1.5 py-0.5 rounded-[3px] font-mono"
+                  className="text-[10px] px-1.5 py-0.5 rounded-[3px] font-mono"
                   style={{ color: f.color, backgroundColor: `${f.color}15` }}
                 >
                   {op}
                 </span>
               ))}
               {f.ops.length > 4 && (
-                <span className="text-[9px] font-mono" style={{ color: C.faint }}>+{f.ops.length - 4}</span>
+                <span className="text-[10px] font-mono" style={{ color: C.faint }}>+{f.ops.length - 4}</span>
               )}
             </div>
             <div style={{ height: '1px', backgroundColor: C.border, margin: '8px 0' }} />
             <div className="flex flex-wrap gap-x-3 gap-y-0.5">
               {f.models.map((m) => (
-                <span key={m} className="text-[11px]" style={{ color: C.muted }}>{m}</span>
+                <span key={m} className="text-[12px]" style={{ color: C.muted }}>{m}</span>
               ))}
             </div>
           </div>
@@ -433,10 +434,10 @@ const PipelineSection = () => (
   <section id="pipeline" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
     <div className="mx-auto max-w-[900px] px-6 py-24">
       <div className="text-center mb-14">
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           Design. Analyze. Export.
         </h2>
-        <p className="text-[16px] max-w-[560px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[560px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           10 compiler passes. 55+ metrics. Export to PyTorch, ONNX, Rust/Burn, Triton, MLIR, or Megatron-LM.
           <span className="font-semibold" style={{ color: C.text }}> Zero GPU time. Fully deterministic.</span>
         </p>
@@ -446,7 +447,7 @@ const PipelineSection = () => (
         <div className="space-y-6">
           {STEPS.map((s) => (
             <div key={s.num} className="flex items-start gap-6 relative">
-              <div className="relative z-10 flex-shrink-0 w-[46px] h-[46px] rounded-full flex items-center justify-center text-[14px] font-bold font-mono"
+              <div className="relative z-10 flex-shrink-0 w-[46px] h-[46px] rounded-full flex items-center justify-center text-[15px] font-bold font-mono"
                 style={{
                   background: s.num === '03'
                     ? `linear-gradient(135deg, ${C.accent}, ${C.cyan})`
@@ -460,8 +461,8 @@ const PipelineSection = () => (
                 {s.num}
               </div>
               <div className="flex-1 min-w-0 pt-2.5">
-                <h3 className="text-[16px] font-semibold mb-1.5" style={{ color: C.text }}>{s.title}</h3>
-                <p className="text-[14px] leading-[1.6]" style={{ color: C.muted }}>{s.desc}</p>
+                <h3 className="text-[17px] font-semibold mb-1.5" style={{ color: C.text }}>{s.title}</h3>
+                <p className="text-[15px] leading-[1.6]" style={{ color: C.muted }}>{s.desc}</p>
               </div>
             </div>
           ))}
@@ -482,10 +483,10 @@ const AgentSetupPreview = () => {
         {isConfigured ? <Check className="w-4 h-4" style={{ color: C.green }} /> : <Sparkles className="w-4 h-4" style={{ color: C.accent }} />}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold" style={{ color: C.text }}>
+        <div className="text-[14px] font-semibold" style={{ color: C.text }}>
           {isConfigured ? `${apiKeyConfig?.label || 'Connected'} Agent` : 'Neurax Agent'}
         </div>
-        <div className="text-[11px]" style={{ color: C.faint }}>
+        <div className="text-[12px]" style={{ color: C.faint }}>
           {isConfigured ? `Using ${apiKeyConfig?.model || 'default model'}` : 'Connect your AI provider'}
         </div>
       </div>
@@ -514,7 +515,7 @@ const RustSection = () => {
         <div className="text-center mb-16">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full" style={{ backgroundColor: `${C.green}15`, border: `1px solid ${C.green}30` }}>
             <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: C.green }} />
-            <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.green }}>
+            <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.green }}>
               Enterprise-Grade · 100% Open Source
             </span>
           </div>
@@ -522,12 +523,12 @@ const RustSection = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center mb-24">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.accent }}>Deterministic Engine · 100% Rust</div>
-            <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4 leading-[1.2]" style={{ color: C.text }}>
+            <div className="text-[12px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.accent }}>Deterministic Engine · 100% Rust</div>
+            <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4 leading-[1.2]" style={{ color: C.text }}>
               10-pass IR compiler.{' '}
               <span style={{ color: C.muted }}>680+ block types.</span>
             </h2>
-            <p className="text-[15px] leading-[1.6] mb-8" style={{ color: C.muted }}>
+            <p className="text-[16px] leading-[1.6] mb-8" style={{ color: C.muted }}>
               Every analysis pass — parser, cost engine, dialect router, hardware mapper — runs in pure Rust.
               From 11 architecture families to production code: NEURAX is the only open-source compiler that
               covers the entire neural architecture design space with deterministic fidelity.
@@ -537,8 +538,8 @@ const RustSection = () => {
                 <div key={pt.label} className="flex gap-3">
                   <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.accent }} />
                   <div>
-                    <div className="text-[13px] font-semibold" style={{ color: C.text }}>{pt.label}</div>
-                    <div className="text-[13px] mt-0.5 leading-relaxed" style={{ color: C.muted }}>{pt.desc}</div>
+                    <div className="text-[14px] font-semibold" style={{ color: C.text }}>{pt.label}</div>
+                    <div className="text-[14px] mt-0.5 leading-relaxed" style={{ color: C.muted }}>{pt.desc}</div>
                   </div>
                 </div>
               ))}
@@ -581,14 +582,14 @@ const RustSection = () => {
 
         <div id="agent" className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
-            <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.cyan }}>Featured — Neurax Agent</div>
-            <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4 leading-[1.2]" style={{ color: C.text }}>
+            <div className="text-[12px] font-mono uppercase tracking-[0.1em] mb-4" style={{ color: C.cyan }}>Featured — Neurax Agent</div>
+            <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4 leading-[1.2]" style={{ color: C.text }}>
               An AI co-pilot for{' '}
               <span className="bg-gradient-to-r from-[#83a598] to-[#d79921] bg-clip-text text-transparent">
                 architecture design.
               </span>
             </h2>
-            <p className="text-[15px] leading-[1.6] mb-8" style={{ color: C.muted }}>
+            <p className="text-[16px] leading-[1.6] mb-8" style={{ color: C.muted }}>
               Bring your own API key to unlock Neurax Agent. Get intelligent design suggestions,
               plain-English metric explanations, and automated optimization recommendations — powered by your preferred AI model.
             </p>
@@ -597,8 +598,8 @@ const RustSection = () => {
                 <div key={pt.label} className="flex gap-3">
                   <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: C.cyan }} />
                   <div>
-                    <div className="text-[13px] font-semibold" style={{ color: C.text }}>{pt.label}</div>
-                    <div className="text-[13px] mt-0.5 leading-relaxed" style={{ color: C.muted }}>{pt.desc}</div>
+                    <div className="text-[14px] font-semibold" style={{ color: C.text }}>{pt.label}</div>
+                    <div className="text-[14px] mt-0.5 leading-relaxed" style={{ color: C.muted }}>{pt.desc}</div>
                   </div>
                 </div>
               ))}
@@ -606,7 +607,7 @@ const RustSection = () => {
           </div>
           <div>
             <div className="rounded-[10px] p-6" style={{ backgroundColor: C.card, border: `1px solid ${C.border}` }}>
-              <h3 className="text-[15px] font-semibold mb-4" style={{ color: C.text }}>
+              <h3 className="text-[16px] font-semibold mb-4" style={{ color: C.text }}>
                 Bring your own API key
               </h3>
               <AgentSetupPreview />
@@ -614,11 +615,11 @@ const RustSection = () => {
                 {['OpenAI', 'Anthropic Claude', 'Google Gemini', 'Mistral AI'].map((provider) => (
                   <div key={provider} className="flex items-center gap-3 p-2 rounded-[6px]" style={{ backgroundColor: C.bg }}>
                     <Check className="w-3.5 h-3.5" style={{ color: C.green }} />
-                    <span className="text-[12px]" style={{ color: C.muted }}>{provider}</span>
+                    <span className="text-[13px]" style={{ color: C.muted }}>{provider}</span>
                   </div>
                 ))}
               </div>
-              <p className="mt-4 text-[11px] leading-relaxed" style={{ color: C.faint }}>
+              <p className="mt-4 text-[12px] leading-relaxed" style={{ color: C.faint }}>
                 Your API key is stored locally in your browser. Never sent to our servers.
                 <br />
                 Fully private, fully secure.
@@ -638,19 +639,19 @@ const ClosingCTA = () => (
   <section style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
     <div className="mx-auto max-w-[700px] px-6 py-32 text-center">
       <NeuraxLogo size={48} showText={false} variant="mark" className="mx-auto mb-6 opacity-30" />
-      <h2 className="text-[42px] sm:text-[48px] font-bold tracking-[-0.03em] mb-4 leading-[1.1]" style={{ color: C.text }}>
+      <h2 className="text-[46px] sm:text-[52px] font-bold tracking-[-0.03em] mb-4 leading-[1.1]" style={{ color: C.text }}>
         The future of AI is{' '}
         <br />
         <span className="bg-gradient-to-r from-[#d79921] to-[#83a598] bg-clip-text text-transparent">
           designed, not guessed.
         </span>
       </h2>
-      <p className="text-[17px] mb-10 max-w-[560px] mx-auto" style={{ color: C.muted }}>
+      <p className="text-[18px] mb-10 max-w-[560px] mx-auto" style={{ color: C.muted }}>
         NEURAX is the free, open-source architecture compiler for the AI research community.
         11 families. 680 blocks. Deterministic analysis. Research-grade. Free forever.
       </p>
       <Button asChild size="lg"
-        className="h-[52px] px-10 text-[16px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02]"
+        className="h-[54px] px-10 text-[17px] font-semibold rounded-[10px] border-0 transition-all duration-150 hover:scale-[1.02]"
         style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.orange})`, color: '#1d2021' }}
       >
         <Link to="/app">
@@ -658,7 +659,7 @@ const ClosingCTA = () => (
           <ArrowRight className="w-4 h-4 ml-2" />
         </Link>
       </Button>
-      <div className="mt-10 flex items-center justify-center gap-8 text-[10px] font-mono uppercase tracking-[0.1em]" style={{ color: C.faint }}>
+      <div className="mt-10 flex items-center justify-center gap-8 text-[11px] font-mono uppercase tracking-[0.1em]" style={{ color: C.faint }}>
         <span>11 Architecture Families</span>
         <span>680+ Block Types</span>
         <span>7 Export Formats</span>
@@ -678,27 +679,27 @@ const Footer = () => (
         <div className="md:col-span-2">
           <div className="flex items-center gap-3 mb-4">
             <NeuraxLogo size={20} showText={false} variant="mark" />
-            <span className="text-[16px] font-bold tracking-[-0.02em]" style={{ color: C.text }}>NEURAX</span>
+            <span className="text-[17px] font-bold tracking-[-0.02em]" style={{ color: C.text }}>NEURAX</span>
           </div>
-          <p className="text-[13px] leading-relaxed max-w-sm" style={{ color: C.muted }}>
+          <p className="text-[14px] leading-relaxed max-w-sm" style={{ color: C.muted }}>
             An open-source architecture compiler that covers the entire neural design space: 11 families, 680+ block types, 7 export formats, all deterministic.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider"
               style={{ backgroundColor: '#98971a20', color: '#98971a', border: '1px solid #98971a30' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#98971a' }} />
               MIT License
             </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wider"
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider"
               style={{ backgroundColor: '#83a59820', color: '#83a598', border: '1px solid #83a59830' }}>
               <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#83a598' }} />
               Free forever
             </span>
           </div>
           <div className="mt-6 flex items-center gap-2">
-            <span className="text-[10px] font-mono uppercase tracking-[0.05em]" style={{ color: C.faint }}>Created by</span>
+            <span className="text-[11px] font-mono uppercase tracking-[0.05em]" style={{ color: C.faint }}>Created by</span>
             <a href="https://github.com/rustnew" target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium transition-colors hover:brightness-125"
+              className="inline-flex items-center gap-1.5 text-[13px] font-medium transition-colors hover:brightness-125"
               style={{ color: C.muted }}
             >
               <Github size={12} />
@@ -707,7 +708,7 @@ const Footer = () => (
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Product</h4>
+          <h4 className="text-[11px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Product</h4>
           <div className="space-y-3">
             {[
             { label: 'Features', href: '#features' },
@@ -716,7 +717,7 @@ const Footer = () => (
             { label: 'Studio', href: '/app' },
           ].map(({ label, href }) => (
             <Link key={label} to={href}
-              className="block text-[13px] transition-colors hover:brightness-125"
+              className="block text-[14px] transition-colors hover:brightness-125"
               style={{ color: C.muted }}
             >
               {label}
@@ -725,38 +726,38 @@ const Footer = () => (
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Architecture Families</h4>
+          <h4 className="text-[11px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Architecture Families</h4>
           <div className="space-y-2">
             {FAMILIES.map((f) => (
               <div key={f.title} className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: f.color }} />
-                <span className="text-[12px]" style={{ color: C.muted }}>{f.title}</span>
-                <span className="text-[9px] font-mono ml-auto" style={{ color: C.faint }}>{f.blocks}</span>
+                <span className="text-[13px]" style={{ color: C.muted }}>{f.title}</span>
+                <span className="text-[10px] font-mono ml-auto" style={{ color: C.faint }}>{f.blocks}</span>
               </div>
             ))}
           </div>
         </div>
         <div>
-          <h4 className="text-[10px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Connect</h4>
+          <h4 className="text-[11px] font-mono uppercase tracking-[0.12em] mb-4" style={{ color: C.faint }}>Connect</h4>
           <div className="space-y-3">
             <a href="https://github.com/rustnew/NEURAX" target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 text-[13px] transition-colors hover:brightness-125"
+              className="flex items-center gap-2 text-[14px] transition-colors hover:brightness-125"
               style={{ color: C.muted }}
             >
               <Github size={13} />
               <span style={{ color: C.text }}>GitHub</span>
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: C.border, color: C.faint }}>rustnew/NEURAX</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded" style={{ backgroundColor: C.border, color: C.faint }}>rustnew/NEURAX</span>
             </a>
-            <div className="flex items-center gap-2 text-[13px]" style={{ color: C.muted }}>
+            <div className="flex items-center gap-2 text-[14px]" style={{ color: C.muted }}>
               <Book size={13} />
               <span>Documentation</span>
-              <span className="text-[9px] font-mono" style={{ color: C.faint }}>(WIP)</span>
+              <span className="text-[10px] font-mono" style={{ color: C.faint }}>(WIP)</span>
             </div>
             <div className="mt-4 pt-4" style={{ borderTop: `1px solid ${C.border}` }}>
-              <div className="text-[10px] font-mono uppercase tracking-[0.1em] mb-2" style={{ color: C.faint }}>Community</div>
+              <div className="text-[11px] font-mono uppercase tracking-[0.1em] mb-2" style={{ color: C.faint }}>Community</div>
               <div className="flex gap-2">
                 <a href="https://github.com/rustnew/NEURAX/discussions" target="_blank" rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-medium transition-all hover:brightness-125"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-all hover:brightness-125"
                   style={{ backgroundColor: C.border, color: C.text }}
                 >
                   <Github size={11} /> Discussions
@@ -767,10 +768,10 @@ const Footer = () => (
         </div>
       </div>
       <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderTop: `1px solid ${C.border}` }}>
-        <div className="text-[11px] font-mono" style={{ color: C.faint }}>
+        <div className="text-[12px] font-mono" style={{ color: C.faint }}>
           © {new Date().getFullYear()} NEURAX — AI Architecture Intelligence Platform
         </div>
-        <div className="flex items-center gap-4 text-[11px] font-mono" style={{ color: C.faint }}>
+        <div className="flex items-center gap-4 text-[12px] font-mono" style={{ color: C.faint }}>
           <span>Built with Rust + TypeScript</span>
           <span className="w-1 h-1 rounded-full" style={{ backgroundColor: C.faint }} />
           <span>MIT — Free forever</span>
@@ -789,20 +790,23 @@ const ScreenshotShowcaseSection = () => (
       <div className="text-center mb-14">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
           style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
-          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
-            Visual Tour · 6 Screenshots
+          <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+            Visual Tour · Live Canvas
           </span>
         </div>
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
-          See NEURAX in action.{' '}
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+          See NEURAX in Action.{' '}
           <span style={{ color: C.muted }}>Every feature, live.</span>
         </h2>
-        <p className="text-[16px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           From visual canvas to inference intelligence — explore the full NEURAX experience
           before writing a single line of code.
         </p>
       </div>
-      <ScreenshotCarousel />
+      <CanvasShowcase />
+      <div className="mt-16">
+        <ScreenshotCarousel />
+      </div>
     </div>
   </section>
 );
@@ -816,15 +820,15 @@ const ComparisonSection = () => (
       <div className="text-center mb-14">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
           style={{ backgroundColor: `${C.cyan}15`, border: `1px solid ${C.cyan}30` }}>
-          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.cyan }}>
+          <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.cyan }}>
             Compiler Comparison
           </span>
         </div>
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           NEURAX vs ML Compilers{' '}
           <span style={{ color: C.muted }}>— Built for design, not just runtime.</span>
         </h2>
-        <p className="text-[16px] max-w-[640px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[640px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           IREE, OpenXLA, and TVM are excellent runtime compilers for optimizing execution.
           NEURAX is an <span className="font-semibold" style={{ color: C.text }}>analytical compiler</span> that predicts
           cost, memory, and feasibility <span className="font-semibold" style={{ color: C.text }}>before training starts</span>.
@@ -844,15 +848,15 @@ const SocialProofSection = () => (
       <div className="text-center mb-14">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
           style={{ backgroundColor: `${C.green}15`, border: `1px solid ${C.green}30` }}>
-          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.green }}>
+          <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.green }}>
             Real-World Impact
           </span>
         </div>
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           Built for researchers,{' '}
           <span style={{ color: C.muted }}>loved by engineers.</span>
         </h2>
-        <p className="text-[16px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           From academic labs to enterprise ML teams — NEURAX accelerates the architecture design loop
           and saves real GPU budget.
         </p>
@@ -874,15 +878,15 @@ const FAQSection = () => (
       <div className="text-center mb-14">
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
           style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
-          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+          <span className="text-[12px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
             FAQ · 6 Questions
           </span>
         </div>
-        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+        <h2 className="text-[38px] sm:text-[42px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
           Questions?{' '}
           <span style={{ color: C.muted }}>We've got answers.</span>
         </h2>
-        <p className="text-[16px] max-w-[500px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+        <p className="text-[17px] max-w-[500px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
           Everything you need to know about NEURAX — from pricing to predictions,
           integrations to architecture support.
         </p>

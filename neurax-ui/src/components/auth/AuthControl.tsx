@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/select.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
+import { NotionistsAvatarPicker, NOTIONISTS_AVATARS } from '@/components/profile/NotionistsAvatarPicker.tsx';
 
 
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
@@ -74,6 +75,7 @@ export function AuthControl({
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
   const [planPopoverOpen, setPlanPopoverOpen] = useState(false);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>(NOTIONISTS_AVATARS[0].id);
 
   // API Key state
   const [apiProvider, setApiProvider] = useState<ApiProvider>('openai');
@@ -116,6 +118,7 @@ export function AuthControl({
     setApiCustomEndpoint('');
     setApiModel('');
     setApiProvider('openai');
+    setSelectedAvatarId(NOTIONISTS_AVATARS[0].id);
     setBusy(false);
   };
 
@@ -163,6 +166,13 @@ export function AuthControl({
       toast({ title: 'Email required', description: 'Please enter an email to continue.', variant: 'destructive' });
       return;
     }
+
+    // Persist chosen Notionist avatar
+    const selectedAvatar = NOTIONISTS_AVATARS.find(a => a.id === selectedAvatarId);
+    if (selectedAvatar) {
+      localStorage.setItem('neurax_account_emoji', selectedAvatar.emoji);
+    }
+
     demoSignIn(email.trim(), username.trim() || undefined);
 
     // Check if API key already configured
@@ -356,6 +366,15 @@ export function AuthControl({
             <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-1.5 block">Email (optional)</label>
             <Input placeholder="you@example.com" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-white/5 border-white/10 text-white placeholder:text-white/20" />
           </div>
+          <div>
+            <label className="text-[10px] font-mono uppercase tracking-wider text-white/30 mb-3 block">Choose Your Avatar</label>
+            <div className="rounded-[8px] p-3 bg-white/[0.03] border border-white/[0.06]">
+              <NotionistsAvatarPicker
+                selectedId={selectedAvatarId}
+                onSelect={setSelectedAvatarId}
+              />
+            </div>
+          </div>
           <div className="pt-2 space-y-2">
             <Button className="w-full bg-white text-[#0c0c1a] hover:bg-white/90 font-semibold h-11" onClick={onDemoSignIn}>
               <Zap className="w-4 h-4 mr-2" />
@@ -540,7 +559,7 @@ export function AuthControl({
         }
         setOpen(isOpen);
       }}>
-        <DialogContent className={`sm:max-w-md bg-[#0c0c1a] border border-white/10 shadow-2xl ${setupStep === 'apikey' ? 'sm:max-w-lg' : ''}`}>
+        <DialogContent className={`sm:max-w-md bg-[#0c0c1a] border border-white/10 shadow-2xl ${setupStep === 'apikey' ? 'sm:max-w-lg' : SUPABASE_DISABLED ? 'sm:max-w-lg' : ''}`}>
           {setupStep === 'auth' ? renderAuthStep() : renderApiKeyStep()}
         </DialogContent>
       </Dialog>
