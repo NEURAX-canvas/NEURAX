@@ -7,6 +7,11 @@ import { NeuraxLogo } from '@/components/brand/NeuraxLogo.tsx';
 import { useApiKey } from '@/contexts/ApiKeyContext.tsx';
 import { NeuralParticles } from '@/components/landing/NeuralParticles.tsx';
 import SpiderLogo from '@/components/landing/SpiderLogo.tsx';
+import { ScreenshotCarousel } from '@/components/landing/ScreenshotCarousel.tsx';
+import { ComparisonTable } from '@/components/landing/ComparisonTable.tsx';
+import { UseCaseGrid, SocialProofBanner } from '@/components/landing/UseCaseGrid.tsx';
+import { FAQAccordion } from '@/components/landing/FAQAccordion.tsx';
+import { ScrollProgressBar } from '@/components/landing/ScrollProgressBar.tsx';
 
 const ANIM_STYLES = (
   <style>{`
@@ -776,6 +781,118 @@ const Footer = () => (
 );
 
 /* ═══════════════════════════════════════════════════════
+   SCREENSHOT SHOWCASE SECTION
+   ═══════════════════════════════════════════════════════ */
+const ScreenshotShowcaseSection = () => (
+  <section id="showcase" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
+    <div className="mx-auto max-w-[1100px] px-6 py-24">
+      <div className="text-center mb-14">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
+          style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
+          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+            Visual Tour · 6 Screenshots
+          </span>
+        </div>
+        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+          See NEURAX in action.{' '}
+          <span style={{ color: C.muted }}>Every feature, live.</span>
+        </h2>
+        <p className="text-[16px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          From visual canvas to inference intelligence — explore the full NEURAX experience
+          before writing a single line of code.
+        </p>
+      </div>
+      <ScreenshotCarousel />
+    </div>
+  </section>
+);
+
+/* ═══════════════════════════════════════════════════════
+   COMPARISON SECTION
+   ═══════════════════════════════════════════════════════ */
+const ComparisonSection = () => (
+  <section id="comparison" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
+    <div className="mx-auto max-w-[1100px] px-6 py-24">
+      <div className="text-center mb-14">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
+          style={{ backgroundColor: `${C.cyan}15`, border: `1px solid ${C.cyan}30` }}>
+          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.cyan }}>
+            Compiler Comparison
+          </span>
+        </div>
+        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+          NEURAX vs ML Compilers{' '}
+          <span style={{ color: C.muted }}>— Built for design, not just runtime.</span>
+        </h2>
+        <p className="text-[16px] max-w-[640px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          IREE, OpenXLA, and TVM are excellent runtime compilers for optimizing execution.
+          NEURAX is an <span className="font-semibold" style={{ color: C.text }}>analytical compiler</span> that predicts
+          cost, memory, and feasibility <span className="font-semibold" style={{ color: C.text }}>before training starts</span>.
+        </p>
+      </div>
+      <ComparisonTable />
+    </div>
+  </section>
+);
+
+/* ═══════════════════════════════════════════════════════
+   SOCIAL PROOF SECTION
+   ═══════════════════════════════════════════════════════ */
+const SocialProofSection = () => (
+  <section id="social-proof" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
+    <div className="mx-auto max-w-[1100px] px-6 py-24">
+      <div className="text-center mb-14">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
+          style={{ backgroundColor: `${C.green}15`, border: `1px solid ${C.green}30` }}>
+          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.green }}>
+            Real-World Impact
+          </span>
+        </div>
+        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+          Built for researchers,{' '}
+          <span style={{ color: C.muted }}>loved by engineers.</span>
+        </h2>
+        <p className="text-[16px] max-w-[580px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          From academic labs to enterprise ML teams — NEURAX accelerates the architecture design loop
+          and saves real GPU budget.
+        </p>
+      </div>
+      <div className="space-y-10">
+        <SocialProofBanner />
+        <UseCaseGrid />
+      </div>
+    </div>
+  </section>
+);
+
+/* ═══════════════════════════════════════════════════════
+   FAQ SECTION
+   ═══════════════════════════════════════════════════════ */
+const FAQSection = () => (
+  <section id="faq" style={{ backgroundColor: C.bg, borderTop: `1px solid ${C.border}` }}>
+    <div className="mx-auto max-w-[800px] px-6 py-24">
+      <div className="text-center mb-14">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-6"
+          style={{ backgroundColor: `${C.accent}15`, border: `1px solid ${C.accent}30` }}>
+          <span className="text-[11px] font-mono tracking-[0.1em] uppercase" style={{ color: C.accent }}>
+            FAQ · 6 Questions
+          </span>
+        </div>
+        <h2 className="text-[34px] sm:text-[38px] font-bold tracking-[-0.02em] mb-4" style={{ color: C.text }}>
+          Questions?{' '}
+          <span style={{ color: C.muted }}>We've got answers.</span>
+        </h2>
+        <p className="text-[16px] max-w-[500px] mx-auto leading-[1.6]" style={{ color: C.muted }}>
+          Everything you need to know about NEURAX — from pricing to predictions,
+          integrations to architecture support.
+        </p>
+      </div>
+      <FAQAccordion />
+    </div>
+  </section>
+);
+
+/* ═══════════════════════════════════════════════════════
    LANDING PAGE
    ═══════════════════════════════════════════════════════ */
 export default function Landing() {
@@ -783,15 +900,20 @@ export default function Landing() {
     <div className="min-h-screen selection:bg-[#d79921]/20 antialiased" style={{ backgroundColor: C.bg, color: C.text }}>
       {ANIM_STYLES}
       {FONT_LINK}
+      <ScrollProgressBar />
       <Navbar />
       <main>
         <Hero />
         <ProblemSection />
         <FeaturesSection />
+        <ScreenshotShowcaseSection />
         <ArchitecturesSection />
+        <ComparisonSection />
         <PipelineSection />
+        <SocialProofSection />
         <RustSection />
         <ClosingCTA />
+        <FAQSection />
       </main>
       <Footer />
     </div>

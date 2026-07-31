@@ -228,6 +228,10 @@ flowchart TB
 - **One‑click apply** — best configs automatically update the environment settings
 - **14‑GPU frontend database**: H200, GH200, H100 SXM/PCIe, A100 SXM/PCIe, L40S, L40, V100, RTX 4090/4080/3090, RTX A6000, T4
 
+### MCP Server Integration
+- **Model Context Protocol** server for integration with Claude Desktop and other MCP clients
+- 9 tools: analyze architecture, list/get templates, list hardware, estimate training cost, compliance config, credits, user info, health check
+
 ---
 
 ## Supported Model Families
@@ -338,6 +342,40 @@ graph TB
 - **State**: TanStack Query, React Context
 - **Platform**: Supabase Auth, Stripe Billing
 
+### Modern Landing Page (v0.6.0)
+
+The NEURAX landing page features a **research-grade, conversion-optimized design** with Gruvbox theming and 12 sections:
+
+**Core Sections:**
+- **Hero** — Dynamic metrics, neural particle effects, SpiderLogo animation
+- **Problem** — 3-card problem statement with industry stats
+- **Features** — 6 feature cards with hover animations
+- **🆕 Screenshot Showcase** — Interactive carousel with 6 product screenshots
+- **Architectures** — 11 architecture families with 680+ block types
+- **🆕 Comparison** — Competitive analysis table (NEURAX vs PyTorch/TensorFlow/ONNX)
+- **Pipeline** — 3-step timeline (Design → Analyze → Export)
+- **🆕 Social Proof** — 4 usage stats + 3 use cases + 3 testimonials
+- **Rust/Agent** — Technical stack showcase with code preview
+- **Closing CTA** — Final call-to-action with feature summary
+- **🆕 FAQ** — 6-question accordion with detailed answers
+- **Footer** — Links, architecture families, community info
+
+**Interactive Components:**
+- `ScreenshotCarousel` — Autoplay, thumbnails, fullscreen mode
+- `ComparisonTable` — Sticky columns, 10 feature comparisons
+- `UseCaseGrid` — Academic, Startup, Enterprise use cases with stats
+- `SocialProofBanner` — 10K+ analyses, 500+ stars, $2.5M+ saved
+- `FAQAccordion` — Smooth animations, default open state
+- `ScrollProgressBar` — Fixed progress indicator + back-to-top button
+
+**Design Features:**
+- Gruvbox color palette (#1d2021, #d79921, #83a598)
+- 8 CSS animations (float, pulse, shimmer, fade-up, glow)
+- Responsive grid layouts (1-4 columns based on viewport)
+- Accessibility-first (semantic HTML, ARIA labels, keyboard navigation)
+
+See [LANDING_PAGE_IMPLEMENTATION.md](LANDING_PAGE_IMPLEMENTATION.md) for complete documentation.
+
 ---
 
 ## API Reference
@@ -372,7 +410,7 @@ Authentication supports both **Supabase JWT** (web UI users) and **API keys** (p
 
 ```
 Conceptor/
-├── Cargo.toml                     # Rust workspace (10+ crates)
+├── Cargo.toml                     # Rust workspace (9 crates)
 ├── docker-compose.yml             # 3‑service Docker orchestration
 ├── Dockerfile / .ui / .agent      # Multi‑service Dockerfiles
 ├── API_REFERENCE.md               # Full API documentation (38 routes)
@@ -397,7 +435,6 @@ Conceptor/
 ├── models/                        # Sample model definitions
 ├── tests/                         # Integration tests
 ├── examples/                      # Bundled TUI examples
-└── docs/                          # Internal documentation
 ```
 
 ### Rust Dependency Graph
@@ -447,6 +484,16 @@ export PATH="/usr/lib/llvm-18/bin:$PATH"
 ---
 
 ## Quick Start
+
+### All Services (Development)
+
+```bash
+# Start all three services (backend, agent, frontend) with one script
+./start-dev.sh
+# Backend:  http://localhost:9098
+# Agent:    http://localhost:8099
+# Frontend: http://localhost:8081
+```
 
 ### Build the CLI (no MLIR needed)
 
