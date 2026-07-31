@@ -21,13 +21,11 @@ import { useToast } from '@/hooks/use-toast.ts';
 
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 
-// ─── Emojis pour l'avatar ────────────────────────────────────
-const AVATAR_EMOJIS = [
-  '🧠', '🤖', '🚀', '⚡', '💡', '🎯', '🔥', '💎', '🌟', '🦾',
-  '👨‍💻', '👩‍💻', '🧙', '🦊', '🐉', '🦅', '🐺', '🦈', '🦋', '🌌',
-  '🎨', '🎮', '🎵', '📡', '🔬', '🧬', '⚙️', '🛸', '💻', '📊',
-  '🌟', '⭐', '☀️', '🌈', '💫', '✨', '🪐', '🌙', '🔮', '💠',
-];
+// ─── Notionists Avatar Family ────────────────────────────────────
+import { NOTIONISTS_AVATARS } from '@/components/profile/NotionistsAvatarPicker.tsx';
+
+// Extraire uniquement les emojis des Notionists
+const AVATAR_EMOJIS = NOTIONISTS_AVATARS.map(avatar => avatar.emoji);
 
 const EMOJI_KEY = 'neurax_account_emoji';
 
@@ -54,7 +52,7 @@ export default function Account() {
 
   // ── Émoji ──
   const [selectedEmoji, setSelectedEmoji] = useState<string>(() => {
-    return localStorage.getItem(EMOJI_KEY) || '🧠';
+    return localStorage.getItem(EMOJI_KEY) || NOTIONISTS_AVATARS[0].emoji;
   });
 
   // ── Profile edit ──
@@ -254,31 +252,49 @@ export default function Account() {
             <div className="rounded-xl border bg-card p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Palette className="w-5 h-5 text-primary" />
-                <h2 className="text-sm font-semibold">Account Emoji</h2>
+                <h2 className="text-sm font-semibold">Notionist Avatar</h2>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose an emoji to represent your account across Neurax.
+                Choose your Notionist avatar from the family of 12 unique characters.
               </p>
-              <div className="grid grid-cols-10 gap-2">
-                {AVATAR_EMOJIS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    className={`h-10 w-10 rounded-lg border text-lg flex items-center justify-center transition-all ${
-                      selectedEmoji === emoji
-                        ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-110'
-                        : 'border-border hover:border-primary/40 hover:bg-secondary/40'
-                    }`}
-                    onClick={() => setSelectedEmoji(emoji)}
-                    aria-label={`Select emoji ${emoji}`}
-                  >
-                    {emoji}
-                  </button>
-                ))}
+              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-12 gap-2">
+                {NOTIONISTS_AVATARS.map((notionist) => {
+                  const isSelected = selectedEmoji === notionist.emoji;
+                  return (
+                    <button
+                      key={notionist.id}
+                      type="button"
+                      className={`h-12 w-12 rounded-lg border text-xl flex items-center justify-center transition-all relative group ${
+                        isSelected
+                          ? 'ring-2 scale-110'
+                          : 'hover:scale-105'
+                      }`}
+                      style={{
+                        borderColor: isSelected ? notionist.color : 'hsl(var(--border))',
+                        backgroundColor: isSelected ? `${notionist.color}15` : 'transparent',
+                        ...(isSelected && { 
+                          '--tw-ring-color': `${notionist.color}40`
+                        } as React.CSSProperties)
+                      }}
+                      onClick={() => setSelectedEmoji(notionist.emoji)}
+                      aria-label={`Select ${notionist.name}`}
+                      title={notionist.name}
+                    >
+                      {notionist.emoji}
+                      {/* Tooltip on hover */}
+                      <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-md border">
+                        {notionist.name.replace('Notion ', '')}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <div className="mt-4 flex justify-end">
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  {NOTIONISTS_AVATARS.find(n => n.emoji === selectedEmoji)?.name || 'Select an avatar'}
+                </span>
                 <Button size="sm" onClick={onSaveEmoji} disabled={busy}>
-                  <Save className="w-3.5 h-3.5 mr-1.5" /> Save Emoji
+                  <Save className="w-3.5 h-3.5 mr-1.5" /> Save Avatar
                 </Button>
               </div>
             </div>
