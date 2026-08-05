@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0.0",
+  "model": {
+    "name": "VGG-16",
+    "type": "cnn",
+    "global_params": {
+      "num_layers": 16,
+      "vocab_size": 0,
+      "num_classes": 1000
+    },
+    "layers": [
+      {"id": "conv1_1", "layer_type": "conv", "params": {"in_channels": 3, "out_channels": 64, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv1_2", "layer_type": "conv", "params": {"in_channels": 64, "out_channels": 64, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "pool1", "layer_type": "pooling", "params": {"pool_type": "max", "kernel_size": 2, "stride": 2}},
+      {"id": "conv2_1", "layer_type": "conv", "params": {"in_channels": 64, "out_channels": 128, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv2_2", "layer_type": "conv", "params": {"in_channels": 128, "out_channels": 128, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "pool2", "layer_type": "pooling", "params": {"pool_type": "max", "kernel_size": 2, "stride": 2}},
+      {"id": "conv3_1", "layer_type": "conv", "params": {"in_channels": 128, "out_channels": 256, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv3_2", "layer_type": "conv", "params": {"in_channels": 256, "out_channels": 256, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv3_3", "layer_type": "conv", "params": {"in_channels": 256, "out_channels": 256, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "pool3", "layer_type": "pooling", "params": {"pool_type": "max", "kernel_size": 2, "stride": 2}},
+      {"id": "conv4_1", "layer_type": "conv", "params": {"in_channels": 256, "out_channels": 512, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv4_2", "layer_type": "conv", "params": {"in_channels": 512, "out_channels": 512, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv4_3", "layer_type": "conv", "params": {"in_channels": 512, "out_channels": 512, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "pool4", "layer_type": "pooling", "params": {"pool_type": "max", "kernel_size": 2, "stride": 2}},
+      {"id": "conv5_1", "layer_type": "conv", "params": {"in_channels": 512, "out_channels": 512, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv5_2", "layer_type": "conv", "params": {"in_channels": 512, "out_channels": 512, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "conv5_3", "layer_type": "conv", "params": {"in_channels": 512, "out_channels": 512, "kernel_size": 3, "stride": 1, "padding": 1}},
+      {"id": "pool5", "layer_type": "pooling", "params": {"pool_type": "max", "kernel_size": 2, "stride": 2}},
+      {"id": "fc6", "layer_type": "dense", "params": {"in_features": 25088, "out_features": 4096}},
+      {"id": "fc7", "layer_type": "dense", "params": {"in_features": 4096, "out_features": 4096}},
+      {"id": "fc8", "layer_type": "dense", "params": {"in_features": 4096, "out_features": 1000}}
+    ]
+  },
+  "training": {
+    "batch_size": 256,
+    "sequence_length": 224,
+    "precision": "fp32",
+    "learning_rate": 0.01,
+    "num_epochs": 90
+  },
+  "hardware": {
+    "gpus": [{"name": "V100", "memory_gb": 16, "count": 4}]
+  },
+  "data": {
+    "dataset_size": 1281167,
+    "vocab_size": 0,
+    "num_classes": 1000
+  }
+}

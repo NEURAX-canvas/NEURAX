@@ -261,6 +261,7 @@ fn calculate_total_params(config: &ModelConfig) -> i64 {
         .global_params
         .extra
         .get("intermediate_size")
+        .or_else(|| config.model.global_params.extra.get("ffn_dim"))
         .and_then(|v| v.as_u64())
         .unwrap_or((hidden * 4) as u64) as i64;
     let num_heads = config
@@ -268,6 +269,7 @@ fn calculate_total_params(config: &ModelConfig) -> i64 {
         .global_params
         .extra
         .get("num_attention_heads")
+        .or_else(|| config.model.global_params.extra.get("num_heads"))
         .and_then(|v| v.as_u64())
         .unwrap_or(32) as i64;
     let num_kv_heads = config

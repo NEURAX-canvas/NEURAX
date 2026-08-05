@@ -98,6 +98,26 @@ FAMILY_TEMPLATES: dict[str, str] = {
     "snn": (
         "SNN flow: Input → Dense → LIF Neuron (×N layers) → Dense → Output."
     ),
+    "multimodal": (
+        "Multimodal design with PARALLEL vision + text branches that converge at a fusion node:\n"
+        "    CRITICAL: You MUST create TWO separate input nodes (input_vision and input_text).\n"
+        "    VISION BRANCH: input_vision → conv2d/depthwise_conv2d → max_pool → ... → global_pool → flatten.\n"
+        "    TEXT BRANCH: input_text → embedding → positional_encoding → layernorm → mha → ... → ffn.\n"
+        "    FUSION: BOTH branches connect to a single concat/merge/add node.\n"
+        "    AFTER FUSION: concat → dense/dropout → classification_head → output.\n"
+        "    KEY RULES:\n"
+        "      1. Vision branch ends with flatten (to 1D vector).\n"
+        "      2. Text branch ends with a pooling or flatten to 1D vector.\n"
+        "      3. BOTH branches must connect to the SAME concat/merge node.\n"
+        "      4. The concat node must be marked as fan-in capable.\n"
+        "      5. After concat, the flow is linear.\n"
+        "    PATTERN:\n"
+        '      input_vision → conv1 → pool1 → ... → flatten → concat\n'
+        '      input_text → embed → pos_enc → mha → ... → pool → concat\n'
+        '      concat → dense → classification_head → output\n'
+        "    CRITICAL: This is NOT a single chain. It has TWO inputs and TWO parallel branches.\n"
+        "    Every node in each branch must have a continuous path from its respective input to the concat node."
+    ),
     "experimental": (
         "Experimental / custom flow: freely combine any catalogue blocks. "
         "Ensure input → ... → output path exists."

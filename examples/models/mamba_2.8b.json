@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "model": {
+    "name": "Mamba-2.8B",
+    "type": "ssm",
+    "global_params": {
+      "num_layers": 64,
+      "hidden_size": 2560,
+      "state_size": 16,
+      "vocab_size": 50280,
+      "sequence_length": 2048
+    },
+    "layers": [
+      {"id": "embed", "layer_type": "embedding", "params": {"vocab_size": 50280, "hidden_size": 2560}},
+      {"id": "layer_0", "layer_type": "mamba_block", "params": {"hidden_size": 2560, "state_size": 16}},
+      {"id": "layer_1", "layer_type": "mamba_block", "params": {"hidden_size": 2560, "state_size": 16}},
+      {"id": "layer_2", "layer_type": "mamba_block", "params": {"hidden_size": 2560, "state_size": 16}},
+      {"id": "layer_3", "layer_type": "mamba_block", "params": {"hidden_size": 2560, "state_size": 16}},
+      {"id": "layer_4", "layer_type": "mamba_block", "params": {"hidden_size": 2560, "state_size": 16}},
+      {"id": "ln_f", "layer_type": "normalization", "params": {"hidden_size": 2560}}
+    ]
+  },
+  "training": {
+    "batch_size": 64,
+    "sequence_length": 2048,
+    "precision": "bf16",
+    "learning_rate": 0.0003,
+    "num_epochs": 1
+  },
+  "hardware": {
+    "gpus": [{"name": "A100", "memory_gb": 40, "count": 8}]
+  },
+  "data": {
+    "dataset_size": 300000000000,
+    "vocab_size": 50280,
+    "num_classes": 0
+  }
+}

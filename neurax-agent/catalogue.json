@@ -1750,6 +1750,219 @@
       ]
     }
   },
+  "multimodal": {
+    "description": "Multimodal architectures combining vision and text",
+    "taskHints": [
+      "vision-language",
+      "image and text",
+      "multimodal",
+      "visual question answering",
+      "image captioning",
+      "vision encoder text decoder",
+      "mobile multimodal",
+      "lightweight vision language"
+    ],
+    "defaultInputShape": "[B, ...]",
+    "blocks": [
+      {
+        "type": "input",
+        "name": "Input",
+        "defaultParams": {
+          "shape": "[B, ...]"
+        }
+      },
+      {
+        "type": "output",
+        "name": "Output",
+        "defaultParams": {}
+      },
+      {
+        "type": "conv2d",
+        "name": "Conv2D",
+        "defaultParams": {
+          "in_channels": 3,
+          "out_channels": 64,
+          "kernel_size": 3,
+          "stride": 1,
+          "padding": 1,
+          "bias": true
+        }
+      },
+      {
+        "type": "depthwise_conv2d",
+        "name": "Depthwise Conv2D",
+        "defaultParams": {
+          "in_channels": 64,
+          "kernel_size": 3,
+          "stride": 1,
+          "padding": 1,
+          "groups": 64,
+          "bias": false
+        }
+      },
+      {
+        "type": "max_pool",
+        "name": "MaxPool2D",
+        "defaultParams": {
+          "kernel_size": 2,
+          "stride": 2,
+          "padding": 0
+        }
+      },
+      {
+        "type": "avg_pool",
+        "name": "AvgPool2D",
+        "defaultParams": {
+          "kernel_size": 2,
+          "stride": 2,
+          "padding": 0
+        }
+      },
+      {
+        "type": "global_pool",
+        "name": "Global Pooling",
+        "defaultParams": {
+          "pool_type": "avg"
+        }
+      },
+      {
+        "type": "flatten",
+        "name": "Flatten",
+        "defaultParams": {}
+      },
+      {
+        "type": "embedding",
+        "name": "Embedding",
+        "defaultParams": {
+          "vocab_size": 30522,
+          "d_model": 256,
+          "padding_idx": 0
+        }
+      },
+      {
+        "type": "positional_encoding",
+        "name": "Positional Encoding",
+        "defaultParams": {
+          "max_seq_len": 512,
+          "d_model": 256,
+          "dropout": 0.1
+        }
+      },
+      {
+        "type": "mha",
+        "name": "Multi-Head Attention",
+        "defaultParams": {
+          "num_heads": 8,
+          "d_model": 256,
+          "head_dim": 32,
+          "dropout": 0.1,
+          "bias": true
+        }
+      },
+      {
+        "type": "ffn",
+        "name": "Feed-Forward Network",
+        "defaultParams": {
+          "d_model": 256,
+          "hidden_dim": 1024,
+          "activation": "gelu",
+          "dropout": 0.1,
+          "bias": true
+        }
+      },
+      {
+        "type": "layernorm",
+        "name": "Layer Normalization",
+        "defaultParams": {
+          "normalized_shape": 256,
+          "eps": 1e-5
+        }
+      },
+      {
+        "type": "rmsnorm",
+        "name": "RMS Normalization",
+        "defaultParams": {
+          "normalized_shape": 256,
+          "eps": 1e-6
+        }
+      },
+      {
+        "type": "batchnorm",
+        "name": "Batch Normalization",
+        "defaultParams": {
+          "num_features": 64,
+          "eps": 1e-5,
+          "momentum": 0.1
+        }
+      },
+      {
+        "type": "dense",
+        "name": "Dense",
+        "defaultParams": {
+          "in_features": 256,
+          "out_features": 128,
+          "bias": true
+        }
+      },
+      {
+        "type": "dropout",
+        "name": "Dropout",
+        "defaultParams": {
+          "p": 0.1
+        }
+      },
+      {
+        "type": "relu",
+        "name": "ReLU",
+        "defaultParams": {}
+      },
+      {
+        "type": "gelu",
+        "name": "GELU",
+        "defaultParams": {}
+      },
+      {
+        "type": "residual",
+        "name": "Residual Connection",
+        "defaultParams": {
+          "projection": false
+        }
+      },
+      {
+        "type": "add",
+        "name": "Element-wise Add",
+        "defaultParams": {}
+      },
+      {
+        "type": "concat",
+        "name": "Concatenate",
+        "defaultParams": {
+          "axis": -1
+        }
+      },
+      {
+        "type": "merge",
+        "name": "Merge",
+        "defaultParams": {
+          "mode": "concat"
+        }
+      },
+      {
+        "type": "classification_head",
+        "name": "Classification Head",
+        "defaultParams": {
+          "in_features": 256,
+          "num_classes": 10
+        }
+      }
+    ],
+    "macroBlocks": [],
+    "presets": [],
+    "constraints": {
+      "requiredBlocks": ["input", "output"],
+      "incompatibleBlocks": []
+    }
+  },
   "experimental": {
     "description": "Experimental and research architectures",
     "taskHints": [

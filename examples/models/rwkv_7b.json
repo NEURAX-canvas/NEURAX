@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "model": {
+    "name": "RWKV-7B",
+    "type": "rnn",
+    "global_params": {
+      "num_layers": 32,
+      "hidden_size": 4096,
+      "vocab_size": 50277,
+      "sequence_length": 2048
+    },
+    "layers": [
+      {"id": "embed", "layer_type": "embedding", "params": {"vocab_size": 50277, "hidden_size": 4096}},
+      {"id": "layer_0", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
+      {"id": "layer_1", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
+      {"id": "layer_2", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
+      {"id": "layer_3", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
+      {"id": "ln_f", "layer_type": "normalization", "params": {"hidden_size": 4096}}
+    ]
+  },
+  "training": {
+    "batch_size": 32,
+    "sequence_length": 2048,
+    "precision": "bf16",
+    "learning_rate": 0.0002,
+    "num_epochs": 1
+  },
+  "hardware": {
+    "gpus": [{"name": "A100", "memory_gb": 40, "count": 8}]
+  },
+  "data": {
+    "dataset_size": 300000000000,
+    "vocab_size": 50277,
+    "num_classes": 0
+  }
+}

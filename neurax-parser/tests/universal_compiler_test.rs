@@ -25,6 +25,7 @@ fn test_all_model_types() {
         ("ssm", ModelType::Ssm),
         ("gan", ModelType::Gan),
         ("hybrid", ModelType::Hybrid),
+        ("multimodal", ModelType::Multimodal),
     ];
     
     println!("┌────────────────────────────────────────────────────────────────┐");
@@ -53,6 +54,7 @@ fn test_all_model_types() {
             ModelType::Ssm => "State space models",
             ModelType::Gan => "Generative adversarial",
             ModelType::Hybrid => "Multi-architecture",
+            ModelType::Multimodal => "Multimodal vision+language",
         };
         
         println!("│ {:<14} │ {:>7} │ {:>7} │ {:<23} │", name, "✓", status, desc);

@@ -10,6 +10,10 @@ COPY neurax-agent/requirements.txt .
 
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install curl for the container healthcheck (python:3.11-slim does not ship it)
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY neurax-agent/ .
 
 # Default env vars

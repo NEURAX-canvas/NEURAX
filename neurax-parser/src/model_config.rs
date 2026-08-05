@@ -71,6 +71,7 @@ pub enum ModelType {
     Ssm,    // State Space Models (Mamba, S4, H3, etc.)
     Gan,    // Generative Adversarial Networks
     Hybrid, // Multi-architecture models (ViT, DiT, etc.)
+    Multimodal, // Vision+language models (CLIP, LLaVA-style, mobile VLMs)
 }
 
 impl ModelType {
@@ -85,6 +86,7 @@ impl ModelType {
             "ssm" | "state_space" | "mamba" | "state_space_model" => Ok(Self::Ssm),
             "gan" | "generative_adversarial" | "adversarial" => Ok(Self::Gan),
             "hybrid" | "multi_architecture" => Ok(Self::Hybrid),
+            "multimodal" | "multi_modal" | "vision_language" | "vlm" => Ok(Self::Multimodal),
             _ => Err(ParserError::InvalidModelType(s.to_string())),
         }
     }
@@ -100,6 +102,7 @@ impl ModelType {
             Self::Ssm => "ssm",
             Self::Gan => "gan",
             Self::Hybrid => "hybrid",
+            Self::Multimodal => "multimodal",
         }
     }
 }
