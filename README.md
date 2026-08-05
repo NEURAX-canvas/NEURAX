@@ -13,9 +13,11 @@
 ![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)
 ![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 
-![Build](https://img.shields.io/badge/build-passing-success?style=flat-square)
-![Tests](https://img.shields.io/badge/tests-173%2B%20passing-success?style=flat-square)
-[![Version](https://img.shields.io/badge/version-0.6.1-blue?style=flat-square)](CHANGELOG.md)
+[![CI](https://github.com/rustnew/NEURAX/actions/workflows/ci.yml/badge.svg)](https://github.com/rustnew/NEURAX/actions)
+[![Version](https://img.shields.io/badge/version-0.6.3-blue?style=flat-square)](CHANGELOG.md)
+[![GitHub Release](https://img.shields.io/github/v/release/rustnew/NEURAX?style=flat-square)](https://github.com/rustnew/NEURAX/releases)
+[![Discussions](https://img.shields.io/github/discussions/rustnew/NEURAX?style=flat-square)](https://github.com/rustnew/NEURAX/discussions)
+[![Stars](https://img.shields.io/github/stars/rustnew/NEURAX?style=flat-square)](https://github.com/rustnew/NEURAX)
 
 [**🚀 Live Demo**](https://neurax.ai) · [**📚 Documentation**](DESIGN.md) · [**🎯 API Reference**](API_REFERENCE.md) · [**💬 Discussions**](https://github.com/rustnew/NEURAX/discussions)
 
