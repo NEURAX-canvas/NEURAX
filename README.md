@@ -296,6 +296,27 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the develo
 
 ---
 
+## Sponsors
+
+NEURAX is free and open source, built and maintained by the community. Your sponsorship helps us keep the project sustainable and growing.
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?style=flat-square&logo=github&logoColor=white)](https://github.com/sponsors/rustnew)
+
+**Why sponsor NEURAX?**
+- Support the development of the first analytical compiler for neural architectures
+- Help democratize ML architecture design and save GPU costs
+- Get your logo featured here and in our documentation
+
+**Sponsorship tiers:**
+- **$5/mo** - Thank you + name in our sponsors list
+- **$25/mo** - Logo in the README + early access to new features
+- **$100/mo** - Priority support + case study feature
+- **$500/mo** - Monthly consultation + landing page logo
+
+Every contribution, no matter the size, makes a difference. Thank you for supporting open source! 🙏
+
+---
+
 ## License
 
 NEURAX is open-source software licensed under the **MIT License**. See [LICENSE](LICENSE) for the full text.
