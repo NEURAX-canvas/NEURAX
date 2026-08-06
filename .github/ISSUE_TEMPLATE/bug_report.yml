@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a problem to help us improve NEURAX
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much detail as possible.
+  - type: input
+    id: version
+    attributes:
+      label: NEURAX version
+      description: Which version are you using? (e.g. 0.6.3)
+      placeholder: "0.6.3"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did you hit the issue?
+      options:
+        - CLI
+        - Web UI
+        - API (neurax-service)
+        - Agent (neurax-agent)
+        - TUI
+        - MCP
+        - MLIR backend
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened? What did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the model JSON or the exact commands used, if relevant.
+      placeholder: |
+        1. Run ...
+        2. Open ...
+        3. See error ...
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Rust version, Node version, browser, GPU model...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / output
+      render: shell

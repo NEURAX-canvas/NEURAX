@@ -1,3 +1,17 @@
-# These are supported funding model platforms
+# Funding / sponsorship options for NEURAX.
+#
+# The "Sponsor" button appears on the repository as soon as at least one of
+# these is configured and (for GitHub Sponsors) the profile is approved.
+#
+# Instructions:
+#   * Uncomment the platforms you actually use and fill in your username/URL.
+#   * For GitHub Sponsors, complete onboarding at
+#     https://github.com/sponsors/rustnew — the repo will then show the
+#     button automatically.
 
-github: [rustnew]
+github: [rustnew]                     # GitHub Sponsors (owner username)
+# patreon: neurax                     # Patreon page slug
+# ko_fi: neurax                       # Ko-fi username
+# buy_me_a_coffee: neurax             # Buy Me a Coffee username
+# custom:
+#   - https://neurax.ai/donate        # Any custom donation page

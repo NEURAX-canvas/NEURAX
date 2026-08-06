@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/rustnew/NEURAX/discussions
+    about: Ask questions, share ideas, and meet the community here.
+  - name: Security policy
+    url: https://github.com/rustnew/NEURAX/security/policy
+    about: Please report security vulnerabilities privately here, never as a public issue.
