@@ -56,7 +56,7 @@ impl IrPass for GraphPass {
         }
 
         // Compute topological order
-        graph.compute_topo_order().map_err(|e| GraphError::TopologicalSortFailed(e))?;
+        graph.compute_topo_order().map_err(GraphError::TopologicalSortFailed)?;
 
         Ok(graph)
     }

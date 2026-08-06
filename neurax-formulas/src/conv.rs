@@ -16,6 +16,7 @@
 /// * `padding` - Padding
 /// * `groups` - Groups (1 for standard conv, in_channels for depthwise)
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub fn conv2d_flops(
     batch: usize,
     in_channels: usize,
@@ -41,6 +42,7 @@ pub fn conv2d_flops(
 
 /// Compute FLOPs for depthwise separable convolution
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub fn depthwise_separable_conv2d_flops(
     batch: usize,
     channels: usize,
@@ -67,6 +69,7 @@ pub fn depthwise_separable_conv2d_flops(
 
 /// Compute FLOPs for Conv3D layer
 #[inline(always)]
+#[allow(clippy::too_many_arguments)]
 pub fn conv3d_flops(
     batch: usize,
     in_channels: usize,

@@ -314,8 +314,8 @@ fn decompose_layer_to_ops(
             };
             
             let stride = layer.params.stride.unwrap_or(2);
-            let out_h = (in_h + stride - 1) / stride;
-            let out_w = (in_w + stride - 1) / stride;
+            let out_h = in_h.div_ceil(stride);
+            let out_w = in_w.div_ceil(stride);
             
             let flops = super::formulas::pooling_flops(batch, channels, out_h, out_w, kernel_size);
             

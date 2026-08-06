@@ -527,7 +527,7 @@ impl HardwareDatabase {
     pub fn get_gpu_or_fallback(&self, name: &str) -> GpuSpec {
         self.gpus.get(name)
             .cloned()
-            .unwrap_or_else(|| GpuSpec::generic())
+            .unwrap_or_else(GpuSpec::generic)
     }
     
     /// Get CPU specification by name

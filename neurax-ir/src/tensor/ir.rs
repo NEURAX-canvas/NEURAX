@@ -13,6 +13,7 @@ pub struct TensorIR {
     pub metrics_done: bool,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for TensorIR {
     fn default() -> Self {
         Self {
@@ -87,6 +88,7 @@ impl Shape {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for Shape {
     fn default() -> Self {
         Shape(vec![])

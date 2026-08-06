@@ -14,6 +14,7 @@ pub struct OperatorIR {
     pub metrics_done: bool,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for OperatorIR {
     fn default() -> Self {
         Self {

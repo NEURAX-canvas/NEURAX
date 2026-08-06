@@ -23,6 +23,7 @@ pub enum PrecisionLevel {
     Industrial,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for PrecisionLevel {
     fn default() -> Self {
         Self::Estimation
@@ -174,7 +175,7 @@ impl ResolutionStrategy for ConcreteShapeStrategy {
             "d_head" | "head_dim" => {
                 let h = ctx.global.hidden_size?;
                 let n = ctx.global.num_attention_heads? as u64;
-                if n > 0 { Some(h / n) } else { None }
+                h.checked_div(n)
             }
             "N_exp" | "num_experts" => ctx.global.num_experts.map(|e| e as u64),
             "d_state" | "ssm_state" => ctx.global.ssm_state_size,
@@ -197,7 +198,7 @@ impl ResolutionStrategy for ArchitectureRuleStrategy {
             "d_head" | "head_dim" => {
                 let h = ctx.global.hidden_size?;
                 let n = ctx.global.num_attention_heads? as u64;
-                if n > 0 { Some(h / n) } else { None }
+                h.checked_div(n)
             }
             // FFN intermediate typically 4x hidden for standard, 8/3x for SwiGLU
             "I" | "intermediate" if ctx.global.intermediate_size.is_none() => {
@@ -240,7 +241,7 @@ impl PrecisionResolver {
     /// Resolve dimensions using cascade of strategies
     pub fn resolve_dims(
         &self,
-        dims: &mut Vec<Dim>,
+        dims: &mut [Dim],
         ctx: &ResolutionContext,
     ) -> ResolutionReport {
         let mut report = ResolutionReport::new();

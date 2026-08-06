@@ -64,6 +64,7 @@ pub fn resnet_bottleneck_block_params(
 /// Compute parameters for Inception Module (multiple parallel branches)
 ///
 /// Structure: 1×1 + 3×3 + 5×5 + pool branches
+#[allow(clippy::too_many_arguments)]
 pub fn inception_module_params(
     in_channels: usize,
     out_1x1: usize,
@@ -188,13 +189,13 @@ pub fn shuffle_unit_params(
     let mid_channels = out_channels / 2;
     
     // First 1×1 group conv
-    let conv1 = ((in_channels / groups) * mid_channels * groups * 1 * 1 + 4 * mid_channels) as u64;
+    let conv1 = ((in_channels / groups) * mid_channels * groups + 4 * mid_channels) as u64;
     
     // Depthwise 3×3
     let depthwise = (mid_channels * 3 * 3 + 4 * mid_channels) as u64;
     
     // Second 1×1 group conv
-    let conv2 = ((mid_channels / groups) * out_channels * groups * 1 * 1 + 4 * out_channels) as u64;
+    let conv2 = ((mid_channels / groups) * out_channels * groups + 4 * out_channels) as u64;
     
     // Skip connection projection if needed
     let skip = if stride != 1 || in_channels != out_channels {
@@ -275,6 +276,7 @@ pub fn resnet_basic_block_flops(
 }
 
 /// Compute FLOPs for MBConv block
+#[allow(clippy::too_many_arguments)]
 pub fn mbconv_flops(
     batch: usize,
     in_channels: usize,
