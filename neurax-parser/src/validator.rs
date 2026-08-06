@@ -218,7 +218,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                 
                 // Validate truncation in [0, 1] if specified
                 if let Some(truncation) = layer.params.truncation {
-                    if truncation < 0.0 || truncation > 1.0 {
+                    if !(0.0..=1.0).contains(&truncation) {
                         return Err(ParserError::InvalidValue {
                             field: format!("layers.{}.params.truncation", layer.id),
                             reason: "truncation must be between 0 and 1".to_string(),
@@ -256,7 +256,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                 
                 // Validate recurrent_dropout in [0, 1) if specified
                 if let Some(recurrent_dropout) = layer.params.recurrent_dropout {
-                    if recurrent_dropout < 0.0 || recurrent_dropout >= 1.0 {
+                    if !(0.0..1.0).contains(&recurrent_dropout) {
                         return Err(ParserError::InvalidValue {
                             field: format!("layers.{}.params.recurrent_dropout", layer.id),
                             reason: "recurrent_dropout must be in [0, 1)".to_string(),
@@ -266,7 +266,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                 
                 // Validate zoneout in [0, 1) if specified
                 if let Some(zoneout) = layer.params.zoneout {
-                    if zoneout < 0.0 || zoneout >= 1.0 {
+                    if !(0.0..1.0).contains(&zoneout) {
                         return Err(ParserError::InvalidValue {
                             field: format!("layers.{}.params.zoneout", layer.id),
                             reason: "zoneout must be in [0, 1)".to_string(),

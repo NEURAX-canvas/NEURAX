@@ -75,6 +75,7 @@ pub enum ModelType {
 }
 
 impl ModelType {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, ParserError> {
         match s.to_lowercase().as_str() {
             "transformer" => Ok(Self::Transformer),
@@ -170,6 +171,7 @@ pub enum LayerType {
 }
 
 impl LayerType {
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Result<Self, ParserError> {
         match s.to_lowercase().as_str() {
             "embedding" => Ok(Self::Embedding),

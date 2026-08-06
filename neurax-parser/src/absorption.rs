@@ -248,7 +248,7 @@ impl GlobalResolutionContext {
         
         // Critical fields
         let critical_fields = [
-            ("hidden_size", global_params.extra.get("hidden_size").is_some()),
+            ("hidden_size", global_params.extra.contains_key("hidden_size")),
             ("num_layers", global_params.num_layers.is_some()),
             ("batch_size", training.batch_size > 0),
         ];
@@ -516,11 +516,10 @@ impl GlobalPropagator {
                 }
             }
             
-            crate::model_config::LayerType::Normalization => {
-                if p.hidden_size.is_none() && ctx.hidden_size.is_some() {
+            crate::model_config::LayerType::Normalization
+                if p.hidden_size.is_none() && ctx.hidden_size.is_some() => {
                     p.hidden_size = ctx.hidden_size.map(|v| v as usize);
                 }
-            }
             
             _ => {}
         }

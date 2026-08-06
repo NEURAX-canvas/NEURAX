@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.3] — 2026‑08
+
+### Changed
+- Replace generic emojis with the **Notionists** avatar family across the UI.
+- Add **Multimodal (VLM)** support: new `ModelType::Multimodal` for
+  vision+language models (CLIP, LLaVA-style, mobile VLMs) — parser, agent
+  planning template (parallel vision+text branches with fusion), and tests.
+- Fix parameter calculation: fall back to `ffn_dim`/`num_heads` when
+  `intermediate_size`/`num_attention_heads` are absent.
+- Add `.cargo/config.toml` pointing MLIR crates at LLVM 18.
+- Add MIT `LICENSE`, `ROADMAP_NEURAX_2.0.md`, deployment scripts, and
+  `examples/models` reference configs.
+
+## [0.6.2] — 2026‑08
+
+### Changed
+- Refactor README, increase fonts, integrate Notionists avatars system.
+
+## [0.6.1] — 2026‑07
+
+### Added
+- Modernized landing page with 5 components + Notionists avatar system.
+- **Hyperparameter Optimization** system (3 strategies, 11 families,
+  hardware-aware).
+- LLM-builder implementation and testing.
+
 ## [0.5.0] — 2026‑07
 
 ### ✅ Complete (v0.5.0)

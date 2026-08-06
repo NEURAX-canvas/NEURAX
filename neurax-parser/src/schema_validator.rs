@@ -197,16 +197,14 @@ impl ModelValidator {
             
             // Rule 2.3: vocab_size and sequence_length - warn if missing for applicable models
             let model_type = model.get("type").and_then(|t| t.as_str()).unwrap_or("");
-            if !["cnn", "diffusion"].contains(&model_type) {
-                if params.get("vocab_size").is_none() {
+            if !["cnn", "diffusion"].contains(&model_type)
+                && params.get("vocab_size").is_none() {
                     result.warnings.push("global_params.vocab_size missing - may affect parameter calculation".to_string());
                 }
-            }
-            if !["cnn"].contains(&model_type) {
-                if params.get("sequence_length").is_none() {
+            if !["cnn"].contains(&model_type)
+                && params.get("sequence_length").is_none() {
                     result.warnings.push("global_params.sequence_length missing - may affect FLOPs calculation".to_string());
                 }
-            }
         } else {
             result.errors.push(ValidationError::MissingField("model.global_params".to_string()));
         }
@@ -294,14 +292,13 @@ impl ModelValidator {
             prev_output = output_shape;
             
             // Rule 3.5: custom equations for custom layers
-            if layer.get("layer_type").and_then(|v| v.as_str()) == Some("custom") {
-                if layer.get("custom_equations").is_none() {
+            if layer.get("layer_type").and_then(|v| v.as_str()) == Some("custom")
+                && layer.get("custom_equations").is_none() {
                     result.warnings.push(format!(
                         "Layer {} has type 'custom' but no custom_equations provided - FLOPs may be inaccurate",
                         layer.get("id").and_then(|v| v.as_str()).unwrap_or("unknown")
                     ));
                 }
-            }
         }
         
         result.metrics.shape_chain_valid = prev_output.is_some();
