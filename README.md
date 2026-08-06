@@ -315,6 +315,11 @@ NEURAX is free and open source, built and maintained by the community. Your spon
 
 Every contribution, no matter the size, makes a difference. Thank you for supporting open source! 🙏
 
+**Funding applications:**
+- [GitHub Accelerator](docs/GITHUB_ACCELERATOR_APPLICATION.md)
+- [Sentient Foundation ($42M)](docs/SENTIENT_FOUNDATION_APPLICATION.md)
+- [Linux Foundation Grants ($12.5M)](docs/LINUX_FOUNDATION_APPLICATION.md)
+
 ---
 
 ## License
