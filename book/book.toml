@@ -1,0 +1,9 @@
+[book]
+title = "NEURAX Documentation"
+description = "NEURAX — The Analytical Compiler for Neural Architectures"
+authors = ["Martial-Christian Fossouo"]
+language = "en"
+
+[output.html]
+git-repository-url = "https://github.com/rustnew/NEURAX"
+edit-url-template = "https://github.com/rustnew/NEURAX/edit/main/book/src/{path}"

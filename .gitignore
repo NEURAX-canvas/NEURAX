@@ -8,3 +8,6 @@ node_modules/
 *.pem
 
 __pycache__/
+
+# mdBook build output
+book/book/
