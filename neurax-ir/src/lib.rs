@@ -1,45 +1,47 @@
 //! NEURAX IR - 10 dialectes IR pour l'analyse analytique
 
-pub mod traits;
-pub mod error;
-pub mod precision;
 pub mod architecture;
-pub mod graph;
-pub mod tensor;
-pub mod operator;
 pub mod compute;
-pub mod memory;
-pub mod parallelism;
-pub mod hardware;
 pub mod cost;
-pub mod report;
-pub mod ir_injector;
 pub mod dynamic;
+pub mod error;
+pub mod graph;
+pub mod hardware;
 pub mod inference;
+pub mod ir_injector;
+pub mod memory;
+pub mod operator;
+pub mod parallelism;
+pub mod precision;
+pub mod report;
+pub mod tensor;
+pub mod traits;
 
-pub use traits::IrPass;
+pub use architecture::*;
+pub use compute::*;
+pub use cost::*;
 pub use error::*;
+pub use graph::*;
+pub use hardware::*;
+pub use ir_injector::{
+    ArchitectureIRInput, CostPassConfig, HardwarePassConfig, IrInjector, MemoryPassConfig,
+};
+pub use memory::*;
+pub use operator::*;
+pub use parallelism::*;
 #[allow(ambiguous_glob_reexports)]
 pub use precision::*;
-pub use architecture::*;
-pub use graph::*;
+pub use report::*;
 #[allow(ambiguous_glob_reexports)]
 pub use tensor::*;
-pub use operator::*;
-pub use compute::*;
-pub use memory::*;
-pub use parallelism::*;
-pub use hardware::*;
-pub use cost::*;
-pub use report::*;
-pub use ir_injector::{IrInjector, ArchitectureIRInput, MemoryPassConfig, HardwarePassConfig, CostPassConfig};
+pub use traits::IrPass;
 
-use std::sync::Arc;
-use parking_lot::Mutex;
 use ahash::AHashMap as HashMap;
-use neurax_parser::ModelConfig;
 use neurax_hardware_db::HardwareDatabase;
+use neurax_parser::ModelConfig;
+use parking_lot::Mutex;
 use serde::Serialize;
+use std::sync::Arc;
 
 /// Shared context for IR passes
 pub struct NeuraxContext {
@@ -65,16 +67,16 @@ impl NeuraxContext {
             metrics_store: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-    
+
     pub fn add_diagnostic(&self, diagnostic: Diagnostic) {
         self.diagnostics.lock().push(diagnostic);
     }
-    
+
     /// Store a metric value for inter-pass communication
     pub fn set_metric(&self, key: &str, value: f64) {
         self.metrics_store.lock().insert(key.to_string(), value);
     }
-    
+
     /// Retrieve a stored metric value
     pub fn get_metric(&self, key: &str) -> Option<f64> {
         self.metrics_store.lock().get(key).copied()
@@ -129,7 +131,7 @@ pub enum DiagnosticCode {
     E003, // Custom formula failed
     E004, // Unsupported layer
     E005, // Cycle in graph
-    
+
     // Warnings (W001-W006) - Precision reduced
     W001, // Custom layer without formula
     W002, // Symbolic dimensions remaining
@@ -137,12 +139,12 @@ pub enum DiagnosticCode {
     W004, // Flash Attention not enabled
     W005, // Memory close to GPU limit
     W006, // Inefficient parallelism
-    
+
     // Info (I001-I003) - Observations
     I001, // GQA detected
     I002, // MoE detected
     I003, // Flash Attention detected
-    
+
     // Hints (H001-H005) - Recommendations
     H001, // Enable gradient checkpointing
     H002, // Enable Flash Attention
@@ -175,7 +177,7 @@ impl DiagnosticCode {
             Self::H005 => "H005",
         }
     }
-    
+
     pub fn description(&self) -> &'static str {
         match self {
             Self::E001 => "OOM Risk detected",

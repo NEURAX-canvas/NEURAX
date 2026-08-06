@@ -150,7 +150,7 @@ impl RealWorldData {
             _ => Self::default_for(name),
         }
     }
-    
+
     fn default_for(name: &str) -> Self {
         Self {
             model_name: name.to_string(),

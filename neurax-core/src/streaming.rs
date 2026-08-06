@@ -5,26 +5,25 @@
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::sync::broadcast;
 use std::time::Instant;
+use tokio::sync::broadcast;
 
 use crate::AnalysisResult;
 use crate::IrPassExt;
-use neurax_parser::ModelConfig;
-use neurax_ir::NeuraxError;
-use neurax_ir::traits::{IrPass, ReportPass as ReportPassTrait};
-use neurax_ir::{
-    ArchitecturePass, GraphPass, TensorPass, OperatorPass, ComputePass, MemoryPass,
-    ParallelismIR, ParallelismPass,
-    HardwareIR, HardwarePass, CostPass, ReportPass,
-    dynamic::{
-        VirtualMemoryPass, StabilityAnalysisPass, BehavioralSynthesisPass,
-        DynamicResults, DynamicConfig,
-    },
-};
-use neurax_ir::parallelism::ParallelismMetrics;
 use neurax_ir::hardware::HardwareMetrics;
-use neurax_ir::report::{ReportInput, PhaseTimingEntry};
+use neurax_ir::parallelism::ParallelismMetrics;
+use neurax_ir::report::{PhaseTimingEntry, ReportInput};
+use neurax_ir::traits::{IrPass, ReportPass as ReportPassTrait};
+use neurax_ir::NeuraxError;
+use neurax_ir::{
+    dynamic::{
+        BehavioralSynthesisPass, DynamicConfig, DynamicResults, StabilityAnalysisPass,
+        VirtualMemoryPass,
+    },
+    ArchitecturePass, ComputePass, CostPass, GraphPass, HardwareIR, HardwarePass, MemoryPass,
+    OperatorPass, ParallelismIR, ParallelismPass, ReportPass, TensorPass,
+};
+use neurax_parser::ModelConfig;
 
 /// Unique identifier for an analysis job
 pub type JobId = String;
@@ -75,10 +74,7 @@ pub enum AnalysisEvent {
         suggestion: Option<String>,
     },
     /// Pipeline completed successfully
-    Completed {
-        job_id: JobId,
-        total_ms: u64,
-    },
+    Completed { job_id: JobId, total_ms: u64 },
     /// Pipeline failed
     Failed {
         job_id: JobId,
@@ -191,7 +187,11 @@ pub fn run_analysis_streaming(
     let start = Instant::now();
     let total_phases = 11usize; // 10 dialects + dynamic
 
-    let model_name = config.model.name.clone().unwrap_or_else(|| "Unknown".to_string());
+    let model_name = config
+        .model
+        .name
+        .clone()
+        .unwrap_or_else(|| "Unknown".to_string());
     let model_type = config.model.model_type.as_str().to_string();
     let num_layers = config.model.layers.len();
 
@@ -304,26 +304,34 @@ pub fn run_analysis_streaming(
     });
 
     // Phase 7 & 8: Parallelism and Hardware in parallel
-    let ((parallelism, _parallelism_metrics), (_hardware_initial, _hardware_metrics_initial)) = rayon::join(
-        || {
-            let parallelism_pass = ParallelismPass;
-            let mut parallelism = parallelism_pass.build(&(memory.clone(), graph.clone()), &ctx)
-                .unwrap_or_else(|_| ParallelismIR::default());
-            let parallelism_metrics = parallelism_pass.compute_metrics(&mut parallelism, &ctx)
-                .unwrap_or_else(|_| ParallelismMetrics::default());
-            let _ = parallelism_pass.validate(&parallelism, &parallelism_metrics);
-            (parallelism, parallelism_metrics)
-        },
-        || {
-            let hardware_pass = HardwarePass;
-            let mut hardware = hardware_pass.build(&(compute.clone(), memory.clone(), ParallelismIR::default()), &ctx)
-                .unwrap_or_else(|_| HardwareIR::default());
-            let hardware_metrics = hardware_pass.compute_metrics(&mut hardware, &ctx)
-                .unwrap_or_else(|_| HardwareMetrics::default());
-            let _ = hardware_pass.validate(&hardware, &hardware_metrics);
-            (hardware, hardware_metrics)
-        },
-    );
+    let ((parallelism, _parallelism_metrics), (_hardware_initial, _hardware_metrics_initial)) =
+        rayon::join(
+            || {
+                let parallelism_pass = ParallelismPass;
+                let mut parallelism = parallelism_pass
+                    .build(&(memory.clone(), graph.clone()), &ctx)
+                    .unwrap_or_else(|_| ParallelismIR::default());
+                let parallelism_metrics = parallelism_pass
+                    .compute_metrics(&mut parallelism, &ctx)
+                    .unwrap_or_else(|_| ParallelismMetrics::default());
+                let _ = parallelism_pass.validate(&parallelism, &parallelism_metrics);
+                (parallelism, parallelism_metrics)
+            },
+            || {
+                let hardware_pass = HardwarePass;
+                let mut hardware = hardware_pass
+                    .build(
+                        &(compute.clone(), memory.clone(), ParallelismIR::default()),
+                        &ctx,
+                    )
+                    .unwrap_or_else(|_| HardwareIR::default());
+                let hardware_metrics = hardware_pass
+                    .compute_metrics(&mut hardware, &ctx)
+                    .unwrap_or_else(|_| HardwareMetrics::default());
+                let _ = hardware_pass.validate(&hardware, &hardware_metrics);
+                (hardware, hardware_metrics)
+            },
+        );
 
     // Emit progress for parallel phases
     emitter.emit(AnalysisEvent::PhaseStarted {
@@ -336,7 +344,10 @@ pub fn run_analysis_streaming(
 
     // Re-run hardware with actual parallelism data
     let hardware_pass = HardwarePass;
-    let (mut hardware, _) = hardware_pass.run(&(compute.clone(), memory.clone(), parallelism.clone()), &ctx)?;
+    let (mut hardware, _) = hardware_pass.run(
+        &(compute.clone(), memory.clone(), parallelism.clone()),
+        &ctx,
+    )?;
     let _hardware_metrics = hardware_pass.compute_metrics(&mut hardware, &ctx)?;
     hardware_pass.validate(&hardware, &_hardware_metrics)?;
 
@@ -375,17 +386,20 @@ pub fn run_analysis_streaming(
     // Phase 10: Report
     let report_pass = ReportPass;
     let mut report = run_phase!("Report", 8, {
-        report_pass.build_report(&ReportInput {
-            arch: &arch,
-            graph: &graph,
-            tensor: &tensor,
-            operator: &operator,
-            compute: &compute,
-            memory: &memory,
-            parallelism: &parallelism,
-            hardware: &hardware,
-            cost: &cost,
-        }, &ctx)?
+        report_pass.build_report(
+            &ReportInput {
+                arch: &arch,
+                graph: &graph,
+                tensor: &tensor,
+                operator: &operator,
+                compute: &compute,
+                memory: &memory,
+                parallelism: &parallelism,
+                hardware: &hardware,
+                cost: &cost,
+            },
+            &ctx,
+        )?
     });
 
     // Phase 11: Dynamic Analysis
@@ -404,16 +418,18 @@ pub fn run_analysis_streaming(
             let vm_pass = VirtualMemoryPass::new();
             Some(vm_pass.run(&memory.metrics))
         },
-        || rayon::join(
-            || {
-                let sta_pass = StabilityAnalysisPass::new();
-                Some(sta_pass.run(&graph, &memory.metrics))
-            },
-            || {
-                let bps_pass = BehavioralSynthesisPass::new();
-                Some(bps_pass.run(&compute, &dynamic_config))
-            }
-        )
+        || {
+            rayon::join(
+                || {
+                    let sta_pass = StabilityAnalysisPass::new();
+                    Some(sta_pass.run(&graph, &memory.metrics))
+                },
+                || {
+                    let bps_pass = BehavioralSynthesisPass::new();
+                    Some(bps_pass.run(&compute, &dynamic_config))
+                },
+            )
+        },
     );
 
     let dynamic = DynamicResults {

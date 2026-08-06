@@ -36,7 +36,7 @@ pub fn format_co2(kg: f64) -> String {
 /// Get cost breakdown
 pub fn cost_breakdown(metrics: &CostMetrics) -> CostBreakdown {
     let _total = metrics.training_cost_usd;
-    
+
     CostBreakdown {
         compute_pct: 70.0,
         storage_pct: 10.0,

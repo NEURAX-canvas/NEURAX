@@ -572,19 +572,23 @@ impl MetricsOutput {
                 interconnect: metrics.interconnect.clone(),
                 interconnect_bandwidth_gbs: metrics.interconnect_bandwidth_gbs,
             },
-            gradient_memory_per_layer: metrics.gradient_memory_per_layer.iter().map(|e| {
-                GradientMemoryLayerEntry {
+            gradient_memory_per_layer: metrics
+                .gradient_memory_per_layer
+                .iter()
+                .map(|e| GradientMemoryLayerEntry {
                     name: e.name.clone(),
                     forward: e.forward,
                     backward: e.backward,
-                }
-            }).collect(),
-            kv_cache_scaling: metrics.kv_cache_scaling.iter().map(|e| {
-                KvCacheScalingEntry {
+                })
+                .collect(),
+            kv_cache_scaling: metrics
+                .kv_cache_scaling
+                .iter()
+                .map(|e| KvCacheScalingEntry {
                     seq: e.seq,
                     value: e.value,
-                }
-            }).collect(),
+                })
+                .collect(),
             confidence_score: metrics.confidence_score,
             custom_layer_count: metrics.custom_layer_count,
             diagnostic_count: metrics.diagnostic_count,

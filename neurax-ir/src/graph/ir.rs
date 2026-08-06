@@ -1,9 +1,9 @@
 //! Graph IR structures
 
-use petgraph::graph::{DiGraph, NodeIndex};
-use petgraph::algo::{is_cyclic_directed, toposort};
-use std::collections::HashMap;
 use neurax_parser::LayerType;
+use petgraph::algo::{is_cyclic_directed, toposort};
+use petgraph::graph::{DiGraph, NodeIndex};
+use std::collections::HashMap;
 
 /// Graph IR - dialecte du graphe computationnel
 #[derive(Debug, Clone)]
@@ -79,7 +79,7 @@ impl GraphIR {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Add a node to the graph
     pub fn add_node(&mut self, node: GraphNode) -> NodeIndex {
         let id = node.layer_id.clone();
@@ -87,28 +87,30 @@ impl GraphIR {
         self.node_index.insert(id, idx);
         idx
     }
-    
+
     /// Add an edge between two nodes
     pub fn add_edge(&mut self, from: NodeIndex, to: NodeIndex, edge: GraphEdge) {
         self.dag.add_edge(from, to, edge);
     }
-    
+
     /// Get node by layer ID
     pub fn get_node(&self, layer_id: &str) -> Option<&GraphNode> {
-        self.node_index.get(layer_id).and_then(|idx| self.dag.node_weight(*idx))
+        self.node_index
+            .get(layer_id)
+            .and_then(|idx| self.dag.node_weight(*idx))
     }
-    
+
     /// Check if graph has cycles
     pub fn has_cycle(&self) -> bool {
         is_cyclic_directed(&self.dag)
     }
-    
+
     /// Compute topological order
     pub fn compute_topo_order(&mut self) -> Result<Vec<NodeIndex>, String> {
         if self.has_cycle() {
             return Err("Graph has cycles".to_string());
         }
-        
+
         match toposort(&self.dag, None) {
             Ok(order) => {
                 self.topo_order = order.clone();
@@ -117,26 +119,29 @@ impl GraphIR {
             Err(_) => Err("Topological sort failed".to_string()),
         }
     }
-    
+
     /// Calculate graph depth (longest path)
     pub fn calculate_depth(&self) -> usize {
         if self.topo_order.is_empty() {
             return 0;
         }
-        
+
         // Use DP to find longest path
         let mut max_depth = HashMap::<NodeIndex, usize>::new();
-        
+
         for &node in &self.topo_order {
             let mut max_pred_depth = 0;
-            for pred in self.dag.neighbors_directed(node, petgraph::Direction::Incoming) {
+            for pred in self
+                .dag
+                .neighbors_directed(node, petgraph::Direction::Incoming)
+            {
                 if let Some(&depth) = max_depth.get(&pred) {
                     max_pred_depth = max_pred_depth.max(depth);
                 }
             }
             max_depth.insert(node, max_pred_depth + 1);
         }
-        
+
         max_depth.values().copied().max().unwrap_or(0)
     }
 }

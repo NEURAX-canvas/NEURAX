@@ -1,11 +1,11 @@
 //! Parallelism IR - Dialecte de l'analyse de scalabilité
 
 mod ir;
+mod metrics;
 mod pass;
 mod strategies;
-mod metrics;
 
 pub use ir::*;
+pub use metrics::*;
 pub use pass::*;
 pub use strategies::*;
-pub use metrics::*;

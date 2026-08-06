@@ -21,7 +21,10 @@ fn test_all_backends_available() {
 fn test_backend_parsing() {
     assert_eq!(TargetBackend::from_str("cpu"), Some(TargetBackend::Cpu));
     assert_eq!(TargetBackend::from_str("cuda"), Some(TargetBackend::Cuda));
-    assert_eq!(TargetBackend::from_str("vulkan"), Some(TargetBackend::Vulkan));
+    assert_eq!(
+        TargetBackend::from_str("vulkan"),
+        Some(TargetBackend::Vulkan)
+    );
     assert_eq!(TargetBackend::from_str("metal"), Some(TargetBackend::Metal));
     assert_eq!(TargetBackend::from_str("rocm"), Some(TargetBackend::Rocm));
     assert_eq!(TargetBackend::from_str("invalid"), None);
@@ -236,10 +239,10 @@ fn test_iree_device_flags() {
     // Verify device flags are generated (format may vary by IREE version)
     let cpu_flag = IreeDevice::Cpu.backend_flag();
     assert!(cpu_flag.contains("iree-hal") && cpu_flag.contains("llvm-cpu"));
-    
+
     let cuda_flag = IreeDevice::Cuda.backend_flag();
     assert!(cuda_flag.contains("cuda"));
-    
+
     let vulkan_flag = IreeDevice::Vulkan.backend_flag();
     assert!(vulkan_flag.contains("vulkan"));
 }

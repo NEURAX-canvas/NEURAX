@@ -11,11 +11,11 @@ impl TargetLowering for CudaBackend {
     fn backend() -> TargetBackend {
         TargetBackend::Cuda
     }
-    
+
     fn supported_dtypes() -> &'static [&'static str] {
         &["f32", "f16", "bf16", "f8", "i8", "i32", "i64"]
     }
-    
+
     fn lower_matmul(
         batch: usize,
         m: usize,
@@ -31,10 +31,14 @@ impl TargetLowering for CudaBackend {
     return %c : tensor<{batch}x{m}x{n}x{dtype}>
   }}
 "#,
-            batch = batch, m = m, k = k, n = n, dtype = dtype
+            batch = batch,
+            m = m,
+            k = k,
+            n = n,
+            dtype = dtype
         ))
     }
-    
+
     fn lower_conv2d(
         batch: usize,
         in_channels: usize,
@@ -46,7 +50,7 @@ impl TargetLowering for CudaBackend {
     ) -> Result<String, String> {
         let out_h = height - kernel_size + 1;
         let out_w = width - kernel_size + 1;
-        
+
         Ok(format!(
             r#"  // CUDA conv2d using GPU dialect
   func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{out_channels}x{in_channels}x{kernel_size}x{kernel_size}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}> attributes {{gpu.kernel}} {{
@@ -55,12 +59,18 @@ impl TargetLowering for CudaBackend {
     return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
   }}
 "#,
-            batch = batch, height = height, width = width, in_channels = in_channels,
-            out_channels = out_channels, kernel_size = kernel_size, dtype = dtype,
-            out_h = out_h, out_w = out_w
+            batch = batch,
+            height = height,
+            width = width,
+            in_channels = in_channels,
+            out_channels = out_channels,
+            kernel_size = kernel_size,
+            dtype = dtype,
+            out_h = out_h,
+            out_w = out_w
         ))
     }
-    
+
     fn lower_attention(
         seq_len: usize,
         hidden_size: usize,
@@ -68,7 +78,7 @@ impl TargetLowering for CudaBackend {
         dtype: &str,
     ) -> Result<String, String> {
         let head_dim = hidden_size / num_heads;
-        
+
         Ok(format!(
             r#"  // Flash Attention for CUDA
   func.func @flash_attention(%q: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %k: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %v: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>) -> tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}> attributes {{gpu.kernel}} {{
@@ -76,14 +86,17 @@ impl TargetLowering for CudaBackend {
     return %output : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
   }}
 "#,
-            seq_len = seq_len, num_heads = num_heads, head_dim = head_dim, dtype = dtype
+            seq_len = seq_len,
+            num_heads = num_heads,
+            head_dim = head_dim,
+            dtype = dtype
         ))
     }
-    
+
     fn module_attributes() -> String {
         r#"gpu.container_module, gpu.kernel_attr = "ptx""#.to_string()
     }
-    
+
     fn function_attributes() -> String {
         "gpu.kernel".to_string()
     }
@@ -99,7 +112,10 @@ pub fn generate_tensor_core_matmul(m: usize, k: usize, n: usize, dtype: &str) ->
     return %c : tensor<{m}x{n}x{dtype}>
   }}
 "#,
-        m = m, k = k, n = n, dtype = dtype
+        m = m,
+        k = k,
+        n = n,
+        dtype = dtype
     )
 }
 
@@ -114,7 +130,7 @@ pub fn generate_cuda_module(
 ) -> String {
     let head_dim = hidden_size / num_heads;
     let attention = CudaBackend::lower_attention(seq_len, hidden_size, num_heads, dtype).unwrap();
-    
+
     format!(
         r#"module @{model_name} attributes {{
   gpu.container_module, gpu.kernel_attr = "ptx"
@@ -148,8 +164,13 @@ pub fn generate_cuda_module(
   }}
 }}
 "#,
-        model_name = model_name, hidden_size = hidden_size, num_heads = num_heads,
-        head_dim = head_dim, seq_len = seq_len, num_layers = num_layers, dtype = dtype,
+        model_name = model_name,
+        hidden_size = hidden_size,
+        num_heads = num_heads,
+        head_dim = head_dim,
+        seq_len = seq_len,
+        num_layers = num_layers,
+        dtype = dtype,
         attention = attention
     )
 }
@@ -157,25 +178,25 @@ pub fn generate_cuda_module(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_cuda_backend() {
         assert_eq!(CudaBackend::backend(), TargetBackend::Cuda);
         assert!(CudaBackend::supported_dtypes().contains(&"f16"));
     }
-    
+
     #[test]
     fn test_cuda_matmul() {
         let code = CudaBackend::lower_matmul(1, 1024, 1024, 1024, "f16").unwrap();
         assert!(code.contains("gpu.kernel"));
     }
-    
+
     #[test]
     fn test_cuda_attention() {
         let code = CudaBackend::lower_attention(2048, 8192, 64, "f16").unwrap();
         assert!(code.contains("flash_attention"));
     }
-    
+
     #[test]
     fn test_cuda_module() {
         let code = generate_cuda_module("test", 768, 12, 12, 512, "f16");

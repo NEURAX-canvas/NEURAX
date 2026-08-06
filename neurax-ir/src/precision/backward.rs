@@ -1,5 +1,5 @@
 //! Backward pass ratios per AtomOp per tuning.md §12
-//! 
+//!
 //! Exact backward/forward ratios based on mathematical analysis of backpropagation
 
 use serde::Serialize;
@@ -22,50 +22,50 @@ pub enum AtomOpKind {
     MatMul,
     Linear,
     BatchedMatMul,
-    
+
     // Attention operations
     MultiHeadAttention,
     GroupedQueryAttention,
     FlashAttention,
     AttentionScores,
     AttentionOutput,
-    
+
     // Normalization
     LayerNorm,
     RmsNorm,
     BatchNorm,
-    
+
     // Activations
     Softmax,
     Relu,
     Gelu,
     Silu,
     Swish,
-    
+
     // Convolution
     Conv2d,
     DepthwiseConv2d,
-    
+
     // Embedding
     TokenEmbedding,
     PositionalEmbedding,
-    
+
     // MoE
     MoeExpertGroup,
     MoeRouter,
-    
+
     // SSM (Mamba)
     SsmStateUpdate,
-    
+
     // Elementwise
     ElementwiseAdd,
     ElementwiseMul,
-    
+
     // Pooling
     MaxPool2d,
     AvgPool2d,
     GlobalAvgPool,
-    
+
     // Other
     Dropout,
     Residual,
@@ -268,30 +268,50 @@ impl BackwardRatios {
             },
         }
     }
-    
+
     /// Calculate total backward FLOPs from forward FLOPs
     pub fn backward_flops(op: &AtomOpKind, forward_flops: u64) -> u64 {
         let ratio = Self::ratio_for_op(op);
         (forward_flops as f64 * ratio.ratio) as u64
     }
-    
+
     /// Get all ratios as a map
     pub fn all_ratios() -> std::collections::HashMap<AtomOpKind, BackwardRatio> {
         use AtomOpKind::*;
         let ops = [
-            MatMul, Linear, BatchedMatMul,
-            MultiHeadAttention, GroupedQueryAttention, FlashAttention, AttentionScores, AttentionOutput,
-            LayerNorm, RmsNorm, BatchNorm,
-            Softmax, Relu, Gelu, Silu, Swish,
-            Conv2d, DepthwiseConv2d,
-            TokenEmbedding, PositionalEmbedding,
-            MoeExpertGroup, MoeRouter,
+            MatMul,
+            Linear,
+            BatchedMatMul,
+            MultiHeadAttention,
+            GroupedQueryAttention,
+            FlashAttention,
+            AttentionScores,
+            AttentionOutput,
+            LayerNorm,
+            RmsNorm,
+            BatchNorm,
+            Softmax,
+            Relu,
+            Gelu,
+            Silu,
+            Swish,
+            Conv2d,
+            DepthwiseConv2d,
+            TokenEmbedding,
+            PositionalEmbedding,
+            MoeExpertGroup,
+            MoeRouter,
             SsmStateUpdate,
-            ElementwiseAdd, ElementwiseMul,
-            MaxPool2d, AvgPool2d, GlobalAvgPool,
-            Dropout, Residual, Unknown,
+            ElementwiseAdd,
+            ElementwiseMul,
+            MaxPool2d,
+            AvgPool2d,
+            GlobalAvgPool,
+            Dropout,
+            Residual,
+            Unknown,
         ];
-        
+
         ops.iter().map(|op| (*op, Self::ratio_for_op(op))).collect()
     }
 }
@@ -325,7 +345,7 @@ mod tests {
         let forward = 1000u64;
         let backward = BackwardRatios::backward_flops(&AtomOpKind::MatMul, forward);
         assert_eq!(backward, 2000);
-        
+
         let backward = BackwardRatios::backward_flops(&AtomOpKind::MultiHeadAttention, forward);
         assert_eq!(backward, 2500);
     }

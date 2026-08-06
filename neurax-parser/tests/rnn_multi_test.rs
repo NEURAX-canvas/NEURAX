@@ -1,8 +1,8 @@
 //! Multi-model RNN/LSTM compilation test
 //! Compiles ELMo, ULMFiT, BiLSTM-CRF, GRU-Seq2Seq to verify RNN family support
 
-use neurax_parser::{parse_model_config, AbsorbedModel};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel};
 
 /// ELMo - BiLSTM language model (94M params)
 const ELMO_JSON: &str = r#"
@@ -175,46 +175,90 @@ fn test_all_rnn_models() {
     println!("║           MULTI-MODEL RNN/LSTM COMPILATION TEST                    ║");
     println!("║           ELMo | ULMFiT | BiLSTM-CRF | GRU-Seq2Seq | LSTM-1.3B     ║");
     println!("╚════════════════════════════════════════════════════════════════════╝\n");
-    
+
     let models = [
-        RNNModel { name: "ELMo", json: ELMO_JSON, expected_hidden: 512, expected_layers: 2, bidirectional: true, cell_type: "lstm" },
-        RNNModel { name: "ULMFiT", json: ULMFIT_JSON, expected_hidden: 400, expected_layers: 3, bidirectional: false, cell_type: "lstm" },
-        RNNModel { name: "BiLSTM-CRF", json: BILSTM_CRF_JSON, expected_hidden: 256, expected_layers: 2, bidirectional: true, cell_type: "lstm" },
-        RNNModel { name: "GRU-Seq2Seq", json: GRU_SEQ2SEQ_JSON, expected_hidden: 512, expected_layers: 2, bidirectional: true, cell_type: "gru" },
-        RNNModel { name: "LSTM-1.3B", json: LSTM_LM_LARGE_JSON, expected_hidden: 2048, expected_layers: 3, bidirectional: false, cell_type: "lstm" },
+        RNNModel {
+            name: "ELMo",
+            json: ELMO_JSON,
+            expected_hidden: 512,
+            expected_layers: 2,
+            bidirectional: true,
+            cell_type: "lstm",
+        },
+        RNNModel {
+            name: "ULMFiT",
+            json: ULMFIT_JSON,
+            expected_hidden: 400,
+            expected_layers: 3,
+            bidirectional: false,
+            cell_type: "lstm",
+        },
+        RNNModel {
+            name: "BiLSTM-CRF",
+            json: BILSTM_CRF_JSON,
+            expected_hidden: 256,
+            expected_layers: 2,
+            bidirectional: true,
+            cell_type: "lstm",
+        },
+        RNNModel {
+            name: "GRU-Seq2Seq",
+            json: GRU_SEQ2SEQ_JSON,
+            expected_hidden: 512,
+            expected_layers: 2,
+            bidirectional: true,
+            cell_type: "gru",
+        },
+        RNNModel {
+            name: "LSTM-1.3B",
+            json: LSTM_LM_LARGE_JSON,
+            expected_hidden: 2048,
+            expected_layers: 3,
+            bidirectional: false,
+            cell_type: "lstm",
+        },
     ];
-    
-    println!("┌──────────────────────────────────────────────────────────────────────────────────┐");
+
+    println!(
+        "┌──────────────────────────────────────────────────────────────────────────────────┐"
+    );
     println!("│ Model       │ Params (M) │ Hidden │ Layers │ Bidir │ Type  │ Status │ Conf     │");
-    println!("├──────────────────────────────────────────────────────────────────────────────────┤");
-    
+    println!(
+        "├──────────────────────────────────────────────────────────────────────────────────┤"
+    );
+
     let mut all_passed = true;
-    
+
     for model in &models {
-        let config = parse_model_config(model.json).expect(&format!("Failed to parse {}", model.name));
+        let config =
+            parse_model_config(model.json).expect(&format!("Failed to parse {}", model.name));
         let absorbed = AbsorbedModel::absorb(config);
         let grc = &absorbed.resolution_context;
-        
+
         let total_params = IrInjector::calculate_total_params(&absorbed) as f64 / 1e6;
         let hidden = grc.rnn_hidden_size.unwrap_or(0);
         let layers = grc.num_rnn_layers.unwrap_or(0);
         let bidir = grc.bidirectional_rnn;
         let cell = grc.cell_type.as_deref().unwrap_or("unknown");
         let confidence = grc.confidence_score * 100.0;
-        
+
         let status = if total_params > 0.0 && hidden == model.expected_hidden as u64 {
             "✓ OK"
         } else {
             all_passed = false;
             "✗ FAIL"
         };
-        
-        println!("│ {:<11} │ {:>10.1} │ {:>6} │ {:>6} │ {:>5} │ {:>5} │ {:>6} │ {:>5.1}%  │", 
-                 model.name, total_params, hidden, layers, bidir, cell, status, confidence);
+
+        println!(
+            "│ {:<11} │ {:>10.1} │ {:>6} │ {:>6} │ {:>5} │ {:>5} │ {:>6} │ {:>5.1}%  │",
+            model.name, total_params, hidden, layers, bidir, cell, status, confidence
+        );
     }
-    
-    println!("└──────────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
+    println!(
+        "└──────────────────────────────────────────────────────────────────────────────────┘\n"
+    );
+
     assert!(all_passed, "Some RNN models failed compilation");
     println!("✓ All RNN/LSTM models compiled successfully!\n");
 }
@@ -222,7 +266,7 @@ fn test_all_rnn_models() {
 #[test]
 fn test_rnn_cell_type_comparison() {
     println!("\n=== RNN Cell Type Comparison ===\n");
-    
+
     println!("┌────────────────────────────────────────────────────────────────┐");
     println!("│ Cell Type │ Gates │ Parameters per Layer        │ Use Case    │");
     println!("├────────────────────────────────────────────────────────────────┤");
@@ -233,7 +277,7 @@ fn test_rnn_cell_type_comparison() {
     println!("│ BiLSTM    │   4   │ 2 × LSTM params              │ Context     │");
     println!("│ BiGRU     │   3   │ 2 × GRU params               │ Seq2Seq     │");
     println!("└────────────────────────────────────────────────────────────────┘\n");
-    
+
     println!("Key insights:\n");
     println!("  - LSTM: Best for long sequences, 4 gates (input, forget, cell, output)");
     println!("  - GRU:  Faster training, 3 gates (reset, update, new)");
@@ -244,7 +288,7 @@ fn test_rnn_cell_type_comparison() {
 #[test]
 fn test_rnn_layer_types_validation() {
     println!("\n=== RNN Layer Types Validation ===\n");
-    
+
     let layer_types = [
         ("lstm_block", "LstmBlock - LSTM layer with 4 gates"),
         ("gru_block", "GruBlock - GRU layer with 3 gates"),
@@ -253,12 +297,12 @@ fn test_rnn_layer_types_validation() {
         ("encoder_block", "EncoderBlock - RNN encoder"),
         ("decoder_block", "DecoderBlock - RNN decoder with attention"),
     ];
-    
+
     println!("Supported RNN layer types (6 total):\n");
     for (input, expected) in layer_types {
         println!("  ✓ '{}' -> {}", input, expected);
     }
-    
+
     println!("\nRNN-specific parameters:\n");
     println!("  - rnn_hidden_size: Hidden state dimension");
     println!("  - num_rnn_layers: Number of stacked RNN layers");

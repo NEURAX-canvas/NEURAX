@@ -2,9 +2,9 @@
 //!
 //! Models computation graphs as DAGs
 
-use melior::ir::{Identifier, Location, Operation, operation::OperationBuilder};
+use super::utils::{float_attr, int_array_attr, int_attr, string_attr};
+use melior::ir::{operation::OperationBuilder, Identifier, Location, Operation};
 use melior::Context;
-use super::utils::{string_attr, int_attr, float_attr, int_array_attr};
 
 /// Graph dialect name
 pub const DIALECT_NAME: &str = "graph";
@@ -17,7 +17,7 @@ impl GraphDialect {
     pub fn name() -> &'static str {
         DIALECT_NAME
     }
-    
+
     /// Create a node operation
     pub fn node<'c>(
         context: &'c Context,
@@ -29,14 +29,26 @@ impl GraphDialect {
     ) -> Result<Operation<'c>, melior::Error> {
         OperationBuilder::new("graph.node", location)
             .add_attributes(&[
-                (Identifier::new(context, "layer_id"), string_attr(context, layer_id)),
-                (Identifier::new(context, "layer_type"), string_attr(context, layer_type)),
-                (Identifier::new(context, "flops_approx"), float_attr(context, flops_approx)),
-                (Identifier::new(context, "param_count"), int_attr(context, param_count)),
+                (
+                    Identifier::new(context, "layer_id"),
+                    string_attr(context, layer_id),
+                ),
+                (
+                    Identifier::new(context, "layer_type"),
+                    string_attr(context, layer_type),
+                ),
+                (
+                    Identifier::new(context, "flops_approx"),
+                    float_attr(context, flops_approx),
+                ),
+                (
+                    Identifier::new(context, "param_count"),
+                    int_attr(context, param_count),
+                ),
             ])
             .build()
     }
-    
+
     /// Create an edge operation
     pub fn edge<'c>(
         context: &'c Context,
@@ -47,13 +59,22 @@ impl GraphDialect {
     ) -> Result<Operation<'c>, melior::Error> {
         OperationBuilder::new("graph.edge", location)
             .add_attributes(&[
-                (Identifier::new(context, "tensor_shape"), int_array_attr(context, tensor_shape)),
-                (Identifier::new(context, "dtype"), string_attr(context, dtype)),
-                (Identifier::new(context, "size_bytes"), int_attr(context, size_bytes)),
+                (
+                    Identifier::new(context, "tensor_shape"),
+                    int_array_attr(context, tensor_shape),
+                ),
+                (
+                    Identifier::new(context, "dtype"),
+                    string_attr(context, dtype),
+                ),
+                (
+                    Identifier::new(context, "size_bytes"),
+                    int_attr(context, size_bytes),
+                ),
             ])
             .build()
     }
-    
+
     /// Create a connect operation for SSA data flow
     pub fn connect<'c>(
         context: &'c Context,
@@ -64,13 +85,22 @@ impl GraphDialect {
     ) -> Result<Operation<'c>, melior::Error> {
         OperationBuilder::new("graph.connect", location)
             .add_attributes(&[
-                (Identifier::new(context, "from"), string_attr(context, from_layer)),
-                (Identifier::new(context, "to"), string_attr(context, to_layer)),
-                (Identifier::new(context, "tensor_shape"), int_array_attr(context, tensor_shape)),
+                (
+                    Identifier::new(context, "from"),
+                    string_attr(context, from_layer),
+                ),
+                (
+                    Identifier::new(context, "to"),
+                    string_attr(context, to_layer),
+                ),
+                (
+                    Identifier::new(context, "tensor_shape"),
+                    int_array_attr(context, tensor_shape),
+                ),
             ])
             .build()
     }
-    
+
     /// Create metrics operation
     pub fn metrics<'c>(
         context: &'c Context,
@@ -81,9 +111,18 @@ impl GraphDialect {
     ) -> Result<Operation<'c>, melior::Error> {
         OperationBuilder::new("graph.metrics", location)
             .add_attributes(&[
-                (Identifier::new(context, "graph_depth"), int_attr(context, graph_depth)),
-                (Identifier::new(context, "total_operations"), int_attr(context, total_operations)),
-                (Identifier::new(context, "total_intermediate_tensors"), int_attr(context, total_intermediate_tensors)),
+                (
+                    Identifier::new(context, "graph_depth"),
+                    int_attr(context, graph_depth),
+                ),
+                (
+                    Identifier::new(context, "total_operations"),
+                    int_attr(context, total_operations),
+                ),
+                (
+                    Identifier::new(context, "total_intermediate_tensors"),
+                    int_attr(context, total_intermediate_tensors),
+                ),
             ])
             .build()
     }

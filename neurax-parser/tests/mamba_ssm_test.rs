@@ -1,8 +1,8 @@
 //! Test compilation of a State Space Model (Mamba-2 style)
 //! Validates complete absorption pipeline with SSM architecture
 
-use neurax_parser::{parse_model_config, AbsorbedModel};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel};
 
 /// Mamba-2 8B - State Space Model with selective scan
 const MAMBA_8B_JSON: &str = r#"
@@ -104,98 +104,115 @@ fn test_mamba_ssm_compilation() {
     println!("Architecture: Selective State Space Model");
     println!("State Size: 128, Expand: 2, Conv Kernel: 4");
     println!("GPUs: 8× H100-80GB");
-    
+
     // ── Step 1: Parse JSON ─────────────────────────────────────────────
     let start = std::time::Instant::now();
-    let config = parse_model_config(MAMBA_8B_JSON)
-        .expect("Failed to parse Mamba JSON");
+    let config = parse_model_config(MAMBA_8B_JSON).expect("Failed to parse Mamba JSON");
     let parse_time = start.elapsed();
     println!("✓ Parsed in {:?}", parse_time);
-    
+
     // ── Step 2: Absorb into AbsorbedModel ───────────────────────────────
     let start = std::time::Instant::now();
     let absorbed = AbsorbedModel::absorb(config);
     let absorb_time = start.elapsed();
     println!("✓ Absorbed in {:?}", absorb_time);
-    
+
     // ── Step 3: Validate GlobalResolutionContext ────────────────────────
     let grc = &absorbed.resolution_context;
-    
+
     // ── SSM-Specific Parameters ────────────────────────────────────────
     println!("\n=== SSM Parameters ===");
-    
+
     // State size (N in Mamba paper)
-    assert_eq!(grc.ssm_state_size, Some(128), "ssm_state_size should be 128");
+    assert_eq!(
+        grc.ssm_state_size,
+        Some(128),
+        "ssm_state_size should be 128"
+    );
     println!("  ssm_state_size (N): {}", grc.ssm_state_size.unwrap());
-    
+
     // Expand factor
     assert_eq!(grc.ssm_expand, Some(2), "ssm_expand should be 2");
     println!("  ssm_expand: {}", grc.ssm_expand.unwrap());
-    
+
     // Convolution kernel size
     assert_eq!(grc.ssm_conv_kernel, Some(4), "ssm_conv_kernel should be 4");
     println!("  ssm_conv_kernel: {}", grc.ssm_conv_kernel.unwrap());
-    
+
     // ── Standard Transformer-like Parameters ───────────────────────────
     println!("\n=== Standard Parameters ===");
-    
+
     assert_eq!(grc.hidden_size, Some(4096), "hidden_size should be 4096");
     println!("  hidden_size (d_model): {}", grc.hidden_size.unwrap());
-    
+
     assert_eq!(grc.num_layers, Some(32), "num_layers should be 32");
     println!("  num_layers: {}", grc.num_layers.unwrap());
-    
+
     assert_eq!(grc.vocab_size, Some(128000), "vocab_size should be 128000");
     println!("  vocab_size: {}", grc.vocab_size.unwrap());
-    
+
     // Intermediate size (d_inner = d_model * expand)
-    assert_eq!(grc.intermediate_size, Some(8192), "intermediate_size should be 8192");
-    println!("  intermediate_size (d_inner): {}", grc.intermediate_size.unwrap());
-    
+    assert_eq!(
+        grc.intermediate_size,
+        Some(8192),
+        "intermediate_size should be 8192"
+    );
+    println!(
+        "  intermediate_size (d_inner): {}",
+        grc.intermediate_size.unwrap()
+    );
+
     // ── Derived Values ─────────────────────────────────────────────────
     println!("\n=== Derived Values ===");
-    
+
     assert_eq!(grc.dtype_bytes, 2, "bf16 = 2 bytes");
     println!("  dtype_bytes: {}", grc.dtype_bytes);
-    
+
     assert_eq!(grc.optimizer_bytes_per_param, 8, "AdamW = 8 bytes");
     println!("  optimizer_bytes: {}", grc.optimizer_bytes_per_param);
-    
+
     // d_inner calculation
     let d_inner = grc.d_inner();
-    assert_eq!(d_inner, Some(8192), "d_inner should be hidden_size * expand");
+    assert_eq!(
+        d_inner,
+        Some(8192),
+        "d_inner should be hidden_size * expand"
+    );
     println!("  d_inner (derived): {:?}", d_inner);
-    
+
     // ── Hardware & Parallelism ─────────────────────────────────────────
     println!("\n=== Hardware & Parallelism ===");
-    
+
     assert_eq!(grc.num_gpus, 8, "8 GPUs");
     println!("  num_gpus: {}", grc.num_gpus);
-    
+
     assert!((grc.primary_gpu_tflops - 1979.0).abs() < 1.0, "H100 TFLOPs");
     println!("  GPU TFLOPs: {}", grc.primary_gpu_tflops);
-    
+
     assert_eq!(grc.dp, 4, "Data parallel = 4");
     assert_eq!(grc.tp, 1, "No tensor parallel for SSM");
     assert_eq!(grc.pp, 2, "Pipeline parallel = 2");
     println!("  Parallelism: DP={}, TP={}, PP={}", grc.dp, grc.tp, grc.pp);
-    
+
     // ── Symbol Table ───────────────────────────────────────────────────
     println!("\n=== Symbol Table ===");
-    
+
     assert!(grc.symbol_table.contains_key("B"), "B in symbol table");
     assert!(grc.symbol_table.contains_key("H"), "H in symbol table");
     assert!(grc.symbol_table.contains_key("V"), "V in symbol table");
-    assert!(grc.symbol_table.contains_key("I"), "I (intermediate) in symbol table");
-    
+    assert!(
+        grc.symbol_table.contains_key("I"),
+        "I (intermediate) in symbol table"
+    );
+
     println!("  B (batch): {:?}", grc.symbol_table.get("B"));
     println!("  H (hidden): {:?}", grc.symbol_table.get("H"));
     println!("  V (vocab): {:?}", grc.symbol_table.get("V"));
     println!("  I (intermediate): {:?}", grc.symbol_table.get("I"));
-    
+
     // Confidence score
     println!("\n  Confidence score: {:.2}%", grc.confidence_score * 100.0);
-    
+
     // ── Step 4: IR Injection ───────────────────────────────────────────
     let start = std::time::Instant::now();
     let arch_input = IrInjector::to_architecture_ir(&absorbed);
@@ -204,38 +221,46 @@ fn test_mamba_ssm_compilation() {
     let cost_config = IrInjector::configure_cost_pass(&absorbed);
     let inject_time = start.elapsed();
     println!("\n✓ IRs injected in {:?}", inject_time);
-    
+
     // Validate Architecture IR
     assert_eq!(arch_input.hidden_size, Some(4096));
     assert_eq!(arch_input.num_layers, Some(32));
     assert_eq!(arch_input.vocab_size, Some(128000));
-    
+
     // Validate Memory config
     assert_eq!(mem_config.dtype_bytes, 2);
     assert_eq!(mem_config.optimizer_bytes, 8);
     assert!(mem_config.checkpointing_enabled);
     assert_eq!(mem_config.zero_stage, 2);
-    
+
     // Validate Hardware config
     assert!((hw_config.gpu_tflops_fp16 - 1979.0).abs() < 1.0);
     assert_eq!(hw_config.dp, 4);
     assert_eq!(hw_config.pp, 2);
-    
+
     // Validate Cost config
     assert!((cost_config.gpu_hour_usd - 2.50).abs() < 0.01);
     assert_eq!(cost_config.num_gpus, 8);
-    
+
     // ── Step 5: Parameter Calculation ───────────────────────────────────
     let start = std::time::Instant::now();
     let total_params = IrInjector::calculate_total_params(&absorbed);
     let calc_time = start.elapsed();
     println!("✓ Parameters calculated in {:?}", calc_time);
-    
+
     // Mamba-8B has ~8B parameters
     println!("  Total parameters: {:.2}B", total_params as f64 / 1e9);
-    assert!(total_params > 5_000_000_000, "Expected > 5B params, got {}", total_params);
-    assert!(total_params < 12_000_000_000, "Expected < 12B params, got {}", total_params);
-    
+    assert!(
+        total_params > 5_000_000_000,
+        "Expected > 5B params, got {}",
+        total_params
+    );
+    assert!(
+        total_params < 12_000_000_000,
+        "Expected < 12B params, got {}",
+        total_params
+    );
+
     // ── Step 6: FLOPs Calculation ───────────────────────────────────────
     let start = std::time::Instant::now();
     let flops = IrInjector::calculate_flops_per_token(&absorbed);
@@ -243,10 +268,13 @@ fn test_mamba_ssm_compilation() {
     println!("✓ FLOPs calculated in {:?}", flops_time);
     println!("  FLOPs per token: {:.2e}", flops as f64);
     assert!(flops > 0, "FLOPs should be > 0");
-    
+
     // ── Summary ─────────────────────────────────────────────────────────
     println!("\n=== Mamba Compilation Summary ===");
-    println!("Total time: {:?}", parse_time + absorb_time + inject_time + calc_time + flops_time);
+    println!(
+        "Total time: {:?}",
+        parse_time + absorb_time + inject_time + calc_time + flops_time
+    );
     println!("✓ All SSM fields absorbed correctly");
     println!("✓ All IRs configured");
     println!("✓ Parameter count: {:.2}B", total_params as f64 / 1e9);
@@ -258,19 +286,26 @@ fn test_ssm_state_dimensions() {
     let config = parse_model_config(MAMBA_8B_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // Verify SSM-specific dimensions
     assert_eq!(grc.ssm_state_size, Some(128), "State size (N)");
     assert_eq!(grc.ssm_expand, Some(2), "Expand factor");
     assert_eq!(grc.ssm_conv_kernel, Some(4), "Conv kernel");
-    
+
     // Verify d_inner derivation
     // d_inner = d_model * expand = 4096 * 2 = 8192
     let d_inner = grc.d_inner();
-    assert_eq!(d_inner, Some(8192), "d_inner should be derived from hidden_size * expand");
-    
+    assert_eq!(
+        d_inner,
+        Some(8192),
+        "d_inner should be derived from hidden_size * expand"
+    );
+
     // Verify it matches intermediate_size if provided
-    assert_eq!(grc.intermediate_size, d_inner, "intermediate_size should match d_inner");
+    assert_eq!(
+        grc.intermediate_size, d_inner,
+        "intermediate_size should match d_inner"
+    );
 }
 
 #[test]
@@ -278,22 +313,22 @@ fn test_ssm_symbol_table() {
     let config = parse_model_config(MAMBA_8B_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // Verify symbol table has SSM-relevant symbols
     let sym = &grc.symbol_table;
-    
+
     // Standard symbols
     assert!(sym.contains_key("B"), "B (batch)");
     assert!(sym.contains_key("H"), "H (hidden)");
     assert!(sym.contains_key("V"), "V (vocab)");
     assert!(sym.contains_key("I"), "I (intermediate)");
-    
+
     // Verify values
     assert_eq!(sym.get("B"), Some(&128u64), "Batch size");
     assert_eq!(sym.get("H"), Some(&4096u64), "Hidden size");
     assert_eq!(sym.get("V"), Some(&128000u64), "Vocab size");
     assert_eq!(sym.get("I"), Some(&8192u64), "Intermediate size");
-    
+
     // dtype_bytes
     assert_eq!(sym.get("dtype_bytes"), Some(&2u64), "bf16 = 2 bytes");
 }
@@ -303,16 +338,16 @@ fn test_ssm_vs_transformer_distinction() {
     let config = parse_model_config(MAMBA_8B_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // SSM should NOT have attention-related parameters
     assert_eq!(grc.num_attention_heads, None, "SSM has no attention heads");
     assert_eq!(grc.num_key_value_heads, None, "SSM has no KV heads");
-    
+
     // SSM SHOULD have state space parameters
     assert!(grc.ssm_state_size.is_some(), "SSM should have state size");
     assert!(grc.ssm_expand.is_some(), "SSM should have expand factor");
     assert!(grc.ssm_conv_kernel.is_some(), "SSM should have conv kernel");
-    
+
     // tied_embeddings should be true for SSM language models
     assert!(grc.tied_embeddings, "SSM LM should have tied embeddings");
 }

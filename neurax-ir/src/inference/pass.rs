@@ -5,8 +5,8 @@
 //! externe n'est requis.
 
 use super::ir::{
-    HallucinationRisk, InferenceParams, InferenceReport, RiskLevel, RiskOverview,
-    RouterStability, SamplingVolatility, StabilityIndex, StabilityLevel,
+    HallucinationRisk, InferenceParams, InferenceReport, RiskLevel, RiskOverview, RouterStability,
+    SamplingVolatility, StabilityIndex, StabilityLevel,
 };
 
 pub struct InferencePass;
@@ -16,7 +16,11 @@ impl InferencePass {
     pub fn run(params: &InferenceParams) -> InferenceReport {
         let stability = Self::compute_stability(params);
         let entropy = Self::compute_entropy_evolution(params);
-        let noise_schedule = if params.architecture_family.to_lowercase().contains("diffusion") {
+        let noise_schedule = if params
+            .architecture_family
+            .to_lowercase()
+            .contains("diffusion")
+        {
             Some(Self::compute_noise_schedule(20))
         } else {
             None
@@ -69,8 +73,7 @@ impl InferencePass {
         let adversarial_penalty = if p.adversarial_prompt { 0.20 } else { 0.0 };
 
         let base_score = 1.0 - (effective_temp / 2.0).min(1.0);
-        let score =
-            (base_score + beam_bonus - quant_penalty - adversarial_penalty).clamp(0.0, 1.0);
+        let score = (base_score + beam_bonus - quant_penalty - adversarial_penalty).clamp(0.0, 1.0);
 
         let level = if score >= 0.75 {
             StabilityLevel::Stable
@@ -214,8 +217,7 @@ impl InferencePass {
 
         let utilization = used as f64 / total_capacity as f64;
         let effective_pct =
-            ((1.0 - utilization + sliding_bonus + kv_bonus - lc_penalty) * 100.0)
-                .clamp(5.0, 100.0);
+            ((1.0 - utilization + sliding_bonus + kv_bonus - lc_penalty) * 100.0).clamp(5.0, 100.0);
 
         effective_pct.round()
     }
@@ -227,8 +229,8 @@ impl InferencePass {
             (p.temperature * 0.5 * p.top_p) / (p.repetition_penalty * p.beam_width as f64);
         let diversity = raw_diversity.clamp(0.0, 1.0);
 
-        let determinism = (1.0 / (1.0 + p.temperature * p.top_p))
-            * (1.0 + (p.beam_width as f64 - 1.0) * 0.20);
+        let determinism =
+            (1.0 / (1.0 + p.temperature * p.top_p)) * (1.0 + (p.beam_width as f64 - 1.0) * 0.20);
         let determinism = determinism.clamp(0.0, 1.0);
 
         SamplingVolatility {
@@ -254,7 +256,13 @@ impl InferencePass {
         let n_experts = 8usize;
         let distribution: Vec<f64> = match distribution_shape {
             "top_k" => (0..n_experts)
-                .map(|i| if i < 2 { 0.25 } else { 0.50 / (n_experts - 2) as f64 })
+                .map(|i| {
+                    if i < 2 {
+                        0.25
+                    } else {
+                        0.50 / (n_experts - 2) as f64
+                    }
+                })
                 .collect(),
             "balanced" => vec![1.0 / n_experts as f64; n_experts],
             _ => (0..n_experts)
@@ -300,10 +308,9 @@ impl InferencePass {
         let collapse = Self::score_to_risk(collapse_score);
 
         // Degeneration : répétition + température élevée
-        let degen_score =
-            ((2.0 - p.repetition_penalty).max(0.0) * 0.40 + p.temperature * 0.20
-                - p.frequency_penalty * 0.10)
-                .clamp(0.0, 1.0);
+        let degen_score = ((2.0 - p.repetition_penalty).max(0.0) * 0.40 + p.temperature * 0.20
+            - p.frequency_penalty * 0.10)
+            .clamp(0.0, 1.0);
         let degeneration = Self::score_to_risk(degen_score);
 
         RiskOverview {

@@ -1,14 +1,13 @@
 //! Precision levels and resolution strategies per tuning.md
-//! 
+//!
 //! Implements the 4-level precision system:
 //! - Level 1: Approximative (±20-30%)
 //! - Level 2: Estimation (±10-15%)
 //! - Level 3: Production (±5-8%)
 //! - Level 4: Industrial (±1-3%)
 
-pub mod confidence;
 pub mod backward;
-
+pub mod confidence;
 
 /// Precision level for metrics
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -40,7 +39,7 @@ impl PrecisionLevel {
             Self::Industrial => (1.0, 3.0),
         }
     }
-    
+
     /// Convert confidence score (0.0-1.0) to precision level
     pub fn from_confidence(score: f64) -> Self {
         match score {
@@ -63,11 +62,11 @@ impl Dim {
     pub fn is_known(&self) -> bool {
         matches!(self, Self::Known(_))
     }
-    
+
     pub fn is_symbolic(&self) -> bool {
         matches!(self, Self::Symbolic(_))
     }
-    
+
     pub fn value(&self) -> Option<u64> {
         match self {
             Self::Known(v) => Some(*v),
@@ -142,7 +141,7 @@ impl ResolutionReport {
     pub fn new() -> Self {
         Self::default()
     }
-    
+
     pub fn resolution_ratio(&self) -> f64 {
         let total = self.resolved.len() + self.unresolved.len();
         if total == 0 {
@@ -184,8 +183,10 @@ impl ResolutionStrategy for ConcreteShapeStrategy {
             _ => None,
         }
     }
-    
-    fn name(&self) -> &'static str { "concrete_json" }
+
+    fn name(&self) -> &'static str {
+        "concrete_json"
+    }
 }
 
 /// Strategy 2: Architecture rule inference
@@ -207,8 +208,10 @@ impl ResolutionStrategy for ArchitectureRuleStrategy {
             _ => None,
         }
     }
-    
-    fn name(&self) -> &'static str { "architecture_rule" }
+
+    fn name(&self) -> &'static str {
+        "architecture_rule"
+    }
 }
 
 /// Precision resolver with cascade of strategies
@@ -227,7 +230,7 @@ impl PrecisionResolver {
             ],
         }
     }
-    
+
     pub fn new_production() -> Self {
         Self {
             target_level: PrecisionLevel::Production,
@@ -237,22 +240,20 @@ impl PrecisionResolver {
             ],
         }
     }
-    
+
     /// Resolve dimensions using cascade of strategies
-    pub fn resolve_dims(
-        &self,
-        dims: &mut [Dim],
-        ctx: &ResolutionContext,
-    ) -> ResolutionReport {
+    pub fn resolve_dims(&self, dims: &mut [Dim], ctx: &ResolutionContext) -> ResolutionReport {
         let mut report = ResolutionReport::new();
-        
+
         for (i, dim) in dims.iter_mut().enumerate() {
             if let Dim::Symbolic(s) = dim {
                 let sym = s.clone(); // Clone to avoid borrow issues
                 for strategy in &self.strategies {
                     if let Some(value) = strategy.resolve(&sym, ctx) {
                         *dim = Dim::Known(value);
-                        report.resolved.push((i, sym.clone(), value, strategy.name()));
+                        report
+                            .resolved
+                            .push((i, sym.clone(), value, strategy.name()));
                         break;
                     }
                 }
@@ -261,10 +262,10 @@ impl PrecisionResolver {
                 }
             }
         }
-        
+
         report
     }
-    
+
     /// Calculate precision level based on resolution ratio
     pub fn compute_precision_level(&self, report: &ResolutionReport) -> PrecisionLevel {
         let ratio = report.resolution_ratio();
@@ -285,62 +286,141 @@ pub struct MetricPrecisionTarget {
 /// Precision targets per tuning.md Table 1.1
 pub fn get_precision_targets() -> Vec<MetricPrecisionTarget> {
     vec![
-        MetricPrecisionTarget { metric_name: "total_parameters".into(), level_1_error: 5.0, level_2_error: 1.0, level_3_error: 0.1, level_4_error: 0.01 },
-        MetricPrecisionTarget { metric_name: "active_parameters".into(), level_1_error: 10.0, level_2_error: 3.0, level_3_error: 1.0, level_4_error: 0.1 },
-        MetricPrecisionTarget { metric_name: "flops_forward".into(), level_1_error: 25.0, level_2_error: 10.0, level_3_error: 5.0, level_4_error: 1.5 },
-        MetricPrecisionTarget { metric_name: "flops_backward".into(), level_1_error: 30.0, level_2_error: 15.0, level_3_error: 8.0, level_4_error: 3.0 },
-        MetricPrecisionTarget { metric_name: "vram_inference".into(), level_1_error: 30.0, level_2_error: 15.0, level_3_error: 8.0, level_4_error: 3.0 },
-        MetricPrecisionTarget { metric_name: "vram_training".into(), level_1_error: 35.0, level_2_error: 18.0, level_3_error: 10.0, level_4_error: 5.0 },
-        MetricPrecisionTarget { metric_name: "latency_forward".into(), level_1_error: 50.0, level_2_error: 25.0, level_3_error: 12.0, level_4_error: 5.0 },
-        MetricPrecisionTarget { metric_name: "training_cost".into(), level_1_error: 60.0, level_2_error: 30.0, level_3_error: 15.0, level_4_error: 8.0 },
-        MetricPrecisionTarget { metric_name: "energy_kwh".into(), level_1_error: 70.0, level_2_error: 35.0, level_3_error: 18.0, level_4_error: 10.0 },
+        MetricPrecisionTarget {
+            metric_name: "total_parameters".into(),
+            level_1_error: 5.0,
+            level_2_error: 1.0,
+            level_3_error: 0.1,
+            level_4_error: 0.01,
+        },
+        MetricPrecisionTarget {
+            metric_name: "active_parameters".into(),
+            level_1_error: 10.0,
+            level_2_error: 3.0,
+            level_3_error: 1.0,
+            level_4_error: 0.1,
+        },
+        MetricPrecisionTarget {
+            metric_name: "flops_forward".into(),
+            level_1_error: 25.0,
+            level_2_error: 10.0,
+            level_3_error: 5.0,
+            level_4_error: 1.5,
+        },
+        MetricPrecisionTarget {
+            metric_name: "flops_backward".into(),
+            level_1_error: 30.0,
+            level_2_error: 15.0,
+            level_3_error: 8.0,
+            level_4_error: 3.0,
+        },
+        MetricPrecisionTarget {
+            metric_name: "vram_inference".into(),
+            level_1_error: 30.0,
+            level_2_error: 15.0,
+            level_3_error: 8.0,
+            level_4_error: 3.0,
+        },
+        MetricPrecisionTarget {
+            metric_name: "vram_training".into(),
+            level_1_error: 35.0,
+            level_2_error: 18.0,
+            level_3_error: 10.0,
+            level_4_error: 5.0,
+        },
+        MetricPrecisionTarget {
+            metric_name: "latency_forward".into(),
+            level_1_error: 50.0,
+            level_2_error: 25.0,
+            level_3_error: 12.0,
+            level_4_error: 5.0,
+        },
+        MetricPrecisionTarget {
+            metric_name: "training_cost".into(),
+            level_1_error: 60.0,
+            level_2_error: 30.0,
+            level_3_error: 15.0,
+            level_4_error: 8.0,
+        },
+        MetricPrecisionTarget {
+            metric_name: "energy_kwh".into(),
+            level_1_error: 70.0,
+            level_2_error: 35.0,
+            level_3_error: 18.0,
+            level_4_error: 10.0,
+        },
     ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_precision_level_from_confidence() {
-        assert_eq!(PrecisionLevel::from_confidence(0.97), PrecisionLevel::Industrial);
-        assert_eq!(PrecisionLevel::from_confidence(0.90), PrecisionLevel::Production);
-        assert_eq!(PrecisionLevel::from_confidence(0.75), PrecisionLevel::Estimation);
-        assert_eq!(PrecisionLevel::from_confidence(0.50), PrecisionLevel::Approximative);
+        assert_eq!(
+            PrecisionLevel::from_confidence(0.97),
+            PrecisionLevel::Industrial
+        );
+        assert_eq!(
+            PrecisionLevel::from_confidence(0.90),
+            PrecisionLevel::Production
+        );
+        assert_eq!(
+            PrecisionLevel::from_confidence(0.75),
+            PrecisionLevel::Estimation
+        );
+        assert_eq!(
+            PrecisionLevel::from_confidence(0.50),
+            PrecisionLevel::Approximative
+        );
     }
-    
+
     #[test]
     fn test_resolution_strategy() {
         let ctx = ResolutionContext {
-            training: TrainingConfig { batch_size: Some(32), seq_len: Some(512) },
-            global: GlobalParams { hidden_size: Some(768), ..Default::default() },
+            training: TrainingConfig {
+                batch_size: Some(32),
+                seq_len: Some(512),
+            },
+            global: GlobalParams {
+                hidden_size: Some(768),
+                ..Default::default()
+            },
             data: DataConfig::default(),
         };
-        
+
         let strategy = ConcreteShapeStrategy;
         assert_eq!(strategy.resolve("B", &ctx), Some(32));
         assert_eq!(strategy.resolve("S", &ctx), Some(512));
         assert_eq!(strategy.resolve("H", &ctx), Some(768));
     }
-    
+
     #[test]
     fn test_precision_resolver() {
         let resolver = PrecisionResolver::new_industrial();
         let ctx = ResolutionContext {
-            training: TrainingConfig { batch_size: Some(32), seq_len: Some(512) },
-            global: GlobalParams { hidden_size: Some(768), vocab_size: Some(50000), ..Default::default() },
+            training: TrainingConfig {
+                batch_size: Some(32),
+                seq_len: Some(512),
+            },
+            global: GlobalParams {
+                hidden_size: Some(768),
+                vocab_size: Some(50000),
+                ..Default::default()
+            },
             data: DataConfig::default(),
         };
-        
+
         let mut dims = vec![
             Dim::Symbolic("B".into()),
             Dim::Symbolic("S".into()),
             Dim::Symbolic("H".into()),
             Dim::Symbolic("unknown".into()),
         ];
-        
+
         let report = resolver.resolve_dims(&mut dims, &ctx);
-        
+
         assert_eq!(dims[0], Dim::Known(32));
         assert_eq!(dims[1], Dim::Known(512));
         assert_eq!(dims[2], Dim::Known(768));

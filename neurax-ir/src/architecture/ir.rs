@@ -1,6 +1,6 @@
 //! Architecture IR structures
 
-use neurax_parser::{Layer, ModelType, GlobalParams, TrainingConfig, HardwareConfig};
+use neurax_parser::{GlobalParams, HardwareConfig, Layer, ModelType, TrainingConfig};
 use std::collections::HashMap;
 
 /// Architecture IR - premier dialecte du pipeline NEURAX

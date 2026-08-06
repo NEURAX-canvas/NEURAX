@@ -1,15 +1,17 @@
 //! JSON schema validation
 
 use crate::error::ParserError;
-use crate::model_config::{ModelConfig, LayerType};
+use crate::model_config::{LayerType, ModelConfig};
 
 /// Validate the parsed model configuration
 pub fn validate_model_config(config: &ModelConfig) -> Result<(), ParserError> {
     // Check for at least one layer
     if config.model.layers.is_empty() {
-        return Err(ParserError::schema_validation("Model must have at least one layer"));
+        return Err(ParserError::schema_validation(
+            "Model must have at least one layer",
+        ));
     }
-    
+
     // Validate batch size
     if config.training.batch_size == 0 {
         return Err(ParserError::InvalidValue {
@@ -17,31 +19,33 @@ pub fn validate_model_config(config: &ModelConfig) -> Result<(), ParserError> {
             reason: "batch_size must be greater than 0".to_string(),
         });
     }
-    
+
     // Validate layer shapes are consistent
     validate_layer_shapes(config)?;
-    
+
     // Validate layer parameters
     validate_layer_params(config)?;
-    
+
     // Validate hardware
     if config.hardware.gpus.is_empty() {
-        return Err(ParserError::schema_validation("At least one GPU must be specified"));
+        return Err(ParserError::schema_validation(
+            "At least one GPU must be specified",
+        ));
     }
-    
+
     Ok(())
 }
 
 /// Validate that layer shapes are consistent
 fn validate_layer_shapes(config: &ModelConfig) -> Result<(), ParserError> {
     let layers = &config.model.layers;
-    
+
     for (i, layer) in layers.iter().enumerate() {
         // Check input/output shapes are non-empty
         if layer.input_shape.is_empty() || layer.output_shape.is_empty() {
             continue; // Skip validation for layers with unspecified shapes
         }
-        
+
         // Check shape consistency between consecutive layers
         if i > 0 {
             let prev_layer = &layers[i - 1];
@@ -50,12 +54,13 @@ fn validate_layer_shapes(config: &ModelConfig) -> Result<(), ParserError> {
                 // For non-sequential models, this check is relaxed
                 if prev_layer.output_shape.len() == layer.input_shape.len() {
                     // Allow for batch dimension flexibility
-                    let shape_match = prev_layer.output_shape
+                    let shape_match = prev_layer
+                        .output_shape
                         .iter()
                         .skip(1) // Skip batch dim
                         .zip(layer.input_shape.iter().skip(1))
                         .all(|(a, b)| a == b);
-                    
+
                     if !shape_match {
                         // This is a warning, not an error for non-sequential models
                         tracing::warn!(
@@ -67,7 +72,7 @@ fn validate_layer_shapes(config: &ModelConfig) -> Result<(), ParserError> {
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -85,7 +90,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate stride > 0
                 if let Some(stride) = layer.params.stride {
                     if stride == 0 {
@@ -95,7 +100,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate in_channels is specified for non-first layers
                 if layer.params.in_channels.is_none() && layer.params.out_channels.is_some() {
                     // Allow for first layer where in_channels might be inferred from input_shape
@@ -103,7 +108,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         // in_channels can be inferred from input_shape[0]
                     }
                 }
-                
+
                 // Validate out_channels is specified
                 if layer.params.out_channels.is_none() {
                     tracing::warn!(
@@ -122,7 +127,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate stride > 0
                 if let Some(stride) = layer.params.stride {
                     if stride == 0 {
@@ -142,40 +147,53 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                     );
                 }
             }
-            LayerType::ResidualBlock | LayerType::Mbconv | LayerType::Inception 
-            | LayerType::DenseBlock | LayerType::ConvnextBlock | LayerType::ShuffleUnit 
-            | LayerType::C2f | LayerType::Detection | LayerType::Transition => {
+            LayerType::ResidualBlock
+            | LayerType::Mbconv
+            | LayerType::Inception
+            | LayerType::DenseBlock
+            | LayerType::ConvnextBlock
+            | LayerType::ShuffleUnit
+            | LayerType::C2f
+            | LayerType::Detection
+            | LayerType::Transition => {
                 // CNN modern architectures - basic validation
                 tracing::debug!(
                     "Layer {} is a modern CNN architecture type: {:?}",
-                    layer.id, layer.layer_type
+                    layer.id,
+                    layer.layer_type
                 );
             }
             // State Space Model validation
-            LayerType::MambaBlock | LayerType::S4Block | LayerType::H3Block 
-            | LayerType::StateSpace | LayerType::RwkvBlock | LayerType::RetentionBlock => {
+            LayerType::MambaBlock
+            | LayerType::S4Block
+            | LayerType::H3Block
+            | LayerType::StateSpace
+            | LayerType::RwkvBlock
+            | LayerType::RetentionBlock => {
                 // Validate state_dim > 0 for SSM layers
                 if let Some(state_dim) = layer.params.state_dim {
                     if state_dim == 0 {
                         return Err(ParserError::InvalidValue {
                             field: format!("layers.{}.params.state_dim", layer.id),
-                            reason: "state_dim must be greater than 0 for State Space Models".to_string(),
+                            reason: "state_dim must be greater than 0 for State Space Models"
+                                .to_string(),
                         });
                     }
                 }
-                
+
                 // Validate expansion_factor > 0 for Mamba
                 if matches!(layer.layer_type, LayerType::MambaBlock) {
                     if let Some(expansion_factor) = layer.params.expansion_factor {
                         if expansion_factor == 0 {
                             return Err(ParserError::InvalidValue {
                                 field: format!("layers.{}.params.expansion_factor", layer.id),
-                                reason: "expansion_factor must be greater than 0 for Mamba blocks".to_string(),
+                                reason: "expansion_factor must be greater than 0 for Mamba blocks"
+                                    .to_string(),
                             });
                         }
                     }
                 }
-                
+
                 // Validate conv_kernel_size > 0 if specified
                 if let Some(conv_kernel_size) = layer.params.conv_kernel_size {
                     if conv_kernel_size == 0 {
@@ -185,16 +203,22 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 tracing::debug!(
                     "Layer {} is a State Space Model type: {:?}",
-                    layer.id, layer.layer_type
+                    layer.id,
+                    layer.layer_type
                 );
             }
             // GAN validation
-            LayerType::GeneratorBlock | LayerType::DiscriminatorBlock 
-            | LayerType::StyleMod | LayerType::AdaIN | LayerType::MinibatchStd 
-            | LayerType::PixelNorm | LayerType::SelfAttention | LayerType::SpectralNorm
+            LayerType::GeneratorBlock
+            | LayerType::DiscriminatorBlock
+            | LayerType::StyleMod
+            | LayerType::AdaIN
+            | LayerType::MinibatchStd
+            | LayerType::PixelNorm
+            | LayerType::SelfAttention
+            | LayerType::SpectralNorm
             | LayerType::ProgressiveBlock => {
                 // Validate latent_dim > 0 if specified
                 if let Some(latent_dim) = layer.params.latent_dim {
@@ -205,7 +229,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate resolution > 0 if specified
                 if let Some(resolution) = layer.params.resolution {
                     if resolution == 0 {
@@ -215,7 +239,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate truncation in [0, 1] if specified
                 if let Some(truncation) = layer.params.truncation {
                     if !(0.0..=1.0).contains(&truncation) {
@@ -225,25 +249,31 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 tracing::debug!(
                     "Layer {} is a GAN architecture type: {:?}",
-                    layer.id, layer.layer_type
+                    layer.id,
+                    layer.layer_type
                 );
             }
             // LSTM/RNN validation
-            LayerType::LstmBlock | LayerType::GruBlock | LayerType::RnnCell 
-            | LayerType::Bidirectional | LayerType::EncoderBlock | LayerType::DecoderBlock => {
+            LayerType::LstmBlock
+            | LayerType::GruBlock
+            | LayerType::RnnCell
+            | LayerType::Bidirectional
+            | LayerType::EncoderBlock
+            | LayerType::DecoderBlock => {
                 // Validate rnn_hidden_size > 0 if specified
                 if let Some(rnn_hidden_size) = layer.params.rnn_hidden_size {
                     if rnn_hidden_size == 0 {
                         return Err(ParserError::InvalidValue {
                             field: format!("layers.{}.params.rnn_hidden_size", layer.id),
-                            reason: "rnn_hidden_size must be greater than 0 for RNN layers".to_string(),
+                            reason: "rnn_hidden_size must be greater than 0 for RNN layers"
+                                .to_string(),
                         });
                     }
                 }
-                
+
                 // Validate num_rnn_layers > 0 if specified
                 if let Some(num_rnn_layers) = layer.params.num_rnn_layers {
                     if num_rnn_layers == 0 {
@@ -253,7 +283,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate recurrent_dropout in [0, 1) if specified
                 if let Some(recurrent_dropout) = layer.params.recurrent_dropout {
                     if !(0.0..1.0).contains(&recurrent_dropout) {
@@ -263,7 +293,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 // Validate zoneout in [0, 1) if specified
                 if let Some(zoneout) = layer.params.zoneout {
                     if !(0.0..1.0).contains(&zoneout) {
@@ -273,16 +303,17 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
                         });
                     }
                 }
-                
+
                 tracing::debug!(
                     "Layer {} is an LSTM/RNN architecture type: {:?}",
-                    layer.id, layer.layer_type
+                    layer.id,
+                    layer.layer_type
                 );
             }
             _ => {}
         }
     }
-    
+
     Ok(())
 }
 
@@ -295,7 +326,7 @@ pub fn validate_custom_equation(equation: &str) -> Result<(), ParserError> {
             reason: "Equation cannot be empty".to_string(),
         });
     }
-    
+
     // Check for dangerous patterns (basic security)
     let dangerous = ["import", "eval", "exec", "system", "file", "read", "write"];
     for pattern in dangerous {
@@ -306,7 +337,7 @@ pub fn validate_custom_equation(equation: &str) -> Result<(), ParserError> {
             });
         }
     }
-    
+
     Ok(())
 }
 

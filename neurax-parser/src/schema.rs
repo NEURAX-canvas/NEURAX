@@ -69,7 +69,7 @@ impl RawLayerParams {
             }
         })
     }
-    
+
     pub fn get_f64(&self, key: &str) -> Option<f64> {
         self.extra.get(key).and_then(|v| {
             if let Some(n) = v.as_f64() {
@@ -85,15 +85,17 @@ impl RawLayerParams {
             }
         })
     }
-    
+
     pub fn get_string(&self, key: &str) -> Option<String> {
-        self.extra.get(key).and_then(|v| v.as_str().map(|s| s.to_string()))
+        self.extra
+            .get(key)
+            .and_then(|v| v.as_str().map(|s| s.to_string()))
     }
-    
+
     pub fn get_bool(&self, key: &str) -> Option<bool> {
         self.extra.get(key).and_then(|v| v.as_bool())
     }
-    
+
     pub fn get_string_vec(&self, key: &str) -> Option<Vec<String>> {
         self.extra.get(key).and_then(|v| {
             v.as_array().map(|arr| {
@@ -103,7 +105,7 @@ impl RawLayerParams {
             })
         })
     }
-    
+
     pub fn get_usize_vec(&self, key: &str) -> Option<Vec<usize>> {
         self.extra.get(key).and_then(|v| {
             v.as_array().map(|arr| {
@@ -121,7 +123,7 @@ impl RawLayerParams {
             })
         })
     }
-    
+
     pub fn get_u64(&self, key: &str) -> Option<u64> {
         self.extra.get(key).and_then(|v| {
             if let Some(n) = v.as_u64() {
@@ -194,8 +196,12 @@ pub struct RawTraining {
     pub parallelism: RawParallelism,
 }
 
-fn default_batch_size() -> usize { 32 }
-fn default_precision() -> String { "fp32".to_string() }
+fn default_batch_size() -> usize {
+    32
+}
+fn default_precision() -> String {
+    "fp32".to_string()
+}
 
 /// Raw parallelism configuration
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -209,7 +215,9 @@ pub struct RawParallelism {
     pub pipeline_parallel: u32,
 }
 
-fn default_one() -> u32 { 1 }
+fn default_one() -> u32 {
+    1
+}
 
 /// Raw hardware configuration
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -246,7 +254,9 @@ pub struct RawGpu {
     pub nvlink: Option<bool>,
 }
 
-fn default_gpu_count() -> u32 { 1 }
+fn default_gpu_count() -> u32 {
+    1
+}
 
 /// Raw data configuration
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -268,7 +278,9 @@ pub struct RawData {
     pub image_width: Option<usize>,
 }
 
-fn default_dtype() -> String { "float32".to_string() }
+fn default_dtype() -> String {
+    "float32".to_string()
+}
 
 /// Raw metrics configuration
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
@@ -280,7 +292,9 @@ pub struct RawMetricsConfig {
     pub groups: RawMetricGroups,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 /// Raw metric groups
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -333,4 +347,6 @@ pub struct RawCostConfig {
     pub pue_factor: f64,
 }
 
-fn default_pue() -> f64 { 1.2 }
+fn default_pue() -> f64 {
+    1.2
+}

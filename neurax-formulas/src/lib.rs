@@ -4,25 +4,25 @@
 //! memory requirements, and other metrics for various ML layer types.
 
 pub mod attention;
-pub mod conv;
-pub mod mlp;
-pub mod embedding;
-pub mod normalization;
-pub mod moe;
-pub mod ssm;
-pub mod rnn;
-pub mod diffusion;
-pub mod gnn;
-pub mod custom;
 pub mod cnn_blocks;
+pub mod conv;
+pub mod custom;
+pub mod diffusion;
+pub mod embedding;
+pub mod gnn;
+pub mod mlp;
+pub mod moe;
+pub mod normalization;
+pub mod rnn;
+pub mod ssm;
 
 pub use attention::*;
 pub use conv::*;
-pub use mlp::*;
 pub use embedding::*;
+pub use mlp::*;
 pub use normalization::*;
-pub use ssm::*;
 pub use rnn::*;
+pub use ssm::*;
 
 /// Returns the number of bytes per element for a given dtype
 pub fn dtype_bytes(dtype: &str) -> usize {
@@ -33,7 +33,7 @@ pub fn dtype_bytes(dtype: &str) -> usize {
         "fp8" | "float8" => 1,
         "int8" => 1,
         "int4" => 1, // packed
-        _ => 4, // default to fp32
+        _ => 4,      // default to fp32
     }
 }
 

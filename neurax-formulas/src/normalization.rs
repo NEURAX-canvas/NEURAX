@@ -26,7 +26,12 @@ pub fn rms_norm_flops(batch: usize, seq_len: usize, hidden_size: usize) -> f64 {
 }
 
 /// Compute FLOPs for Batch Normalization (training)
-pub fn batch_norm_flops_training(batch: usize, channels: usize, height: usize, width: usize) -> f64 {
+pub fn batch_norm_flops_training(
+    batch: usize,
+    channels: usize,
+    height: usize,
+    width: usize,
+) -> f64 {
     let spatial = height * width;
     // Mean: B × spatial additions per channel
     // Variance: B × spatial operations per channel
@@ -35,7 +40,12 @@ pub fn batch_norm_flops_training(batch: usize, channels: usize, height: usize, w
 }
 
 /// Compute FLOPs for Batch Normalization (inference)
-pub fn batch_norm_flops_inference(batch: usize, channels: usize, height: usize, width: usize) -> f64 {
+pub fn batch_norm_flops_inference(
+    batch: usize,
+    channels: usize,
+    height: usize,
+    width: usize,
+) -> f64 {
     // Uses running mean/var, just normalize, scale, shift
     let spatial = height * width;
     3.0 * batch as f64 * channels as f64 * spatial as f64

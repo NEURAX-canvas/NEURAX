@@ -299,7 +299,10 @@ fn calculate_total_params(config: &ModelConfig) -> i64 {
                 num_experts = layer.params.num_experts.unwrap_or(8) as i64;
                 shared_experts = layer.params.shared_experts.unwrap_or(0) as i64;
                 expert_params = layer.params.hidden_size.unwrap_or(hidden as usize) as i64
-                    * layer.params.intermediate_size.unwrap_or(intermediate as usize) as i64
+                    * layer
+                        .params
+                        .intermediate_size
+                        .unwrap_or(intermediate as usize) as i64
                     * 3;
                 break;
             }
@@ -382,8 +385,7 @@ fn estimate_training_hours(config: &ModelConfig) -> f64 {
     let steps = config.training.max_steps as f64;
     let batch = config.training.batch_size as f64;
 
-    let tokens_per_step =
-        batch * config.model.global_params.sequence_length.unwrap_or(2048) as f64;
+    let tokens_per_step = batch * config.model.global_params.sequence_length.unwrap_or(2048) as f64;
     let total_training_flops = 6.0 * total_params * tokens_per_step * steps;
 
     let gpu_tflops = config

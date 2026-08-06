@@ -7,11 +7,13 @@ pub fn calculate_memory_bandwidth(tensor_ir: &TensorIR, step_time_ms: f64) -> f6
     if step_time_ms <= 0.0 {
         return 0.0;
     }
-    
-    let total_bytes = tensor_ir.tensors.values()
+
+    let total_bytes = tensor_ir
+        .tensors
+        .values()
         .map(|t| t.size_bytes)
         .sum::<u64>();
-    
+
     // GB/s = bytes / (step_time_s * 1e9)
     (total_bytes as f64) / (step_time_ms / 1000.0) / 1e9
 }
@@ -30,7 +32,9 @@ pub fn get_size_histogram(tensor_ir: &TensorIR) -> Vec<(String, usize)> {
 
 /// Calculate activation memory with gradient checkpointing
 pub fn calculate_checkpointed_memory(tensor_ir: &TensorIR, checkpoint_layers: &[String]) -> u64 {
-    tensor_ir.tensors.values()
+    tensor_ir
+        .tensors
+        .values()
         .filter(|t| {
             // Only count tensors from checkpointed layers
             checkpoint_layers.contains(&t.produced_by)

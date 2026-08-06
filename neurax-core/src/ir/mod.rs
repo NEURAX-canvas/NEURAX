@@ -2,4 +2,4 @@
 
 pub mod backend;
 
-pub use backend::{IrBackend, MlirBackend, select_backend};
+pub use backend::{select_backend, IrBackend, MlirBackend};

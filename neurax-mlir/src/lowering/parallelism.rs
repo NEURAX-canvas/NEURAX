@@ -16,11 +16,11 @@ impl LoweringPass for ParallelismLowering {
     fn name() -> &'static str {
         "ParallelismLowering"
     }
-    
+
     fn description() -> &'static str {
         "Lowers par.data_parallel, par.tensor_parallel, par.hybrid to scf/gpu"
     }
-    
+
     fn run<'c>(_module: &mut Module<'c>, _context: &mut LoweringContext<'c>) -> Result<(), String> {
         // Parallelism lowering transforms parallelism hints to execution strategies
         Ok(())
@@ -43,11 +43,11 @@ impl ParallelismConfig {
             pipeline_parallel: pp,
         }
     }
-    
+
     pub fn total_gpus(&self) -> u32 {
         self.data_parallel * self.tensor_parallel * self.pipeline_parallel
     }
-    
+
     pub fn is_parallel(&self) -> bool {
         self.total_gpus() > 1
     }
@@ -56,7 +56,7 @@ impl ParallelismConfig {
 /// Generate parallelism attributes for the module
 pub fn generate_parallelism_attributes(config: &ParallelismConfig) -> String {
     format!(
-r#"  // Parallelism configuration
+        r#"  // Parallelism configuration
   // data_parallel = {}
   // tensor_parallel = {}
   // pipeline_parallel = {}
@@ -70,17 +70,11 @@ r#"  // Parallelism configuration
 }
 
 /// Generate tensor-parallel matmul (split across TP ranks)
-pub fn lower_tp_matmul(
-    m: usize,
-    k: usize,
-    n: usize,
-    tensor_parallel: u32,
-    dtype: &str,
-) -> String {
+pub fn lower_tp_matmul(m: usize, k: usize, n: usize, tensor_parallel: u32, dtype: &str) -> String {
     let n_per_rank = n / tensor_parallel as usize;
-    
+
     format!(
-r#"  // Tensor-parallel matmul: column-parallel split
+        r#"  // Tensor-parallel matmul: column-parallel split
   // Each rank computes {} columns of the output
   func.func @tp_matmul(%a: tensor<{}x{}x{}>, %b_local: tensor<{}x{}x{}>) -> tensor<{}x{}x{}> {{
     %c_init = tensor.empty() : tensor<{}x{}x{}>
@@ -91,24 +85,42 @@ r#"  // Tensor-parallel matmul: column-parallel split
 
 "#,
         n_per_rank,
-        m, k, dtype, k, n_per_rank, dtype, m, n_per_rank, dtype,
-        m, n_per_rank, dtype,
-        m, k, dtype, k, n_per_rank, dtype, m, n_per_rank, dtype, m, n_per_rank, dtype,
-        m, n_per_rank, dtype
+        m,
+        k,
+        dtype,
+        k,
+        n_per_rank,
+        dtype,
+        m,
+        n_per_rank,
+        dtype,
+        m,
+        n_per_rank,
+        dtype,
+        m,
+        k,
+        dtype,
+        k,
+        n_per_rank,
+        dtype,
+        m,
+        n_per_rank,
+        dtype,
+        m,
+        n_per_rank,
+        dtype,
+        m,
+        n_per_rank,
+        dtype
     )
 }
 
 /// Generate data-parallel loop (for batch parallelism)
-pub fn lower_dp_loop(
-    batch_size: usize,
-    hidden_size: usize,
-    dp_size: u32,
-    dtype: &str,
-) -> String {
+pub fn lower_dp_loop(batch_size: usize, hidden_size: usize, dp_size: u32, dtype: &str) -> String {
     let batch_per_rank = batch_size / dp_size as usize;
-    
+
     format!(
-r#"  // Data-parallel batch split
+        r#"  // Data-parallel batch split
   // Each rank processes {} samples
   func.func @dp_forward(%input_local: tensor<{}x{}x{}>) -> tensor<{}x{}x{}> {{
     %output = tensor.empty() : tensor<{}x{}x{}>
@@ -119,9 +131,18 @@ r#"  // Data-parallel batch split
 
 "#,
         batch_per_rank,
-        batch_per_rank, hidden_size, dtype, batch_per_rank, hidden_size, dtype,
-        batch_per_rank, hidden_size, dtype,
-        batch_per_rank, hidden_size, dtype
+        batch_per_rank,
+        hidden_size,
+        dtype,
+        batch_per_rank,
+        hidden_size,
+        dtype,
+        batch_per_rank,
+        hidden_size,
+        dtype,
+        batch_per_rank,
+        hidden_size,
+        dtype
     )
 }
 
@@ -137,9 +158,9 @@ pub fn lower_pp_stage(
     let output_shape_str: Vec<String> = output_shape.iter().map(|x| x.to_string()).collect();
     let input_tensor = format!("tensor<{}x{}>", input_shape_str.join("x"), dtype);
     let output_tensor = format!("tensor<{}x{}>", output_shape_str.join("x"), dtype);
-    
+
     format!(
-r#"  // Pipeline stage {}/{}
+        r#"  // Pipeline stage {}/{}
   func.func @pp_stage_{}(%input: {}) -> {} {{
     // Stage computation
     %output = tensor.empty() : {}
@@ -148,10 +169,7 @@ r#"  // Pipeline stage {}/{}
   }}
 
 "#,
-        stage_id, num_stages,
-        stage_id, input_tensor, output_tensor,
-        output_tensor,
-        output_tensor
+        stage_id, num_stages, stage_id, input_tensor, output_tensor, output_tensor, output_tensor
     )
 }
 
@@ -163,7 +181,7 @@ pub fn lower_hybrid_parallel(
     dtype: &str,
 ) -> String {
     format!(
-r#"  // Hybrid parallelism: DP={}, TP={}, PP={}
+        r#"  // Hybrid parallelism: DP={}, TP={}, PP={}
   // Total GPUs: {}
   // 
   // Communication patterns:
@@ -180,30 +198,42 @@ r#"  // Hybrid parallelism: DP={}, TP={}, PP={}
   }}
 
 "#,
-        config.data_parallel, config.tensor_parallel, config.pipeline_parallel,
+        config.data_parallel,
+        config.tensor_parallel,
+        config.pipeline_parallel,
         config.total_gpus(),
-        seq_len, hidden_size, dtype, seq_len, hidden_size, dtype,
-        seq_len, hidden_size, dtype, seq_len, hidden_size, dtype
+        seq_len,
+        hidden_size,
+        dtype,
+        seq_len,
+        hidden_size,
+        dtype,
+        seq_len,
+        hidden_size,
+        dtype,
+        seq_len,
+        hidden_size,
+        dtype
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parallelism_config() {
         let config = ParallelismConfig::new(8, 8, 1);
         assert_eq!(config.total_gpus(), 64);
         assert!(config.is_parallel());
     }
-    
+
     #[test]
     fn test_tp_matmul() {
         let code = lower_tp_matmul(1024, 1024, 1024, 8, "f32");
         assert!(code.contains("@tp_matmul"));
     }
-    
+
     #[test]
     fn test_hybrid_parallel() {
         let config = ParallelismConfig::new(8, 8, 1);

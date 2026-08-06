@@ -11,13 +11,13 @@ pub fn resnet_basic_block_params(
 ) -> u64 {
     // First conv: in_channels → out_channels, 3×3
     let conv1 = conv_params(in_channels, out_channels, 3, bias);
-    
+
     // Second conv: out_channels → out_channels, 3×3
     let conv2 = conv_params(out_channels, out_channels, 3, bias);
-    
+
     // Two BatchNorm layers (weight + bias + running_mean + running_var = 4 × channels)
     let bn_params = (2 * 4 * out_channels) as u64;
-    
+
     // Downsample projection if dimensions don't match
     let downsample = if stride != 1 || in_channels != out_channels {
         // 1×1 conv for projection + BN
@@ -25,7 +25,7 @@ pub fn resnet_basic_block_params(
     } else {
         0
     };
-    
+
     conv1 + conv2 + bn_params + downsample
 }
 
@@ -41,23 +41,23 @@ pub fn resnet_bottleneck_block_params(
 ) -> u64 {
     // 1×1 reduction
     let conv1 = conv_params(in_channels, mid_channels, 1, bias);
-    
+
     // 3×3 conv
     let conv2 = conv_params(mid_channels, mid_channels, 3, bias);
-    
+
     // 1×1 expansion
     let conv3 = conv_params(mid_channels, out_channels, 1, bias);
-    
+
     // Three BatchNorm layers
     let bn_params = (3 * 4 * mid_channels + 4 * out_channels) as u64;
-    
+
     // Downsample if needed
     let downsample = if stride != 1 || in_channels != out_channels {
         conv_params(in_channels, out_channels, 1, bias) + (4 * out_channels) as u64
     } else {
         0
     };
-    
+
     conv1 + conv2 + conv3 + bn_params + downsample
 }
 
@@ -77,21 +77,22 @@ pub fn inception_module_params(
 ) -> u64 {
     // 1×1 branch
     let branch1x1 = conv_params(in_channels, out_1x1, 1, bias);
-    
+
     // 3×3 branch (with reduction)
     let branch3x3 = conv_params(in_channels, out_3x3_reduce, 1, bias)
-                  + conv_params(out_3x3_reduce, out_3x3, 3, bias);
-    
+        + conv_params(out_3x3_reduce, out_3x3, 3, bias);
+
     // 5×5 branch (with reduction)
     let branch5x5 = conv_params(in_channels, out_5x5_reduce, 1, bias)
-                  + conv_params(out_5x5_reduce, out_5x5, 5, bias);
-    
+        + conv_params(out_5x5_reduce, out_5x5, 5, bias);
+
     // Pool branch
     let branch_pool = conv_params(in_channels, pool_proj, 1, bias);
-    
+
     // BatchNorm for each conv (simplified: 2 per branch)
-    let bn_params = (2 * (out_1x1 + out_3x3_reduce + out_3x3 + out_5x5_reduce + out_5x5 + pool_proj)) as u64;
-    
+    let bn_params =
+        (2 * (out_1x1 + out_3x3_reduce + out_3x3 + out_5x5_reduce + out_5x5 + pool_proj)) as u64;
+
     branch1x1 + branch3x3 + branch5x5 + branch_pool + bn_params
 }
 
@@ -108,20 +109,20 @@ pub fn mbconv_params(
 ) -> u64 {
     let _ = stride; // Reserved for future stride-aware parameter calculation
     let expanded = in_channels * expand_factor;
-    
+
     // Expansion phase (skip if expand_factor=1)
     let expand_params = if expand_factor > 1 {
         conv_params(in_channels, expanded, 1, bias) + (4 * expanded) as u64 // conv + BN
     } else {
         0
     };
-    
+
     // Depthwise conv
     let depthwise = (expanded * kernel_size * kernel_size + 4 * expanded) as u64; // depthwise + BN
-    
+
     // Projection phase (always present, no bias in original MobileNet)
     let project = conv_params(expanded, out_channels, 1, false) + (4 * out_channels) as u64;
-    
+
     expand_params + depthwise + project
 }
 
@@ -138,41 +139,37 @@ pub fn dense_block_params(
 ) -> u64 {
     let mut total_params: u64 = 0;
     let mut channels = in_channels;
-    
+
     for _ in 0..num_layers {
         // Bottleneck (1×1 conv)
         let bn_channels = channels * bottleneck_factor;
         let bottleneck = conv_params(channels, bn_channels, 1, bias) + (4 * bn_channels) as u64;
-        
+
         // Main conv (3×3)
         let main_conv = conv_params(bn_channels, growth_rate, 3, bias) + (4 * growth_rate) as u64;
-        
+
         total_params += bottleneck + main_conv;
         channels += growth_rate; // Concatenation
     }
-    
+
     total_params
 }
 
 /// Compute parameters for ConvNeXt Block
 ///
 /// Structure: 7×7 depthwise → LayerNorm → 1×1 → GELU → 1×1
-pub fn convnext_block_params(
-    channels: usize,
-    mlp_ratio: f64,
-    bias: bool,
-) -> u64 {
+pub fn convnext_block_params(channels: usize, mlp_ratio: f64, bias: bool) -> u64 {
     // Depthwise 7×7 conv
     let depthwise = (channels * 7 * 7 + 4 * channels) as u64; // weights + LN
-    
+
     // MLP: 1×1 expand → 1×1 project
     let mlp_hidden = (channels as f64 * mlp_ratio) as usize;
-    let mlp = conv_params(channels, mlp_hidden, 1, bias) 
-            + conv_params(mlp_hidden, channels, 1, bias);
-    
+    let mlp =
+        conv_params(channels, mlp_hidden, 1, bias) + conv_params(mlp_hidden, channels, 1, bias);
+
     // Two LayerNorm layers
     let ln_params = (2 * 2 * channels) as u64;
-    
+
     depthwise + mlp + ln_params
 }
 
@@ -187,23 +184,23 @@ pub fn shuffle_unit_params(
     bias: bool,
 ) -> u64 {
     let mid_channels = out_channels / 2;
-    
+
     // First 1×1 group conv
     let conv1 = ((in_channels / groups) * mid_channels * groups + 4 * mid_channels) as u64;
-    
+
     // Depthwise 3×3
     let depthwise = (mid_channels * 3 * 3 + 4 * mid_channels) as u64;
-    
+
     // Second 1×1 group conv
     let conv2 = ((mid_channels / groups) * out_channels * groups + 4 * out_channels) as u64;
-    
+
     // Skip connection projection if needed
     let skip = if stride != 1 || in_channels != out_channels {
         conv_params(in_channels, out_channels, 1, bias) + (4 * out_channels) as u64
     } else {
         0
     };
-    
+
     conv1 + depthwise + conv2 + skip
 }
 
@@ -218,10 +215,10 @@ pub fn c2f_block_params(
     bias: bool,
 ) -> u64 {
     let hidden = out_channels / 2;
-    
+
     // Initial conv
     let init_conv = conv_params(in_channels, out_channels, 1, bias);
-    
+
     // Bottlenecks (simplified as 2 convs each)
     let mut bottleneck_params: u64 = 0;
     for _ in 0..num_bottlenecks {
@@ -230,10 +227,15 @@ pub fn c2f_block_params(
             bottleneck_params += (4 * hidden) as u64; // BN
         }
     }
-    
+
     // Final conv
-    let final_conv = conv_params(out_channels + hidden * num_bottlenecks, out_channels, 1, bias);
-    
+    let final_conv = conv_params(
+        out_channels + hidden * num_bottlenecks,
+        out_channels,
+        1,
+        bias,
+    );
+
     init_conv + bottleneck_params + final_conv
 }
 
@@ -255,23 +257,41 @@ pub fn resnet_basic_block_flops(
 ) -> f64 {
     let out_h = height / stride;
     let out_w = width / stride;
-    
+
     // First conv
-    let conv1_flops = 2.0 * batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 
-                    * in_channels as f64 * 3.0 * 3.0 / stride as f64;
-    
+    let conv1_flops = 2.0
+        * batch as f64
+        * out_channels as f64
+        * out_h as f64
+        * out_w as f64
+        * in_channels as f64
+        * 3.0
+        * 3.0
+        / stride as f64;
+
     // Second conv
-    let conv2_flops = 2.0 * batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 
-                    * out_channels as f64 * 3.0 * 3.0;
-    
+    let conv2_flops = 2.0
+        * batch as f64
+        * out_channels as f64
+        * out_h as f64
+        * out_w as f64
+        * out_channels as f64
+        * 3.0
+        * 3.0;
+
     // Skip projection if needed
     let skip_flops = if stride != 1 || in_channels != out_channels {
-        2.0 * batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 
-        * in_channels as f64 * 1.0 * 1.0
+        2.0 * batch as f64
+            * out_channels as f64
+            * out_h as f64
+            * out_w as f64
+            * in_channels as f64
+            * 1.0
+            * 1.0
     } else {
         0.0
     };
-    
+
     conv1_flops + conv2_flops + skip_flops
 }
 
@@ -290,22 +310,27 @@ pub fn mbconv_flops(
     let expanded = in_channels * expand_factor;
     let out_h = height / stride;
     let out_w = width / stride;
-    
+
     // Expansion
     let expand_flops = if expand_factor > 1 {
         2.0 * batch as f64 * height as f64 * width as f64 * in_channels as f64 * expanded as f64
     } else {
         0.0
     };
-    
+
     // Depthwise
-    let depthwise_flops = 2.0 * batch as f64 * expanded as f64 * out_h as f64 * out_w as f64 
-                        * kernel_size as f64 * kernel_size as f64;
-    
+    let depthwise_flops = 2.0
+        * batch as f64
+        * expanded as f64
+        * out_h as f64
+        * out_w as f64
+        * kernel_size as f64
+        * kernel_size as f64;
+
     // Projection
-    let project_flops = 2.0 * batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 
-                      * expanded as f64;
-    
+    let project_flops =
+        2.0 * batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 * expanded as f64;
+
     expand_flops + depthwise_flops + project_flops
 }
 

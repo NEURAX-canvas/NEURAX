@@ -2,8 +2,8 @@
 //! Validates complete absorption pipeline with GNN architecture
 //! Compares output metrics with real model specifications
 
-use neurax_parser::{parse_model_config, AbsorbedModel};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel};
 
 /// Graph Attention Network (GAT) for molecular property prediction
 /// Based on real-world GNN architectures like GraphGPS and GAT
@@ -301,43 +301,54 @@ impl RealGnnSpecs {
     /// GraphGPS-medium specifications
     fn graphgps_medium() -> Self {
         Self {
-            params_million: 15.0,       // ~15M params
-            flops_per_graph: 50e6,      // ~50M FLOPs per graph
-            memory_mb: 128.0,           // ~128MB per batch
+            params_million: 15.0,  // ~15M params
+            flops_per_graph: 50e6, // ~50M FLOPs per graph
+            memory_mb: 128.0,      // ~128MB per batch
             num_mp_layers: 8,
             hidden_dim: 512,
             num_heads: 8,
         }
     }
-    
+
     /// Calculate expected parameters for GAT-style GNN
-    fn calculate_expected_params(node_features: u64, hidden_dim: u64, num_layers: u32, num_heads: u32) -> f64 {
+    fn calculate_expected_params(
+        node_features: u64,
+        hidden_dim: u64,
+        num_layers: u32,
+        num_heads: u32,
+    ) -> f64 {
         // Node encoder: node_features -> hidden_dim
         let encoder = node_features * hidden_dim;
-        
+
         // Each GAT layer: 4 * hidden_dim^2 (Q, K, V, O projections)
         // With multi-head: scaled by num_heads but reduced head_dim
         let gat_per_layer = 4 * hidden_dim * hidden_dim;
         let gat_total = gat_per_layer * num_layers as u64;
-        
+
         // LayerNorm: 2 * hidden_dim per layer
         let norm = 2 * hidden_dim * num_layers as u64;
-        
+
         // MLP head: hidden_dim -> 1024 -> hidden_dim -> num_classes
         let mlp = hidden_dim * 1024 + 1024 * hidden_dim + hidden_dim * 128;
-        
+
         let total = encoder + gat_total + norm + mlp;
         total as f64 / 1e6
     }
-    
+
     /// Calculate expected FLOPs per graph
-    fn calculate_expected_flops(num_nodes: u64, num_edges: u64, hidden_dim: u64, num_layers: u32, num_heads: u32) -> f64 {
+    fn calculate_expected_flops(
+        num_nodes: u64,
+        num_edges: u64,
+        hidden_dim: u64,
+        num_layers: u32,
+        num_heads: u32,
+    ) -> f64 {
         // Per GAT layer:
         // - Attention computation: O(E * D * num_heads)
         // - Message passing: O(E * D)
         // - Node update: O(N * D)
-        let flops_per_layer = 2 * num_edges * hidden_dim * num_heads as u64 
-                            + 2 * num_nodes * hidden_dim;
+        let flops_per_layer =
+            2 * num_edges * hidden_dim * num_heads as u64 + 2 * num_nodes * hidden_dim;
         let total_flops = flops_per_layer * num_layers as u64;
         total_flops as f64
     }
@@ -350,81 +361,87 @@ fn test_gnn_molecular_compilation() {
     println!("Architecture: Graph Attention Network (GAT)");
     println!("Task: Molecular Property Prediction");
     println!("GPUs: 4× A100-40GB");
-    
+
     // ── Step 1: Parse JSON ─────────────────────────────────────────────
     let start = std::time::Instant::now();
-    let config = parse_model_config(GNN_MOLECULAR_JSON)
-        .expect("Failed to parse GNN JSON");
+    let config = parse_model_config(GNN_MOLECULAR_JSON).expect("Failed to parse GNN JSON");
     let parse_time = start.elapsed();
     println!("✓ Parsed in {:?}", parse_time);
-    
+
     // ── Step 2: Absorb into AbsorbedModel ───────────────────────────────
     let start = std::time::Instant::now();
     let absorbed = AbsorbedModel::absorb(config);
     let absorb_time = start.elapsed();
     println!("✓ Absorbed in {:?}", absorb_time);
-    
+
     // ── Step 3: Validate GlobalResolutionContext ────────────────────────
     let grc = &absorbed.resolution_context;
-    
+
     // ── GNN-Specific Parameters ────────────────────────────────────────
     println!("\n=== GNN Parameters ===");
-    
+
     // Node features
     assert_eq!(grc.node_features, Some(128), "node_features should be 128");
     println!("  node_features: {}", grc.node_features.unwrap());
-    
+
     // Edge features
     assert_eq!(grc.edge_features, Some(32), "edge_features should be 32");
     println!("  edge_features: {}", grc.edge_features.unwrap());
-    
+
     // Message passing layers
-    assert_eq!(grc.num_message_passing, Some(8), "num_message_passing should be 8");
-    println!("  num_message_passing: {}", grc.num_message_passing.unwrap());
-    
+    assert_eq!(
+        grc.num_message_passing,
+        Some(8),
+        "num_message_passing should be 8"
+    );
+    println!(
+        "  num_message_passing: {}",
+        grc.num_message_passing.unwrap()
+    );
+
     // Hidden size (graph message dimension)
     assert_eq!(grc.hidden_size, Some(512), "hidden_size should be 512");
     println!("  hidden_size: {}", grc.hidden_size.unwrap());
-    
+
     // Number of layers
     assert_eq!(grc.num_layers, Some(8), "num_layers should be 8");
     println!("  num_layers: {}", grc.num_layers.unwrap());
-    
+
     // Number of classes (output)
     assert_eq!(grc.num_classes, Some(128), "num_classes should be 128");
     println!("  num_classes: {}", grc.num_classes.unwrap());
-    
+
     // ── Derived Values ─────────────────────────────────────────────────
     println!("\n=== Derived Values ===");
-    
+
     assert_eq!(grc.dtype_bytes, 4, "fp32 = 4 bytes");
     println!("  dtype_bytes: {}", grc.dtype_bytes);
-    
+
     assert_eq!(grc.optimizer_bytes_per_param, 8, "AdamW = 8 bytes");
     println!("  optimizer_bytes: {}", grc.optimizer_bytes_per_param);
-    
+
     // ── Hardware & Parallelism ─────────────────────────────────────────
     println!("\n=== Hardware & Parallelism ===");
-    
+
     assert_eq!(grc.num_gpus, 4, "4 GPUs");
     println!("  num_gpus: {}", grc.num_gpus);
-    
+
     assert!((grc.primary_gpu_tflops - 312.0).abs() < 1.0, "A100 TFLOPs");
     println!("  GPU TFLOPs: {}", grc.primary_gpu_tflops);
-    
+
     assert_eq!(grc.dp, 4, "Data parallel = 4");
     println!("  Parallelism: DP={}", grc.dp);
-    
+
     // ── Symbol Table ───────────────────────────────────────────────────
     println!("\n=== Symbol Table ===");
-    
+
     assert!(grc.symbol_table.contains_key("B"), "B in symbol table");
     println!("  B (batch): {:?}", grc.symbol_table.get("B"));
     println!("  num_classes: {:?}", grc.symbol_table.get("num_classes"));
-    
+
     // Confidence score
     println!("\n  Confidence score: {:.2}%", grc.confidence_score * 100.0);
-    
+
     // ── Step 4: IR Injection ───────────────────────────────────────────
     let start = std::time::Instant::now();
     let arch_input = IrInjector::to_architecture_ir(&absorbed);
@@ -433,56 +450,66 @@ fn test_gnn_molecular_compilation() {
     let cost_config = IrInjector::configure_cost_pass(&absorbed);
     let inject_time = start.elapsed();
     println!("\n✓ IRs injected in {:?}", inject_time);
-    
+
     // Validate Architecture IR
     assert_eq!(arch_input.hidden_size, Some(512));
     assert_eq!(arch_input.num_layers, Some(8));
-    
+
     // Validate Memory config
     assert_eq!(mem_config.dtype_bytes, 4);
     assert_eq!(mem_config.num_gpus, 4);
-    
+
     // ── Step 5: Parameter Calculation ───────────────────────────────────
     let start = std::time::Instant::now();
     let total_params = IrInjector::calculate_total_params(&absorbed);
     let calc_time = start.elapsed();
     println!("✓ Parameters calculated in {:?}", calc_time);
     println!("  Total parameters: {:.2}M", total_params as f64 / 1e6);
-    
+
     // ── Step 6: Compare with Real Model Specs ───────────────────────────
     println!("\n=== Comparison with Real Model ===");
-    
+
     let real_specs = RealGnnSpecs::graphgps_medium();
-    let expected_params = RealGnnSpecs::calculate_expected_params(
-        128, 512, 8, 8
+    let expected_params = RealGnnSpecs::calculate_expected_params(128, 512, 8, 8);
+
+    println!(
+        "  Real GraphGPS-medium params: {:.2}M",
+        real_specs.params_million
     );
-    
-    println!("  Real GraphGPS-medium params: {:.2}M", real_specs.params_million);
     println!("  Expected GAT-style params: {:.2}M", expected_params);
     println!("  Calculated params: {:.2}M", total_params as f64 / 1e6);
-    
+
     // Verify parameters are in reasonable range
     // GNN models vary significantly based on architecture
-    assert!(total_params > 1_000_000, "Expected > 1M params, got {}", total_params);
-    assert!(total_params < 100_000_000, "Expected < 100M params, got {}", total_params);
-    
+    assert!(
+        total_params > 1_000_000,
+        "Expected > 1M params, got {}",
+        total_params
+    );
+    assert!(
+        total_params < 100_000_000,
+        "Expected < 100M params, got {}",
+        total_params
+    );
+
     // ── FLOPs Comparison ────────────────────────────────────────────────
     let flops = IrInjector::calculate_flops_per_token(&absorbed);
-    
+
     // For GNN, calculate FLOPs per graph (typical molecular graph)
-    let num_nodes = 10000u64;  // From JSON
-    let num_edges = 50000u64;  // From JSON (5x nodes for sparse graph)
-    let expected_flops = RealGnnSpecs::calculate_expected_flops(
-        num_nodes, num_edges, 512, 8, 8
-    );
-    
+    let num_nodes = 10000u64; // From JSON
+    let num_edges = 50000u64; // From JSON (5x nodes for sparse graph)
+    let expected_flops = RealGnnSpecs::calculate_expected_flops(num_nodes, num_edges, 512, 8, 8);
+
     println!("\n  Real FLOPs/graph: {:.2e}", real_specs.flops_per_graph);
     println!("  Expected FLOPs/graph: {:.2e}", expected_flops);
     println!("  Calculated FLOPs: {:.2e}", flops as f64);
-    
+
     // ── Summary ─────────────────────────────────────────────────────────
     println!("\n=== GNN Compilation Summary ===");
-    println!("Total time: {:?}", parse_time + absorb_time + inject_time + calc_time);
+    println!(
+        "Total time: {:?}",
+        parse_time + absorb_time + inject_time + calc_time
+    );
     println!("✓ All GNN fields absorbed correctly");
     println!("✓ All IRs configured");
     println!("✓ Parameter count: {:.2}M", total_params as f64 / 1e6);
@@ -494,19 +521,22 @@ fn test_gnn_specific_fields() {
     let config = parse_model_config(GNN_MOLECULAR_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // Verify GNN-specific fields are absorbed
     assert_eq!(grc.node_features, Some(128), "Node features");
     assert_eq!(grc.edge_features, Some(32), "Edge features");
     assert_eq!(grc.num_message_passing, Some(8), "Message passing layers");
-    
+
     // GNN should NOT have attention heads (it has GAT heads in layer params)
     // but not in global_params
-    assert_eq!(grc.num_attention_heads, None, "GNN has no global attention heads");
-    
+    assert_eq!(
+        grc.num_attention_heads, None,
+        "GNN has no global attention heads"
+    );
+
     // GNN should NOT have vocab_size (not a language model)
     assert_eq!(grc.vocab_size, None, "GNN has no vocabulary");
-    
+
     // GNN should have num_classes (classification output)
     assert_eq!(grc.num_classes, Some(128), "GNN has classification output");
 }
@@ -516,22 +546,28 @@ fn test_gnn_vs_transformer_distinction() {
     let config = parse_model_config(GNN_MOLECULAR_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // GNN should have graph-specific parameters
     assert!(grc.node_features.is_some(), "GNN should have node features");
     assert!(grc.edge_features.is_some(), "GNN should have edge features");
-    assert!(grc.num_message_passing.is_some(), "GNN should have message passing");
-    
+    assert!(
+        grc.num_message_passing.is_some(),
+        "GNN should have message passing"
+    );
+
     // GNN should NOT have transformer-specific parameters
-    assert_eq!(grc.num_attention_heads, None, "GNN has no global attention heads");
+    assert_eq!(
+        grc.num_attention_heads, None,
+        "GNN has no global attention heads"
+    );
     assert_eq!(grc.num_key_value_heads, None, "GNN has no KV heads");
     assert_eq!(grc.vocab_size, None, "GNN has no vocabulary");
     assert_eq!(grc.seq_len, None, "GNN has no sequence length");
-    
+
     // GNN should NOT have SSM parameters
     assert_eq!(grc.ssm_state_size, None, "GNN has no SSM state");
     assert_eq!(grc.ssm_expand, None, "GNN has no SSM expand");
-    
+
     // tied_embeddings should be false for GNN (not a language model)
     assert!(!grc.tied_embeddings, "GNN should not have tied embeddings");
 }
@@ -541,17 +577,17 @@ fn test_gnn_symbol_table() {
     let config = parse_model_config(GNN_MOLECULAR_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     let sym = &grc.symbol_table;
-    
+
     // Standard symbols
     assert!(sym.contains_key("B"), "B (batch)");
     assert!(sym.contains_key("num_classes"), "num_classes");
-    
+
     // Verify values
     assert_eq!(sym.get("B"), Some(&64u64), "Batch size");
     assert_eq!(sym.get("num_classes"), Some(&128u64), "Num classes");
-    
+
     // dtype_bytes for fp32
     assert_eq!(sym.get("dtype_bytes"), Some(&4u64), "fp32 = 4 bytes");
 }
@@ -561,30 +597,48 @@ fn test_gnn_metrics_accuracy() {
     let config = parse_model_config(GNN_MOLECULAR_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // Compare with real-world specifications
     let real = RealGnnSpecs::graphgps_medium();
-    
+
     // Verify hidden dimension matches
-    assert_eq!(grc.hidden_size.unwrap(), real.hidden_dim, 
-               "Hidden dim should match real specs");
-    
+    assert_eq!(
+        grc.hidden_size.unwrap(),
+        real.hidden_dim,
+        "Hidden dim should match real specs"
+    );
+
     // Verify number of layers matches
-    assert_eq!(grc.num_message_passing.unwrap(), real.num_mp_layers,
-               "Message passing layers should match real specs");
-    
+    assert_eq!(
+        grc.num_message_passing.unwrap(),
+        real.num_mp_layers,
+        "Message passing layers should match real specs"
+    );
+
     // Note: calculate_total_params is transformer-focused
     // For GNN, we verify absorption correctness, not param count accuracy
     let calculated = IrInjector::calculate_total_params(&absorbed) as f64 / 1e6;
-    
+
     // Verify params are in reasonable range for a GNN model
     // GNN models typically have 1M-100M params
-    assert!(calculated > 1.0 && calculated < 200.0,
-            "GNN params should be in reasonable range (1-200M), got {:.2}M", calculated);
-    
+    assert!(
+        calculated > 1.0 && calculated < 200.0,
+        "GNN params should be in reasonable range (1-200M), got {:.2}M",
+        calculated
+    );
+
     println!("✓ Metrics accuracy verified:");
-    println!("  Hidden dim: {} (matches real specs)", grc.hidden_size.unwrap());
-    println!("  Message passing layers: {} (matches real specs)", grc.num_message_passing.unwrap());
-    println!("  Calculated params: {:.2}M (within reasonable range)", calculated);
+    println!(
+        "  Hidden dim: {} (matches real specs)",
+        grc.hidden_size.unwrap()
+    );
+    println!(
+        "  Message passing layers: {} (matches real specs)",
+        grc.num_message_passing.unwrap()
+    );
+    println!(
+        "  Calculated params: {:.2}M (within reasonable range)",
+        calculated
+    );
     println!("  Note: Param calculation uses transformer formula, not GNN-specific");
 }

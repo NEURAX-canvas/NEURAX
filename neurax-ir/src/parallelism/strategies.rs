@@ -22,9 +22,7 @@ pub fn determine_optimal_parallelism(
     } else if num_gpus >= 4 {
         // Need model parallelism
         let tp_degree = ((model_memory as f64 / gpu_memory as f64).ceil() as u32).min(num_gpus);
-        ParallelStrategy::TensorParallel {
-            tp_degree,
-        }
+        ParallelStrategy::TensorParallel { tp_degree }
     } else {
         ParallelStrategy::ZeRO {
             stage: 3,

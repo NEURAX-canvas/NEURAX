@@ -1,8 +1,8 @@
 //! Runner utilities
 
-use neurax_parser::ModelConfig;
+use crate::{run_analysis, AnalysisResult};
 use neurax_ir::NeuraxError;
-use crate::{AnalysisResult, run_analysis};
+use neurax_parser::ModelConfig;
 
 /// Run analysis from JSON string
 pub fn analyze_json(json: &str) -> Result<AnalysisResult, NeuraxError> {

@@ -1,8 +1,8 @@
 //! Compiler Precision Test - Validates accuracy against real-world model specifications
 //! Compares calculated metrics vs documented values for well-known models
 
-use neurax_parser::{parse_model_config, AbsorbedModel};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel};
 
 /// Real-world model specifications from published papers and documentation
 struct RealModelSpecs {
@@ -107,9 +107,9 @@ const SDXL_SPEC: RealModelSpecs = RealModelSpecs {
     num_layers: 4, // Down/Up blocks
     num_heads: 32,
     intermediate_size: 1280,
-    vocab_size: 0, // N/A
-    seq_len: 1024, // Image size
-    flops_per_token_billion: 0.0, // Different metric for diffusion
+    vocab_size: 0,                  // N/A
+    seq_len: 1024,                  // Image size
+    flops_per_token_billion: 0.0,   // Different metric for diffusion
     training_tokens_billion: 600.0, // Training images × 1000 steps
 };
 
@@ -137,10 +137,10 @@ const RESNET_50: RealModelSpecs = RealModelSpecs {
     num_layers: 50,
     num_heads: 0,
     intermediate_size: 0,
-    vocab_size: 1000, // ImageNet classes
-    seq_len: 224, // Image size
+    vocab_size: 1000,               // ImageNet classes
+    seq_len: 224,                   // Image size
     flops_per_token_billion: 0.004, // 4 GFLOPs per image
-    training_tokens_billion: 1.2, // ImageNet images
+    training_tokens_billion: 1.2,   // ImageNet images
 };
 
 /// Mamba-2.8B specifications
@@ -160,7 +160,8 @@ const MAMBA_2_8B: RealModelSpecs = RealModelSpecs {
 
 /// Generate JSON config for a model spec
 fn generate_transformer_json(spec: &RealModelSpecs) -> String {
-    format!(r#"
+    format!(
+        r#"
 {{
     "schema_version": "1.0",
     "model": {{
@@ -211,14 +212,22 @@ fn generate_transformer_json(spec: &RealModelSpecs) -> String {
     }}
 }}
 "#,
-    spec.name,
-    spec.vocab_size, spec.hidden_size,
-    spec.hidden_size, spec.num_heads,
-    spec.hidden_size, spec.intermediate_size,
-    spec.hidden_size,
-    spec.hidden_size, spec.num_layers, spec.num_heads, spec.intermediate_size, spec.vocab_size, spec.seq_len,
-    spec.seq_len
-)
+        spec.name,
+        spec.vocab_size,
+        spec.hidden_size,
+        spec.hidden_size,
+        spec.num_heads,
+        spec.hidden_size,
+        spec.intermediate_size,
+        spec.hidden_size,
+        spec.hidden_size,
+        spec.num_layers,
+        spec.num_heads,
+        spec.intermediate_size,
+        spec.vocab_size,
+        spec.seq_len,
+        spec.seq_len
+    )
 }
 
 #[test]
@@ -226,38 +235,42 @@ fn test_precision_transformer_models() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              COMPILER PRECISION TEST - TRANSFORMER MODELS               ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     let models = [
         ("GPT-3-175B", GPT3_175B),
         ("LLaMA-2-70B", LLAMA2_70B),
         ("Mistral-7B", MISTRAL_7B),
         ("BERT-Large", BERT_LARGE),
     ];
-    
-    println!("┌──────────────────────────────────────────────────────────────────────────────────┐");
+
+    println!(
+        "┌──────────────────────────────────────────────────────────────────────────────────┐"
+    );
     println!("│ Model          │ Expected (B) │ Calculated (B) │ Error %   │ Status           │");
-    println!("├──────────────────────────────────────────────────────────────────────────────────┤");
-    
+    println!(
+        "├──────────────────────────────────────────────────────────────────────────────────┤"
+    );
+
     let mut total_error = 0.0;
     let mut model_count = 0;
-    
+
     for (name, spec) in &models {
         let json = generate_transformer_json(spec);
         let config = parse_model_config(&json).expect("Failed to parse");
         let absorbed = AbsorbedModel::absorb(config);
-        
+
         let calculated_params = IrInjector::calculate_total_params(&absorbed) as f64 / 1e9;
         let expected_params = spec.params_billion;
-        
+
         let error_pct = if expected_params > 0.0 {
             ((calculated_params - expected_params) / expected_params).abs() * 100.0
         } else {
             0.0
         };
-        
+
         total_error += error_pct;
         model_count += 1;
-        
+
         let status = if error_pct < 10.0 {
             "✓ Accurate"
         } else if error_pct < 25.0 {
@@ -265,20 +278,36 @@ fn test_precision_transformer_models() {
         } else {
             "✗ Deviation"
         };
-        
-        println!("│ {:<15} │ {:>12.2} │ {:>14.2} │ {:>8.1}% │ {:<16} │", 
-                 name, expected_params, calculated_params, error_pct, status);
+
+        println!(
+            "│ {:<15} │ {:>12.2} │ {:>14.2} │ {:>8.1}% │ {:<16} │",
+            name, expected_params, calculated_params, error_pct, status
+        );
     }
-    
+
     let avg_error = total_error / model_count as f64;
-    
-    println!("├──────────────────────────────────────────────────────────────────────────────────┤");
-    println!("│ Average Error: {:.2}%                                                            │", avg_error);
-    println!("└──────────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
+    println!(
+        "├──────────────────────────────────────────────────────────────────────────────────┤"
+    );
+    println!(
+        "│ Average Error: {:.2}%                                                            │",
+        avg_error
+    );
+    println!(
+        "└──────────────────────────────────────────────────────────────────────────────────┘\n"
+    );
+
     // Precision threshold: average error < 15%
-    assert!(avg_error < 25.0, "Average error {:.2}% exceeds threshold", avg_error);
-    println!("✓ Transformer precision validated (avg error: {:.2}%)\n", avg_error);
+    assert!(
+        avg_error < 25.0,
+        "Average error {:.2}% exceeds threshold",
+        avg_error
+    );
+    println!(
+        "✓ Transformer precision validated (avg error: {:.2}%)\n",
+        avg_error
+    );
 }
 
 #[test]
@@ -286,7 +315,7 @@ fn test_precision_parameter_formulas() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              PARAMETER CALCULATION FORMULA VALIDATION                    ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│                     TRANSFORMER PARAMETER FORMULA                          │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -305,20 +334,20 @@ fn test_precision_parameter_formulas() {
     println!("│    Total ≈ 617M + 96 × 1.8B ≈ 175B                                          │");
     println!("│                                                                             │");
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     // Verify formula for GPT-3
     let d = 12288.0;
     let l = 96.0;
     let ff = 49152.0;
     let v = 50257.0;
-    
+
     let embed_params = v * d;
     let attn_params = 4.0 * d * d;
     let mlp_params = 2.0 * d * ff;
     let ln_params = 2.0 * d;
     let per_layer = attn_params + mlp_params + ln_params;
     let total = embed_params + l * per_layer;
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│ GPT-3-175B Calculation:                                                     │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -329,9 +358,12 @@ fn test_precision_parameter_formulas() {
     println!("│ Per Layer:      {:>13.2} M params", per_layer / 1e6);
     println!("│ Total (96L):    {:>13.2} B params", total / 1e9);
     println!("│ Expected:       {:>13.2} B params", 175.0);
-    println!("│ Error:          {:>13.2} %", ((total / 1e9 - 175.0_f64) / 175.0_f64 * 100.0_f64).abs());
+    println!(
+        "│ Error:          {:>13.2} %",
+        ((total / 1e9 - 175.0_f64) / 175.0_f64 * 100.0_f64).abs()
+    );
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     // Formula should be within 5% of expected
     let error = ((total / 1e9 - 175.0_f64) / 175.0_f64 * 100.0_f64).abs();
     assert!(error < 10.0, "Formula error {:.2}% too high", error);
@@ -343,27 +375,35 @@ fn test_precision_moe_models() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              COMPILER PRECISION TEST - MOE MODELS                        ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
-    println!("┌──────────────────────────────────────────────────────────────────────────────────┐");
+
+    println!(
+        "┌──────────────────────────────────────────────────────────────────────────────────┐"
+    );
     println!("│ Model          │ Total (B) │ Active (B) │ Experts │ Top-K │ Status            │");
-    println!("├──────────────────────────────────────────────────────────────────────────────────┤");
-    
+    println!(
+        "├──────────────────────────────────────────────────────────────────────────────────┤"
+    );
+
     let moe_models = [
         ("Mixtral-8x7B", 47.0, 13.0, 8, 2),
         ("GPT-4-Est", 1760.0, 70.0, 120, 2),
         ("DeepSeek-V3", 671.0, 37.0, 256, 8),
         ("Grok-1", 314.0, 80.0, 8, 2),
     ];
-    
+
     for (name, total, active, experts, top_k) in &moe_models {
         let active_ratio = active / total * 100.0;
-        println!("│ {:<15} │ {:>9.1} │ {:>10.1} │ {:>7} │ {:>5} │ ✓ Verified        │", 
-                 name, total, active, experts, top_k);
+        println!(
+            "│ {:<15} │ {:>9.1} │ {:>10.1} │ {:>7} │ {:>5} │ ✓ Verified        │",
+            name, total, active, experts, top_k
+        );
         println!("│                 │           │ ({:>5.1}% active) │         │       │                   │", active_ratio);
     }
-    
-    println!("└──────────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
+    println!(
+        "└──────────────────────────────────────────────────────────────────────────────────┘\n"
+    );
+
     println!("Key MoE precision factors:\n");
     println!("  - Total params: E × expert_params + shared_params");
     println!("  - Active params: top_k × expert_params + shared_params");
@@ -376,7 +416,7 @@ fn test_precision_memory_estimation() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              MEMORY ESTIMATION PRECISION TEST                            ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│                     MEMORY FORMULA VALIDATION                               │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -394,18 +434,18 @@ fn test_precision_memory_estimation() {
     println!("│    Total:      ~980 GB (fits 12 × A100-80GB)                                │");
     println!("│                                                                             │");
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     // Calculate for LLaMA-2-70B
     let params = 70e9;
     let dtype = 2.0; // bf16
     let grad_dtype = 4.0; // fp32
     let optimizer_bytes = 8.0; // Adam
-    
+
     let weights = params * dtype / 1e9; // GB
     let gradients = params * grad_dtype / 1e9;
     let optimizer = params * optimizer_bytes / 1e9;
     let total = weights + gradients + optimizer;
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│ LLaMA-2-70B Memory Breakdown:                                              │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -413,11 +453,18 @@ fn test_precision_memory_estimation() {
     println!("│ Gradients:      {:>8.1} GB", gradients);
     println!("│ Optimizer:      {:>8.1} GB", optimizer);
     println!("│ Total:          {:>8.1} GB", total);
-    println!("│ GPUs Required:  {:>8.0} × A100-80GB", (total / 80.0_f64).ceil());
+    println!(
+        "│ GPUs Required:  {:>8.0} × A100-80GB",
+        (total / 80.0_f64).ceil()
+    );
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     // Verify memory calculation
-    assert!(total > 900.0 && total < 1100.0, "Memory estimate {} GB out of range", total);
+    assert!(
+        total > 900.0 && total < 1100.0,
+        "Memory estimate {} GB out of range",
+        total
+    );
     println!("✓ Memory estimation validated\n");
 }
 
@@ -426,7 +473,7 @@ fn test_precision_flops_calculation() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              FLOPS CALCULATION PRECISION TEST                            ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│                     FLOPS FORMULA VALIDATION                                │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -440,14 +487,14 @@ fn test_precision_flops_calculation() {
     println!("│  Training:         ~6 × params × tokens (forward + backward + optimizer)    │");
     println!("│                                                                             │");
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     // Calculate training FLOPs for GPT-3
     let params = 175e9;
     let tokens = 300e9;
     let flops_per_token = 6.0 * params; // Training: forward + backward + optimizer
     let total_flops = flops_per_token * tokens;
     let petaflops = total_flops / 1e15;
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│ GPT-3 Training Compute:                                                    │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -455,10 +502,16 @@ fn test_precision_flops_calculation() {
     println!("│ Training Tokens:  {:>15.2} B", tokens / 1e9);
     println!("│ FLOPs/Token:      {:>15.2} G", flops_per_token / 1e9);
     println!("│ Total FLOPs:      {:>15.2} PetaFLOPs", petaflops);
-    println!("│ GPU Hours (A100): {:>15.2} M", petaflops / (312.0 * 3600.0 / 1e6));
-    println!("│ Est. Cost:        ${:>14.2} M", petaflops / (312.0 * 3600.0 / 1e6) * 4.5);
+    println!(
+        "│ GPU Hours (A100): {:>15.2} M",
+        petaflops / (312.0 * 3600.0 / 1e6)
+    );
+    println!(
+        "│ Est. Cost:        ${:>14.2} M",
+        petaflops / (312.0 * 3600.0 / 1e6) * 4.5
+    );
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     println!("✓ FLOPs calculation validated\n");
 }
 
@@ -467,7 +520,7 @@ fn test_precision_summary() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║                    COMPILER PRECISION SUMMARY                            ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│                     PRECISION METRICS                                       │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -494,7 +547,7 @@ fn test_precision_summary() {
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
     println!("│  PRECISION CERTIFICATION: ✓ COMPILER ACCURATE WITHIN ACCEPTABLE MARGINS   │");
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     println!("╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║  The neurax-IR compiler produces accurate metrics for all model families ║");
     println!("║  Parameter calculations validated against 10+ real-world models.          ║");

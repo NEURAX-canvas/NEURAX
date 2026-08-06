@@ -30,7 +30,9 @@ pub fn format_throughput(tokens_per_s: f64) -> String {
 pub fn bottleneck_description(bottleneck: Bottleneck) -> &'static str {
     match bottleneck {
         Bottleneck::ComputeBound => "Model is compute-bound. Consider GPU upgrade or optimization.",
-        Bottleneck::MemoryBound => "Model is memory-bound. Consider larger batch size or gradient checkpointing.",
+        Bottleneck::MemoryBound => {
+            "Model is memory-bound. Consider larger batch size or gradient checkpointing."
+        }
         Bottleneck::Balanced => "Model is well-balanced between compute and memory.",
     }
 }

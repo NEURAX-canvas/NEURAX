@@ -90,7 +90,8 @@ fn frontend_topology_payload_still_produces_ui_report_json() {
     assert!(analysis.report.metrics.total_parameters > 0);
     assert!(analysis.report.metrics.total_flops > 0.0);
 
-    let report_json = serde_json::to_value(&analysis.report).expect("report should serialize for the service response");
+    let report_json = serde_json::to_value(&analysis.report)
+        .expect("report should serialize for the service response");
     assert!(report_json.get("metrics").is_some());
     assert!(report_json.get("diagnostics").is_some());
     assert!(report_json.get("warnings").is_some());

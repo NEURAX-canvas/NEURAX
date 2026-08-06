@@ -12,11 +12,11 @@ impl TargetLowering for RocmBackend {
     fn backend() -> TargetBackend {
         TargetBackend::Rocm
     }
-    
+
     fn supported_dtypes() -> &'static [&'static str] {
         &["f32", "f16", "bf16", "f8", "i8", "i32", "i64"]
     }
-    
+
     fn lower_matmul(
         batch: usize,
         m: usize,
@@ -33,10 +33,14 @@ impl TargetLowering for RocmBackend {
     return %c : tensor<{batch}x{m}x{n}x{dtype}>
   }}
 "#,
-            batch = batch, m = m, k = k, n = n, dtype = dtype
+            batch = batch,
+            m = m,
+            k = k,
+            n = n,
+            dtype = dtype
         ))
     }
-    
+
     fn lower_conv2d(
         batch: usize,
         in_channels: usize,
@@ -48,7 +52,7 @@ impl TargetLowering for RocmBackend {
     ) -> Result<String, String> {
         let out_h = height - kernel_size + 1;
         let out_w = width - kernel_size + 1;
-        
+
         Ok(format!(
             r#"  // ROCm conv2d for AMD GPU
   // Optimized for MI-series accelerators
@@ -58,12 +62,18 @@ impl TargetLowering for RocmBackend {
     return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
   }}
 "#,
-            batch = batch, height = height, width = width, in_channels = in_channels,
-            out_channels = out_channels, kernel_size = kernel_size, dtype = dtype,
-            out_h = out_h, out_w = out_w
+            batch = batch,
+            height = height,
+            width = width,
+            in_channels = in_channels,
+            out_channels = out_channels,
+            kernel_size = kernel_size,
+            dtype = dtype,
+            out_h = out_h,
+            out_w = out_w
         ))
     }
-    
+
     fn lower_attention(
         seq_len: usize,
         hidden_size: usize,
@@ -71,7 +81,7 @@ impl TargetLowering for RocmBackend {
         dtype: &str,
     ) -> Result<String, String> {
         let head_dim = hidden_size / num_heads;
-        
+
         Ok(format!(
             r#"  // ROCm attention for AMD GPU
   // Uses MFMA for attention computation on CDNA architecture
@@ -80,14 +90,17 @@ impl TargetLowering for RocmBackend {
     return %output : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
   }}
 "#,
-            seq_len = seq_len, num_heads = num_heads, head_dim = head_dim, dtype = dtype
+            seq_len = seq_len,
+            num_heads = num_heads,
+            head_dim = head_dim,
+            dtype = dtype
         ))
     }
-    
+
     fn module_attributes() -> String {
         "gpu.container_module, gpu.kernel_attr = \"hip\"".to_string()
     }
-    
+
     fn function_attributes() -> String {
         "gpu.kernel".to_string()
     }
@@ -117,7 +130,7 @@ impl AmdGpuSpec {
             architecture: "CDNA 1",
         }
     }
-    
+
     pub fn mi200() -> Self {
         Self {
             name: "MI200",
@@ -129,7 +142,7 @@ impl AmdGpuSpec {
             architecture: "CDNA 2",
         }
     }
-    
+
     pub fn mi250x() -> Self {
         Self {
             name: "MI250X",
@@ -141,7 +154,7 @@ impl AmdGpuSpec {
             architecture: "CDNA 2",
         }
     }
-    
+
     pub fn mi300x() -> Self {
         Self {
             name: "MI300X",
@@ -153,7 +166,7 @@ impl AmdGpuSpec {
             architecture: "CDNA 3",
         }
     }
-    
+
     pub fn rx7900xtx() -> Self {
         Self {
             name: "RX 7900 XTX",
@@ -168,12 +181,7 @@ impl AmdGpuSpec {
 }
 
 /// Generate MFMA (Matrix Fused Multiply Add) operations for AMD CDNA
-pub fn generate_mfma_matmul(
-    m: usize,
-    k: usize,
-    n: usize,
-    dtype: &str,
-) -> String {
+pub fn generate_mfma_matmul(m: usize, k: usize, n: usize, dtype: &str) -> String {
     format!(
         r#"  // MFMA matmul for AMD CDNA architecture
   // Uses 16x16x16 or 32x32x8 MFMA instructions
@@ -183,7 +191,10 @@ pub fn generate_mfma_matmul(
     return %c : tensor<{m}x{n}x{dtype}>
   }}
 "#,
-        m = m, k = k, n = n, dtype = dtype
+        m = m,
+        k = k,
+        n = n,
+        dtype = dtype
     )
 }
 
@@ -212,40 +223,42 @@ pub fn generate_rocm_module(
   }}
 }}
 "#,
-        model_name = model_name, hidden_size = hidden_size,
-        seq_len = seq_len, dtype = dtype
+        model_name = model_name,
+        hidden_size = hidden_size,
+        seq_len = seq_len,
+        dtype = dtype
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_rocm_backend() {
         assert_eq!(RocmBackend::backend(), TargetBackend::Rocm);
     }
-    
+
     #[test]
     fn test_rocm_matmul() {
         let code = RocmBackend::lower_matmul(1, 1024, 1024, 1024, "f16").unwrap();
         assert!(code.contains("linalg.matmul"));
         assert!(code.contains("gpu.kernel"));
     }
-    
+
     #[test]
     fn test_amd_gpu_specs() {
         let mi300x = AmdGpuSpec::mi300x();
         assert_eq!(mi300x.compute_units, 304);
         assert_eq!(mi300x.hbm_capacity_gb, 192);
     }
-    
+
     #[test]
     fn test_mfma_matmul() {
         let code = generate_mfma_matmul(1024, 1024, 1024, "bf16");
         assert!(code.contains("mfma_matmul"));
     }
-    
+
     #[test]
     fn test_rocm_module() {
         let code = generate_rocm_module("test", 768, 12, 512, "bf16");

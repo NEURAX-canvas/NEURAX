@@ -1,9 +1,8 @@
 //! Report IR pass
 
 use super::{
-    AllMetrics, Diagnostic, DiagnosticCategory, DiagnosticCode, GradientMemoryEntry,
-    KvCacheEntry, Priority, Recommendation, RecommendationCategory, ReportIR, ReportMetadata,
-    Severity,
+    AllMetrics, Diagnostic, DiagnosticCategory, DiagnosticCode, GradientMemoryEntry, KvCacheEntry,
+    Priority, Recommendation, RecommendationCategory, ReportIR, ReportMetadata, Severity,
 };
 use crate::architecture::ArchitectureIR;
 use crate::compute::ComputeIR;
@@ -189,9 +188,12 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
             },
             memory_fragmentation: input.memory.metrics.fragmentation_estimate,
             memory_fragmentation_pct: input.memory.metrics.fragmentation_estimate * 100.0,
-            oom_risk: if input.memory.metrics.peak_vram_bytes > input.memory.metrics.gpu_vram_bytes {
+            oom_risk: if input.memory.metrics.peak_vram_bytes > input.memory.metrics.gpu_vram_bytes
+            {
                 "critical".to_string()
-            } else if input.memory.metrics.peak_vram_bytes > input.memory.metrics.gpu_vram_bytes * 80 / 100 {
+            } else if input.memory.metrics.peak_vram_bytes
+                > input.memory.metrics.gpu_vram_bytes * 80 / 100
+            {
                 "high".to_string()
             } else {
                 "low".to_string()

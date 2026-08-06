@@ -1,42 +1,43 @@
 //! NEURAX Parser - JSON parsing for universal model format
 
-mod schema;
-mod validator;
-mod model_config;
-mod error;
-mod schema_validator;
-mod coherence;
 pub mod absorption;
+mod coherence;
+mod error;
+mod model_config;
+mod schema;
+mod schema_validator;
+mod validator;
 
-pub use schema::*;
-pub use validator::*;
-pub use model_config::*;
+pub use absorption::{
+    AbsorbedModel, Dim, DimResolver, DimSource, GlobalPropagator, GlobalResolutionContext,
+    LayerDimContext, LayerParamsMap, ResolvedDim,
+};
+pub use coherence::{CoherenceResult, CoherenceValidator};
 pub use error::*;
-pub use schema_validator::{ModelValidator, ValidationResult, ValidationMetrics, ValidationError};
-pub use coherence::{CoherenceValidator, CoherenceResult};
-pub use absorption::{GlobalResolutionContext, Dim, DimSource, ResolvedDim, AbsorbedModel, GlobalPropagator, DimResolver, LayerDimContext, LayerParamsMap};
+pub use model_config::*;
+pub use schema::*;
+pub use schema_validator::{ModelValidator, ValidationError, ValidationMetrics, ValidationResult};
+pub use validator::*;
 
 use std::io::Read;
 
 /// Parse JSON string into ModelConfig
 pub fn parse_model_config(json: &str) -> Result<ModelConfig, ParserError> {
-    let raw: RawModelConfig = serde_json::from_str(json)
-        .map_err(ParserError::JsonParse)?;
-    
+    let raw: RawModelConfig = serde_json::from_str(json).map_err(ParserError::JsonParse)?;
+
     let config = ModelConfig::from_raw(raw)?;
     validate_model_config(&config)?;
-    
+
     Ok(config)
 }
 
 /// Parse JSON from reader
 pub fn parse_model_config_from_reader<R: Read>(reader: R) -> Result<ModelConfig, ParserError> {
-    let raw: RawModelConfig = serde_json::from_reader(reader)
-        .map_err(ParserError::JsonParse)?;
-    
+    let raw: RawModelConfig = serde_json::from_reader(reader).map_err(ParserError::JsonParse)?;
+
     let config = ModelConfig::from_raw(raw)?;
     validate_model_config(&config)?;
-    
+
     Ok(config)
 }
 
@@ -71,7 +72,7 @@ mod tests {
                 "gpus": [{"name": "A100", "count": 1}]
             }
         }"#;
-        
+
         let config = parse_model_config(json);
         assert!(config.is_ok());
     }
@@ -85,7 +86,7 @@ mod tests {
                 "layers": []
             }
         }"#;
-        
+
         let result = parse_model_config(json);
         // May fail on missing layers or other validation, not specifically schema_version
         assert!(result.is_err());
@@ -103,7 +104,7 @@ mod tests {
             "training": {"batch_size": 32},
             "hardware": {"gpus": [{"name": "A100", "count": 1}]}
         }"#;
-        
+
         let result = parse_model_config(json);
         assert!(matches!(result, Err(ParserError::SchemaValidation { .. })));
     }

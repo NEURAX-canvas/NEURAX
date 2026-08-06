@@ -15,14 +15,14 @@ pub fn gcn_flops(
 ) -> f64 {
     // Linear transformation: [N, in] × [in, out] → [N, out]
     let linear_flops = 2.0 * num_nodes as f64 * in_features as f64 * out_features as f64;
-    
+
     // Aggregation: sum over neighbors for each node
     // Each edge contributes one addition
     let agg_flops = num_edges as f64 * out_features as f64;
-    
+
     // Normalization (degree-based)
     let norm_flops = 2.0 * num_nodes as f64 * out_features as f64;
-    
+
     linear_flops + agg_flops + norm_flops
 }
 
@@ -35,24 +35,24 @@ pub fn gat_flops(
     num_heads: usize,
 ) -> f64 {
     let head_dim = out_features / num_heads;
-    
+
     // Per-head attention
     let per_head = {
         // Linear projections for Q, K (or just one for source)
         let proj = 2.0 * num_nodes as f64 * in_features as f64 * head_dim as f64;
-        
+
         // Attention scores for each edge
         let attn = 2.0 * num_edges as f64 * head_dim as f64;
-        
+
         // Softmax over neighbors
         let softmax = 5.0 * num_edges as f64;
-        
+
         // Message aggregation
         let agg = num_edges as f64 * head_dim as f64;
-        
+
         proj + attn + softmax + agg
     };
-    
+
     per_head * num_heads as f64
 }
 
@@ -65,14 +65,18 @@ pub fn mpnn_flops(
     message_dim: usize,
 ) -> f64 {
     // Message function: edge + source + target features → message
-    let msg_flops = num_edges as f64 * (2.0 * node_features as f64 + edge_features as f64) * message_dim as f64 * 2.0;
-    
+    let msg_flops = num_edges as f64
+        * (2.0 * node_features as f64 + edge_features as f64)
+        * message_dim as f64
+        * 2.0;
+
     // Aggregation: sum messages per node
     let agg_flops = num_edges as f64 * message_dim as f64;
-    
+
     // Update function: GRU or MLP
-    let update_flops = 2.0 * num_nodes as f64 * (node_features as f64 + message_dim as f64) * node_features as f64;
-    
+    let update_flops =
+        2.0 * num_nodes as f64 * (node_features as f64 + message_dim as f64) * node_features as f64;
+
     msg_flops + agg_flops + update_flops
 }
 

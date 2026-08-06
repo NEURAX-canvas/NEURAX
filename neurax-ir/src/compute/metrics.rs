@@ -1,6 +1,5 @@
 //! Compute metrics utilities
 
-
 /// Format FLOPs for display
 pub fn format_flops(flops: f64) -> String {
     if flops >= 1e15 {

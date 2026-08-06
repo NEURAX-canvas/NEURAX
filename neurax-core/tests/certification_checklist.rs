@@ -13,17 +13,19 @@ use neurax_core::analyze_json;
 fn test_c01_flops_per_token_coherence() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let seq_len = 1024u64;
     let flops_per_token = result.compute.metrics.flops_per_token;
     let forward_flops = result.compute.metrics.forward_flops;
     let reconstructed = flops_per_token * seq_len as f64;
-    
+
     let relative_error = (reconstructed - forward_flops).abs() / forward_flops;
     assert!(
         relative_error < 0.001,
         "C01: flops_per_token × seq_len = {:.3e} ≠ forward_flops = {:.3e} (error: {:.3}%)",
-        reconstructed, forward_flops, relative_error * 100.0
+        reconstructed,
+        forward_flops,
+        relative_error * 100.0
     );
     println!("✓ C01: flops_per_token × seq_len = forward_flops (±0.1%)");
 }
@@ -37,12 +39,15 @@ fn test_c02_resnet50_params() {
         let result = analyze_json(&json).expect("Analysis should succeed");
         let expected_params = 25_557_032u64;
         let actual_params = result.arch.metrics.total_parameters;
-        let relative_error = ((actual_params as i64 - expected_params as i64).abs() as f64) / expected_params as f64;
-        
+        let relative_error =
+            ((actual_params as i64 - expected_params as i64).abs() as f64) / expected_params as f64;
+
         assert!(
             relative_error < 0.001,
             "C02: ResNet-50 params = {} ≠ expected {} (error: {:.3}%)",
-            actual_params, expected_params, relative_error * 100.0
+            actual_params,
+            expected_params,
+            relative_error * 100.0
         );
         println!("✓ C02: ResNet-50 params = {} (±0.1%)", actual_params);
     } else {
@@ -55,18 +60,25 @@ fn test_c02_resnet50_params() {
 fn test_c03_gpt2_small_params() {
     let json = include_str!("../../models/gpt2_small.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let expected_params = 124_439_808u64;
     let actual_params = result.arch.metrics.total_parameters;
-    let relative_error = ((actual_params as i64 - expected_params as i64).abs() as f64) / expected_params as f64;
-    
+    let relative_error =
+        ((actual_params as i64 - expected_params as i64).abs() as f64) / expected_params as f64;
+
     // Tolérance plus large car le modèle JSON de test peut différer
     assert!(
         relative_error < 0.60,
         "C03: GPT-2 Small params = {} ≠ expected {} (error: {:.3}%)",
-        actual_params, expected_params, relative_error * 100.0
+        actual_params,
+        expected_params,
+        relative_error * 100.0
     );
-    println!("✓ C03: GPT-2 Small params = {} (±{:.1}%)", actual_params, relative_error * 100.0);
+    println!(
+        "✓ C03: GPT-2 Small params = {} (±{:.1}%)",
+        actual_params,
+        relative_error * 100.0
+    );
 }
 
 /// C04: LLaMA 3.1 8B : 8,030,261,248 params ± 0.1%
@@ -77,12 +89,15 @@ fn test_c04_llama8b_params() {
         let result = analyze_json(&json).expect("Analysis should succeed");
         let expected_params = 8_030_261_248u64;
         let actual_params = result.arch.metrics.total_parameters;
-        let relative_error = ((actual_params as i64 - expected_params as i64).abs() as f64) / expected_params as f64;
-        
+        let relative_error =
+            ((actual_params as i64 - expected_params as i64).abs() as f64) / expected_params as f64;
+
         assert!(
             relative_error < 0.001,
             "C04: LLaMA 8B params = {} ≠ expected {} (error: {:.3}%)",
-            actual_params, expected_params, relative_error * 100.0
+            actual_params,
+            expected_params,
+            relative_error * 100.0
         );
         println!("✓ C04: LLaMA 8B params = {} (±0.1%)", actual_params);
     } else {
@@ -95,11 +110,12 @@ fn test_c04_llama8b_params() {
 fn test_c05_backward_gte_forward() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     assert!(
         result.compute.metrics.backward_flops >= result.compute.metrics.forward_flops,
         "C05: backward_flops ({:.3e}) < forward_flops ({:.3e})",
-        result.compute.metrics.backward_flops, result.compute.metrics.forward_flops
+        result.compute.metrics.backward_flops,
+        result.compute.metrics.forward_flops
     );
     println!("✓ C05: backward_flops ≥ forward_flops");
 }
@@ -112,7 +128,7 @@ fn test_c06_batchnorm_params() {
     // Ce test vérifie que le compilateur ne compte pas 4×C
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     // Vérifier que LayerNorm est compté correctement (2 params par dim: weight + bias)
     // Pour GPT-2 Medium: d_model = 1024, num_layers = 24
     // Chaque LayerNorm: 2 × 1024 = 2048 params
@@ -126,15 +142,18 @@ fn test_c06_batchnorm_params() {
 fn test_c07_tied_embeddings() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     // GPT-2 utilise tied embeddings (wte = lm_head)
     // Le compilateur doit détecter shared_with et ne pas compter en double
     // Note: shared_savings est dans ModelSize, pas ArchitectureMetrics
-    
+
     // Pour GPT-2 Medium: vocab_size × d_model = 50257 × 1024 = 51,467,168 params économisés
     // Vérifier que le total des params est cohérent
     let total_params = result.arch.metrics.total_parameters;
-    println!("✓ C07: Tied embeddings - total_params = {} (vérifié)", total_params);
+    println!(
+        "✓ C07: Tied embeddings - total_params = {} (vérifié)",
+        total_params
+    );
 }
 
 /// C08: FLOPs Softmax = 5×B×S² (pas 3×B×S²)
@@ -142,7 +161,7 @@ fn test_c07_tied_embeddings() {
 fn test_c08_softmax_flops() {
     // Softmax FLOPs détaillés:
     // - exp(x): 1 FLOP × S = S FLOPs
-    // - sum: S-1 additions ≈ S FLOPs  
+    // - sum: S-1 additions ≈ S FLOPs
     // - div: S divisions = S FLOPs
     // - Total par row: ~3S FLOPs
     // - Pour S rows: 3S² FLOPs
@@ -177,17 +196,18 @@ fn test_c10_moe_flops() {
 fn test_c11_vram_training_gte_inference() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     // Training nécessite: params + gradients + optimizer + activations
     // Inference nécessite: params + activations
     // Donc VRAM training >= VRAM inference
     let peak_vram = result.memory.metrics.peak_vram_bytes;
     let param_memory = result.memory.metrics.parameter_memory_bytes;
-    
+
     assert!(
         peak_vram >= param_memory,
         "C11: peak_vram ({}) < param_memory ({})",
-        peak_vram, param_memory
+        peak_vram,
+        param_memory
     );
     println!("✓ C11: VRAM training >= VRAM inference");
 }
@@ -197,19 +217,22 @@ fn test_c11_vram_training_gte_inference() {
 fn test_c12_vram_params_formula() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let total_params = result.arch.metrics.total_parameters;
     let param_memory = result.memory.metrics.parameter_memory_bytes;
-    
+
     // bytes_per_param devrait être 2-4 (fp16/fp32)
     let bytes_per_param = param_memory as f64 / total_params as f64;
-    
+
     assert!(
         bytes_per_param >= 2.0 && bytes_per_param <= 4.0,
         "C12: bytes_per_param = {:.1} (expected 2-4)",
         bytes_per_param
     );
-    println!("✓ C12: VRAM params = {} params × {:.1} bytes", total_params, bytes_per_param);
+    println!(
+        "✓ C12: VRAM params = {} params × {:.1} bytes",
+        total_params, bytes_per_param
+    );
 }
 
 /// C13: Optimizer states = params × 8 bytes pour Adam ± 1%
@@ -217,19 +240,21 @@ fn test_c12_vram_params_formula() {
 fn test_c13_optimizer_states_adam() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let param_memory = result.memory.metrics.parameter_memory_bytes;
     let optimizer_memory = result.memory.metrics.optimizer_state_bytes;
-    
+
     // Adam: momentum + variance = 2× params
     let expected_optimizer = param_memory * 2;
-    let relative_error = ((optimizer_memory as i64 - expected_optimizer as i64).abs() as f64) 
+    let relative_error = ((optimizer_memory as i64 - expected_optimizer as i64).abs() as f64)
         / expected_optimizer as f64;
-    
+
     assert!(
         relative_error < 0.10,
         "C13: optimizer_state = {} ≠ expected {} (error: {:.1}%)",
-        optimizer_memory, expected_optimizer, relative_error * 100.0
+        optimizer_memory,
+        expected_optimizer,
+        relative_error * 100.0
     );
     println!("✓ C13: Optimizer states = 2× params (Adam)");
 }
@@ -239,9 +264,9 @@ fn test_c13_optimizer_states_adam() {
 fn test_c14_fragmentation_included() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let frag = result.memory.metrics.fragmentation_estimate;
-    
+
     // Fragmentation devrait être 5-20%
     assert!(
         frag >= 0.05 && frag <= 0.20,
@@ -283,11 +308,13 @@ fn test_c18_llama8b_vram() {
         let expected_vram_gb = 15.5;
         let actual_vram_gb = result.memory.metrics.peak_vram_bytes as f64 / 1e9;
         let relative_error = (actual_vram_gb - expected_vram_gb).abs() / expected_vram_gb;
-        
+
         assert!(
             relative_error < 0.08,
             "C18: LLaMA 8B VRAM = {:.1} GB ≠ expected {:.1} GB (error: {:.1}%)",
-            actual_vram_gb, expected_vram_gb, relative_error * 100.0
+            actual_vram_gb,
+            expected_vram_gb,
+            relative_error * 100.0
         );
         println!("✓ C18: LLaMA 8B VRAM = {:.1} GB (±8%)", actual_vram_gb);
     } else {
@@ -352,12 +379,12 @@ fn test_c24_roofline_ridge_point() {
 fn test_c25_throughput_formula() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let batch = 1u64;
     let seq = 1024u64;
     let latency_s = result.hardware.metrics.latency_ms / 1000.0;
     let throughput = result.hardware.metrics.throughput_tokens_per_s;
-    
+
     if latency_s > 0.0 && throughput > 0.0 {
         // La formule throughput = batch × seq / latency est approximative
         // Le throughput peut être calculé différemment selon le compilateur
@@ -367,7 +394,10 @@ fn test_c25_throughput_formula() {
             "C25: throughput = {} (expected > 0 and finite)",
             throughput
         );
-        println!("✓ C25: throughput = {:.1} tokens/s, latency = {:.2} ms", throughput, result.hardware.metrics.latency_ms);
+        println!(
+            "✓ C25: throughput = {:.1} tokens/s, latency = {:.2} ms",
+            throughput, result.hardware.metrics.latency_ms
+        );
     } else {
         println!("✓ C25: SKIPPED (latency or throughput = 0)");
     }
@@ -389,12 +419,12 @@ fn test_c26_all_coherence_assertions() {
 fn test_c27_f01_corrected() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     let seq_len = 1024u64;
     let flops_per_token = result.compute.metrics.flops_per_token;
     let forward_flops = result.compute.metrics.forward_flops;
     let reconstructed = flops_per_token * seq_len as f64;
-    
+
     let relative_error = (reconstructed - forward_flops).abs() / forward_flops;
     assert!(
         relative_error < 0.02,
@@ -416,10 +446,13 @@ fn test_c28_vram_precision_ratio() {
 fn test_c29_params_by_family_sum() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     // La somme des params par famille doit égaler total_params
     let total_params = result.arch.metrics.total_parameters;
-    println!("✓ C29: sum(params_by_family) = total_params = {}", total_params);
+    println!(
+        "✓ C29: sum(params_by_family) = total_params = {}",
+        total_params
+    );
 }
 
 /// C30: sum(flops_by_layer_top10) ≤ forward_flops
@@ -427,16 +460,23 @@ fn test_c29_params_by_family_sum() {
 fn test_c30_top10_flops_sum() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
-    let mut flops_values: Vec<f64> = result.compute.metrics.flops_per_layer.values().cloned().collect();
+
+    let mut flops_values: Vec<f64> = result
+        .compute
+        .metrics
+        .flops_per_layer
+        .values()
+        .cloned()
+        .collect();
     flops_values.sort_by(|a, b| b.partial_cmp(a).unwrap());
     let top10_sum: f64 = flops_values.iter().take(10).sum();
     let forward_flops = result.compute.metrics.forward_flops;
-    
+
     assert!(
         top10_sum <= forward_flops * 1.001,
         "C30: sum(top10_flops) = {:.3e} > forward_flops = {:.3e}",
-        top10_sum, forward_flops
+        top10_sum,
+        forward_flops
     );
     println!("✓ C30: sum(top10_flops) ≤ forward_flops");
 }
@@ -446,9 +486,10 @@ fn test_c30_top10_flops_sum() {
 fn test_c31_backward_ratio_range() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
-    let backward_ratio = result.compute.metrics.backward_flops / result.compute.metrics.forward_flops;
-    
+
+    let backward_ratio =
+        result.compute.metrics.backward_flops / result.compute.metrics.forward_flops;
+
     assert!(
         backward_ratio >= 1.0 && backward_ratio <= 5.0,
         "C31: backward_ratio = {:.2} (expected [1.0, 5.0])",
@@ -477,13 +518,16 @@ fn test_c33_confidence_score_range() {
 fn test_c34_latency_positive_finite() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     assert!(
         result.hardware.metrics.latency_ms > 0.0 && result.hardware.metrics.latency_ms.is_finite(),
         "C34: latency = {} (expected > 0 and finite)",
         result.hardware.metrics.latency_ms
     );
-    println!("✓ C34: latency = {:.2} ms (positif et fini)", result.hardware.metrics.latency_ms);
+    println!(
+        "✓ C34: latency = {:.2} ms (positif et fini)",
+        result.hardware.metrics.latency_ms
+    );
 }
 
 /// C35: energy ≥ 0
@@ -491,13 +535,16 @@ fn test_c34_latency_positive_finite() {
 fn test_c35_energy_nonnegative() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     assert!(
         result.cost.metrics.energy_kwh >= 0.0,
         "C35: energy = {} (expected >= 0)",
         result.cost.metrics.energy_kwh
     );
-    println!("✓ C35: energy = {:.2} kWh (>= 0)", result.cost.metrics.energy_kwh);
+    println!(
+        "✓ C35: energy = {:.2} kWh (>= 0)",
+        result.cost.metrics.energy_kwh
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -508,15 +555,18 @@ fn test_c35_energy_nonnegative() {
 #[test]
 fn test_c36_gpt2_small_compile_time() {
     use std::time::Instant;
-    
+
     let json = include_str!("../../models/gpt2_small.json");
     let start = Instant::now();
     let result = analyze_json(json).expect("Analysis should succeed");
     let elapsed = start.elapsed();
-    
+
     let elapsed_ms = elapsed.as_millis();
-    println!("✓ C36: GPT-2 Small compile time = {} ms (target < 50ms)", elapsed_ms);
-    
+    println!(
+        "✓ C36: GPT-2 Small compile time = {} ms (target < 50ms)",
+        elapsed_ms
+    );
+
     // Note: Le target de 50ms peut ne pas être atteint selon le hardware
     // On vérifie juste que ça compile
     assert!(result.arch.metrics.total_parameters > 0);
@@ -528,14 +578,17 @@ fn test_c37_llama8b_compile_time() {
     let json_result = std::fs::read_to_string("../../models/llama_8b.json");
     if let Ok(json) = json_result {
         use std::time::Instant;
-        
+
         let start = Instant::now();
         let result = analyze_json(&json).expect("Analysis should succeed");
         let elapsed = start.elapsed();
-        
+
         let elapsed_ms = elapsed.as_millis();
-        println!("✓ C37: LLaMA 8B compile time = {} ms (target < 200ms)", elapsed_ms);
-        
+        println!(
+            "✓ C37: LLaMA 8B compile time = {} ms (target < 200ms)",
+            elapsed_ms
+        );
+
         assert!(result.arch.metrics.total_parameters > 0);
     } else {
         println!("✓ C37: SKIPPED (models/llama_8b.json not found)");
@@ -548,14 +601,17 @@ fn test_c38_llama70b_compile_time() {
     let json_result = std::fs::read_to_string("../../models/llama_70b.json");
     if let Ok(json) = json_result {
         use std::time::Instant;
-        
+
         let start = Instant::now();
         let result = analyze_json(&json).expect("Analysis should succeed");
         let elapsed = start.elapsed();
-        
+
         let elapsed_ms = elapsed.as_millis();
-        println!("✓ C38: LLaMA 70B compile time = {} ms (target < 500ms)", elapsed_ms);
-        
+        println!(
+            "✓ C38: LLaMA 70B compile time = {} ms (target < 500ms)",
+            elapsed_ms
+        );
+
         assert!(result.arch.metrics.total_parameters > 0);
     } else {
         println!("✓ C38: SKIPPED (models/llama_70b.json not found)");
@@ -569,7 +625,7 @@ fn test_c39_rss_memory() {
     // Ce test vérifie juste que le compilateur fonctionne
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
-    
+
     println!("✓ C39: RSS memory < 256 MB (à vérifier avec outil externe)");
     assert!(result.arch.metrics.total_parameters > 0);
 }
@@ -592,9 +648,12 @@ fn test_c41_no_panic_invalid_json() {
     // JSON invalide
     let invalid_json = "{ invalid json }";
     let result = analyze_json(invalid_json);
-    
+
     // Doit retourner Err, pas panic
-    assert!(result.is_err(), "C41: Invalid JSON should return Err, not panic");
+    assert!(
+        result.is_err(),
+        "C41: Invalid JSON should return Err, not panic"
+    );
     println!("✓ C41: Pas de panic sur JSON invalide (Result<>)");
 }
 
@@ -618,7 +677,7 @@ fn test_c44_actionable_error_messages() {
     // Les messages d'erreur doivent être clairs et actionnables
     let invalid_json = r#"{"schema_version": "1.0", "global_params": {}}"#;
     let result = analyze_json(invalid_json);
-    
+
     if let Err(e) = result {
         let error_msg = format!("{:?}", e);
         // Le message doit être compréhensible

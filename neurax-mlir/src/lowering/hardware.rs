@@ -17,11 +17,11 @@ impl LoweringPass for HardwareLowering {
     fn name() -> &'static str {
         "HardwareLowering"
     }
-    
+
     fn description() -> &'static str {
         "Lowers hw.gpu, hw.roofline, hw.bottleneck to target-specific config"
     }
-    
+
     fn run<'c>(_module: &mut Module<'c>, context: &mut LoweringContext<'c>) -> Result<(), String> {
         // Hardware lowering selects the target backend and applies optimizations
         let _target = context.target();
@@ -101,7 +101,7 @@ impl HardwareConfig {
             },
         }
     }
-    
+
     /// Get the recommended target backend for this GPU
     pub fn recommended_backend(&self) -> TargetBackend {
         if self.tensor_cores {
@@ -115,7 +115,7 @@ impl HardwareConfig {
 /// Generate hardware attributes for the module
 pub fn generate_hardware_attributes(config: &HardwareConfig) -> String {
     format!(
-r#"  // Hardware configuration
+        r#"  // Hardware configuration
   // gpu_name = "{}"
   // vram_gb = {}
   // peak_tflops = {}
@@ -141,43 +141,43 @@ pub fn calculate_roofline(
 ) -> (f64, f64, bool) {
     let arithmetic_intensity = flops / bytes_transferred as f64;
     let ridge_point = peak_flops / peak_bandwidth;
-    
+
     let achievable_flops = if arithmetic_intensity >= ridge_point {
         peak_flops // Compute-bound
     } else {
         arithmetic_intensity * peak_bandwidth // Memory-bound
     };
-    
+
     let efficiency = achievable_flops / peak_flops;
     let is_memory_bound = arithmetic_intensity < ridge_point;
-    
+
     (efficiency, arithmetic_intensity, is_memory_bound)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_hardware_config_h100() {
         let config = HardwareConfig::from_gpu_name("H100");
         assert_eq!(config.vram_gb, 80);
         assert_eq!(config.peak_tflops, 989.0);
     }
-    
+
     #[test]
     fn test_hardware_config_a100() {
         let config = HardwareConfig::from_gpu_name("A100");
         assert_eq!(config.vram_gb, 80);
     }
-    
+
     #[test]
     fn test_roofline_calculation() {
         let (efficiency, intensity, is_mem_bound) = calculate_roofline(
-            1e12,  // 1 TFLOP
-            1_000_000_000,  // 1 GB transferred
-            989e12,  // H100 peak
-            3.352e12,  // H100 bandwidth
+            1e12,          // 1 TFLOP
+            1_000_000_000, // 1 GB transferred
+            989e12,        // H100 peak
+            3.352e12,      // H100 bandwidth
         );
         assert!(efficiency > 0.0);
         assert!(intensity > 0.0);

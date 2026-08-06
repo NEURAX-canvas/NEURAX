@@ -1,5 +1,5 @@
 //! Confidence scoring per metric per tuning.md
-//! 
+//!
 //! Each metric has its own confidence score calculated independently
 //! based on degradation factors.
 
@@ -43,7 +43,11 @@ pub enum ConfidenceFactor {
     /// No training steps provided
     NoTrainingStepsProvided { impact: f32 },
     /// Estimated efficiency factor
-    EstimatedEfficiencyFactor { op: String, gpu: String, impact: f32 },
+    EstimatedEfficiencyFactor {
+        op: String,
+        gpu: String,
+        impact: f32,
+    },
     /// Flash Attention not enabled
     FlashAttentionNotEnabled { impact: f32 },
     /// Memory fragmentation estimated
@@ -55,10 +59,7 @@ pub struct ConfidenceCalculator;
 
 impl ConfidenceCalculator {
     /// Confidence for parameter count metrics
-    pub fn for_params(
-        has_custom_no_formula: bool,
-        symbolic_dims: u32,
-    ) -> MetricConfidence {
+    pub fn for_params(has_custom_no_formula: bool, symbolic_dims: u32) -> MetricConfidence {
         let mut score = 1.0f64;
         let mut factors = vec![];
 
@@ -78,7 +79,7 @@ impl ConfidenceCalculator {
                 impact: (symbolic_dims as f32 * 0.01).min(0.10),
             });
         }
-        
+
         MetricConfidence {
             score,
             estimated_error_pct: (1.0 - score) * 100.0,
@@ -119,7 +120,7 @@ impl ConfidenceCalculator {
                 impact: 0.15,
             });
         }
-        
+
         MetricConfidence {
             score,
             estimated_error_pct: lerp(1.5, 25.0, 1.0 - score),
@@ -152,11 +153,9 @@ impl ConfidenceCalculator {
         }
         if !fragmentation_modeled {
             score *= 0.88;
-            factors.push(ConfidenceFactor::MemoryFragmentationEstimated {
-                impact: 0.12,
-            });
+            factors.push(ConfidenceFactor::MemoryFragmentationEstimated { impact: 0.12 });
         }
-        
+
         MetricConfidence {
             score,
             estimated_error_pct: lerp(3.0, 35.0, 1.0 - score),
@@ -202,14 +201,12 @@ impl ConfidenceCalculator {
 
         if !has_training_steps {
             score *= 0.75;
-            factors.push(ConfidenceFactor::NoTrainingStepsProvided {
-                impact: 0.25,
-            });
+            factors.push(ConfidenceFactor::NoTrainingStepsProvided { impact: 0.25 });
         }
         if !cloud_pricing_current {
             score *= 0.90;
         }
-        
+
         MetricConfidence {
             score,
             estimated_error_pct: lerp(8.0, 60.0, 1.0 - score),
@@ -232,7 +229,7 @@ impl ConfidenceCalculator {
         if !communication_modeled {
             score *= 0.80;
         }
-        
+
         MetricConfidence {
             score,
             estimated_error_pct: lerp(5.0, 30.0, 1.0 - score),
@@ -273,11 +270,9 @@ impl ConfidenceReport {
             ("cost", &self.cost, 0.10),
             ("parallelism", &self.parallelism, 0.10),
         ];
-        
-        let total: f64 = weights.iter()
-            .map(|(_, conf, w)| conf.score * w)
-            .sum();
-        
+
+        let total: f64 = weights.iter().map(|(_, conf, w)| conf.score * w).sum();
+
         self.overall_score = total;
         self.overall_level = super::PrecisionLevel::from_confidence(self.overall_score);
     }
@@ -293,7 +288,7 @@ mod tests {
         let conf = ConfidenceCalculator::for_params(false, 0);
         assert!(conf.score >= 0.95);
         assert_eq!(conf.level, PrecisionLevel::Industrial);
-        
+
         let conf = ConfidenceCalculator::for_params(true, 5);
         assert!(conf.score < 0.95);
         assert!(!conf.degradation_factors.is_empty());
@@ -303,7 +298,7 @@ mod tests {
     fn test_flops_confidence() {
         let conf = ConfidenceCalculator::for_flops(0, 10, false, true);
         assert!(conf.score >= 0.85);
-        
+
         let conf = ConfidenceCalculator::for_flops(5, 10, true, false);
         assert!(conf.score < 0.50);
     }
@@ -312,7 +307,7 @@ mod tests {
     fn test_latency_confidence() {
         let conf = ConfidenceCalculator::for_latency(0.90, true, 0.95);
         assert!(conf.score >= 0.80);
-        
+
         let conf = ConfidenceCalculator::for_latency(0.90, false, 0.50);
         assert!(conf.score < 0.70);
     }
@@ -328,7 +323,7 @@ mod tests {
             parallelism: ConfidenceCalculator::for_parallelism(true, true),
             ..Default::default()
         };
-        
+
         report.calculate_overall();
         assert!(report.overall_score > 0.85);
     }

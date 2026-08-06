@@ -1,13 +1,13 @@
 //! Dynamic System Types
-//! 
+//!
 //! Common types used across the dynamic analysis passes.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::virtual_memory::VirtualMemoryMetrics;
-use super::stability::StabilityMetrics;
 use super::behavioral::BehavioralMetrics;
+use super::stability::StabilityMetrics;
+use super::virtual_memory::VirtualMemoryMetrics;
 
 /// Results from all dynamic passes
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -64,7 +64,7 @@ impl CalibrationData {
     pub fn has_fragmentation_data(&self) -> bool {
         !self.fragmentation_by_size.is_empty()
     }
-    
+
     /// Get calibrated fragmentation for a given peak VRAM and activation ratio
     pub fn get_fragmentation(&self, peak_vram_gb: f64, activation_ratio: f64) -> Option<f64> {
         // Find closest match in calibration data

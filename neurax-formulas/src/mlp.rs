@@ -21,11 +21,13 @@ pub fn mlp_flops(
     activation: &str,
 ) -> f64 {
     // First linear: [B, S, H] × [H, I] → [B, S, I]
-    let linear1_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * intermediate_size as f64;
-    
+    let linear1_flops =
+        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * intermediate_size as f64;
+
     // Second linear: [B, S, I] × [I, H] → [B, S, H]
-    let linear2_flops = 2.0 * batch as f64 * seq_len as f64 * intermediate_size as f64 * hidden_size as f64;
-    
+    let linear2_flops =
+        2.0 * batch as f64 * seq_len as f64 * intermediate_size as f64 * hidden_size as f64;
+
     // Activation FLOPs (approximate)
     let act_flops = match activation {
         "gelu" => 10.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
@@ -34,7 +36,7 @@ pub fn mlp_flops(
         "none" | "linear" => 0.0,
         _ => 5.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
     };
-    
+
     linear1_flops + linear2_flops + act_flops
 }
 
@@ -50,23 +52,26 @@ pub fn gated_mlp_flops(
     activation: &str,
 ) -> f64 {
     // Gate projection: [B, S, H] × [H, I]
-    let gate_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * intermediate_size as f64;
-    
+    let gate_flops =
+        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * intermediate_size as f64;
+
     // Up projection: [B, S, H] × [H, I]
-    let up_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * intermediate_size as f64;
-    
+    let up_flops =
+        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * intermediate_size as f64;
+
     // Down projection: [B, S, I] × [I, H]
-    let down_flops = 2.0 * batch as f64 * seq_len as f64 * intermediate_size as f64 * hidden_size as f64;
-    
+    let down_flops =
+        2.0 * batch as f64 * seq_len as f64 * intermediate_size as f64 * hidden_size as f64;
+
     // Activation (applied to gate)
     let act_flops = match activation {
         "silu" | "swish" => 4.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
         _ => 5.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
     };
-    
+
     // Element-wise multiplication
     let mul_flops = batch as f64 * seq_len as f64 * intermediate_size as f64;
-    
+
     gate_flops + up_flops + down_flops + act_flops + mul_flops
 }
 

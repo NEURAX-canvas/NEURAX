@@ -1,13 +1,13 @@
 //! Metrics display components
 
+use crate::real_world_data::RealWorldData;
+use neurax_core::AnalysisResult;
 use ratatui::{
     layout::{Constraint, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Cell, Row, Table},
 };
-use neurax_core::AnalysisResult;
-use crate::real_world_data::RealWorldData;
 
 pub fn format_number(n: f64) -> String {
     if n >= 1e12 {
@@ -66,18 +66,27 @@ pub fn accuracy_color(accuracy: f64) -> Color {
     }
 }
 
-pub fn render_overview_tab(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Vec<Line<'static>> {
+pub fn render_overview_tab(
+    result: &AnalysisResult,
+    real: &RealWorldData,
+    _area: Rect,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
-    
+
     // Model summary - use owned strings
     let model_type = result.arch.metrics.model_type_info.clone();
     let params_computed = format_number(result.arch.metrics.total_parameters as f64);
     let params_real = format_number(real.total_params as f64);
     let num_layers = format!("{}", result.arch.metrics.num_layers);
-    
+
     lines.push(Line::from(vec![
         Span::styled("Model: ", Style::default().fg(Color::Cyan)),
-        Span::styled(model_type, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            model_type,
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
     ]));
     lines.push(Line::from(vec![
         Span::styled("Parameters: ", Style::default().fg(Color::Cyan)),
@@ -90,19 +99,27 @@ pub fn render_overview_tab(result: &AnalysisResult, real: &RealWorldData, _area:
         Span::styled("Layers: ", Style::default().fg(Color::Cyan)),
         Span::styled(num_layers, Style::default().fg(Color::White)),
     ]));
-    
+
     lines
 }
 
-pub fn render_architecture_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
-    let accuracy = calculate_accuracy(result.arch.metrics.total_parameters as f64, real.total_params as f64);
-    
+pub fn render_architecture_metrics(
+    result: &AnalysisResult,
+    real: &RealWorldData,
+    _area: Rect,
+) -> Table<'static> {
+    let accuracy = calculate_accuracy(
+        result.arch.metrics.total_parameters as f64,
+        real.total_params as f64,
+    );
+
     let rows = vec![
         Row::new(vec![
             Cell::from("Total Parameters"),
             Cell::from(format_number(result.arch.metrics.total_parameters as f64)),
             Cell::from(format_number(real.total_params as f64)),
-            Cell::from(format!("{:.1}%", accuracy)).style(Style::default().fg(accuracy_color(accuracy))),
+            Cell::from(format!("{:.1}%", accuracy))
+                .style(Style::default().fg(accuracy_color(accuracy))),
         ]),
         Row::new(vec![
             Cell::from("Number of Layers"),
@@ -118,18 +135,42 @@ pub fn render_architecture_metrics(result: &AnalysisResult, real: &RealWorldData
         ]),
         Row::new(vec![
             Cell::from("Params per Layer"),
-            Cell::from(format!("{:.2}M", result.arch.metrics.total_parameters as f64 / result.arch.metrics.num_layers as f64 / 1e6)),
+            Cell::from(format!(
+                "{:.2}M",
+                result.arch.metrics.total_parameters as f64
+                    / result.arch.metrics.num_layers as f64
+                    / 1e6
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
     ];
-    
-    Table::new(rows, [Constraint::Percentage(30), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(20)])
-        .block(Block::default().title("Architecture Metrics (5 metrics)").borders(Borders::ALL))
-        .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
+
+    Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+        ],
+    )
+    .block(
+        Block::default()
+            .title("Architecture Metrics (5 metrics)")
+            .borders(Borders::ALL),
+    )
+    .header(
+        Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"])
+            .style(Style::default().fg(Color::Cyan)),
+    )
 }
 
-pub fn render_compute_metrics(result: &AnalysisResult, _real: &RealWorldData, _area: Rect) -> Table<'static> {
+pub fn render_compute_metrics(
+    result: &AnalysisResult,
+    _real: &RealWorldData,
+    _area: Rect,
+) -> Table<'static> {
     let rows = vec![
         Row::new(vec![
             Cell::from("Total FLOPs"),
@@ -157,7 +198,10 @@ pub fn render_compute_metrics(result: &AnalysisResult, _real: &RealWorldData, _a
         ]),
         Row::new(vec![
             Cell::from("Arithmetic Intensity"),
-            Cell::from(format!("{:.2}", result.compute.metrics.arithmetic_intensity)),
+            Cell::from(format!(
+                "{:.2}",
+                result.compute.metrics.arithmetic_intensity
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
@@ -180,21 +224,41 @@ pub fn render_compute_metrics(result: &AnalysisResult, _real: &RealWorldData, _a
             Cell::from("-"),
         ]),
     ];
-    
-    Table::new(rows, [Constraint::Percentage(30), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(20)])
-        .block(Block::default().title("Compute Metrics (12 metrics)").borders(Borders::ALL))
-        .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
+
+    Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+        ],
+    )
+    .block(
+        Block::default()
+            .title("Compute Metrics (12 metrics)")
+            .borders(Borders::ALL),
+    )
+    .header(
+        Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"])
+            .style(Style::default().fg(Color::Cyan)),
+    )
 }
 
-pub fn render_memory_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
+pub fn render_memory_metrics(
+    result: &AnalysisResult,
+    real: &RealWorldData,
+    _area: Rect,
+) -> Table<'static> {
     let accuracy = calculate_accuracy(result.memory.metrics.peak_vram_gb(), real.peak_memory_gb);
-    
+
     let rows = vec![
         Row::new(vec![
             Cell::from("Peak VRAM"),
             Cell::from(format!("{:.2} GB", result.memory.metrics.peak_vram_gb())),
             Cell::from(format!("{:.2} GB", real.peak_memory_gb)),
-            Cell::from(format!("{:.1}%", accuracy)).style(Style::default().fg(accuracy_color(accuracy))),
+            Cell::from(format!("{:.1}%", accuracy))
+                .style(Style::default().fg(accuracy_color(accuracy))),
         ]),
         Row::new(vec![
             Cell::from("Parameter Memory"),
@@ -234,43 +298,82 @@ pub fn render_memory_metrics(result: &AnalysisResult, real: &RealWorldData, _are
         ]),
         Row::new(vec![
             Cell::from("Memory Bandwidth"),
-            Cell::from(format!("{:.2} GB/s", result.memory.metrics.memory_bandwidth_req / 1e9)),
+            Cell::from(format!(
+                "{:.2} GB/s",
+                result.memory.metrics.memory_bandwidth_req / 1e9
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
     ];
-    
-    Table::new(rows, [Constraint::Percentage(30), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(20)])
-        .block(Block::default().title("Memory Metrics (11 metrics)").borders(Borders::ALL))
-        .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
+
+    Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+        ],
+    )
+    .block(
+        Block::default()
+            .title("Memory Metrics (11 metrics)")
+            .borders(Borders::ALL),
+    )
+    .header(
+        Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"])
+            .style(Style::default().fg(Color::Cyan)),
+    )
 }
 
-pub fn render_hardware_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
-    let latency_accuracy = calculate_accuracy(result.hardware.metrics.latency_ms, real.inference_latency_ms);
-    let throughput_accuracy = calculate_accuracy(result.hardware.metrics.throughput_tokens_per_s, real.throughput_tokens_per_s);
-    
+pub fn render_hardware_metrics(
+    result: &AnalysisResult,
+    real: &RealWorldData,
+    _area: Rect,
+) -> Table<'static> {
+    let latency_accuracy = calculate_accuracy(
+        result.hardware.metrics.latency_ms,
+        real.inference_latency_ms,
+    );
+    let throughput_accuracy = calculate_accuracy(
+        result.hardware.metrics.throughput_tokens_per_s,
+        real.throughput_tokens_per_s,
+    );
+
     let rows = vec![
         Row::new(vec![
             Cell::from("Latency"),
             Cell::from(format!("{:.2} ms", result.hardware.metrics.latency_ms)),
             Cell::from(format!("{:.2} ms", real.inference_latency_ms)),
-            Cell::from(format!("{:.1}%", latency_accuracy)).style(Style::default().fg(accuracy_color(latency_accuracy))),
+            Cell::from(format!("{:.1}%", latency_accuracy))
+                .style(Style::default().fg(accuracy_color(latency_accuracy))),
         ]),
         Row::new(vec![
             Cell::from("Throughput"),
-            Cell::from(format!("{:.2} tok/s", result.hardware.metrics.throughput_tokens_per_s)),
+            Cell::from(format!(
+                "{:.2} tok/s",
+                result.hardware.metrics.throughput_tokens_per_s
+            )),
             Cell::from(format!("{:.2} tok/s", real.throughput_tokens_per_s)),
-            Cell::from(format!("{:.1}%", throughput_accuracy)).style(Style::default().fg(accuracy_color(throughput_accuracy))),
+            Cell::from(format!("{:.1}%", throughput_accuracy))
+                .style(Style::default().fg(accuracy_color(throughput_accuracy))),
         ]),
         Row::new(vec![
             Cell::from("GPU Utilization"),
-            Cell::from(format!("{:.1}%", result.hardware.metrics.gpu_utilization * 100.0)),
+            Cell::from(format!(
+                "{:.1}%",
+                result.hardware.metrics.gpu_utilization * 100.0
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
         Row::new(vec![
             Cell::from("Tensor Core Util."),
-            Cell::from(format!("{:.1}%", result.hardware.metrics.tensor_core_utilization * 100.0)),
+            Cell::from(format!(
+                "{:.1}%",
+                result.hardware.metrics.tensor_core_utilization * 100.0
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
@@ -294,33 +397,69 @@ pub fn render_hardware_metrics(result: &AnalysisResult, real: &RealWorldData, _a
         ]),
         Row::new(vec![
             Cell::from("Memory Bandwidth"),
-            Cell::from(format!("{:.2} GB/s", result.hardware.metrics.memory_bandwidth_achieved)),
+            Cell::from(format!(
+                "{:.2} GB/s",
+                result.hardware.metrics.memory_bandwidth_achieved
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
     ];
-    
-    Table::new(rows, [Constraint::Percentage(30), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(20)])
-        .block(Block::default().title("Hardware Metrics (10 metrics)").borders(Borders::ALL))
-        .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
+
+    Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+        ],
+    )
+    .block(
+        Block::default()
+            .title("Hardware Metrics (10 metrics)")
+            .borders(Borders::ALL),
+    )
+    .header(
+        Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"])
+            .style(Style::default().fg(Color::Cyan)),
+    )
 }
 
-pub fn render_cost_metrics(result: &AnalysisResult, real: &RealWorldData, _area: Rect) -> Table<'static> {
-    let cost_accuracy = calculate_accuracy(result.cost.metrics.training_cost_usd, real.training_cost_usd);
-    let time_accuracy = calculate_accuracy(result.cost.metrics.training_time_hours, real.training_time_hours);
-    
+pub fn render_cost_metrics(
+    result: &AnalysisResult,
+    real: &RealWorldData,
+    _area: Rect,
+) -> Table<'static> {
+    let cost_accuracy = calculate_accuracy(
+        result.cost.metrics.training_cost_usd,
+        real.training_cost_usd,
+    );
+    let time_accuracy = calculate_accuracy(
+        result.cost.metrics.training_time_hours,
+        real.training_time_hours,
+    );
+
     let rows = vec![
         Row::new(vec![
             Cell::from("Training Cost"),
-            Cell::from(format!("${:.2}M", result.cost.metrics.training_cost_usd / 1e6)),
+            Cell::from(format!(
+                "${:.2}M",
+                result.cost.metrics.training_cost_usd / 1e6
+            )),
             Cell::from(format!("${:.2}M", real.training_cost_usd / 1e6)),
-            Cell::from(format!("{:.1}%", cost_accuracy)).style(Style::default().fg(accuracy_color(cost_accuracy))),
+            Cell::from(format!("{:.1}%", cost_accuracy))
+                .style(Style::default().fg(accuracy_color(cost_accuracy))),
         ]),
         Row::new(vec![
             Cell::from("Training Time"),
-            Cell::from(format!("{:.1} hours", result.cost.metrics.training_time_hours)),
+            Cell::from(format!(
+                "{:.1} hours",
+                result.cost.metrics.training_time_hours
+            )),
             Cell::from(format!("{:.1} hours", real.training_time_hours)),
-            Cell::from(format!("{:.1}%", time_accuracy)).style(Style::default().fg(accuracy_color(time_accuracy))),
+            Cell::from(format!("{:.1}%", time_accuracy))
+                .style(Style::default().fg(accuracy_color(time_accuracy))),
         ]),
         Row::new(vec![
             Cell::from("GPU Hours"),
@@ -348,19 +487,40 @@ pub fn render_cost_metrics(result: &AnalysisResult, real: &RealWorldData, _area:
         ]),
         Row::new(vec![
             Cell::from("Cost per Million Tokens"),
-            Cell::from(format!("${:.4}", result.cost.metrics.cost_per_million_tokens_usd)),
+            Cell::from(format!(
+                "${:.4}",
+                result.cost.metrics.cost_per_million_tokens_usd
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
         Row::new(vec![
             Cell::from("Monthly Inference Cost"),
-            Cell::from(format!("${:.2}", result.cost.metrics.monthly_inference_cost_usd)),
+            Cell::from(format!(
+                "${:.2}",
+                result.cost.metrics.monthly_inference_cost_usd
+            )),
             Cell::from("-"),
             Cell::from("-"),
         ]),
     ];
-    
-    Table::new(rows, [Constraint::Percentage(30), Constraint::Percentage(25), Constraint::Percentage(25), Constraint::Percentage(20)])
-        .block(Block::default().title("Cost Metrics (9 metrics)").borders(Borders::ALL))
-        .header(Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"]).style(Style::default().fg(Color::Cyan)))
+
+    Table::new(
+        rows,
+        [
+            Constraint::Percentage(30),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(20),
+        ],
+    )
+    .block(
+        Block::default()
+            .title("Cost Metrics (9 metrics)")
+            .borders(Borders::ALL),
+    )
+    .header(
+        Row::new(vec!["Metric", "Computed", "Real World", "Accuracy"])
+            .style(Style::default().fg(Color::Cyan)),
+    )
 }

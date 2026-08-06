@@ -5,15 +5,15 @@
 
 pub mod architecture;
 pub mod compute;
-pub mod memory;
-pub mod hardware;
-pub mod parallelism;
 pub mod cost;
+pub mod hardware;
+pub mod memory;
+pub mod parallelism;
 
 // Re-export pass traits
 pub use architecture::ArchitecturePass;
 pub use compute::ComputePass;
-pub use memory::MemoryPass;
-pub use hardware::HardwarePass;
-pub use parallelism::ParallelismPass;
 pub use cost::CostPass;
+pub use hardware::HardwarePass;
+pub use memory::MemoryPass;
+pub use parallelism::ParallelismPass;

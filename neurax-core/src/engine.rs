@@ -1,8 +1,8 @@
 //! IR Passer Engine - Sequential orchestration
 
 use ahash::AHashMap as HashMap;
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Metrics store - thread-safe accumulator
@@ -16,15 +16,15 @@ impl MetricsStore {
             metrics: Arc::new(Mutex::new(HashMap::new())),
         }
     }
-    
+
     pub fn insert(&self, key: String, value: f64) {
         self.metrics.lock().insert(key, value);
     }
-    
+
     pub fn get(&self, key: &str) -> Option<f64> {
         self.metrics.lock().get(key).copied()
     }
-    
+
     pub fn all(&self) -> HashMap<String, f64> {
         self.metrics.lock().clone()
     }
@@ -66,7 +66,7 @@ impl IrPasserEngine {
             metrics_store: MetricsStore::new(),
         }
     }
-    
+
     /// Record a pass timing
     pub fn record_pass(&mut self, name: &str, duration: Duration, success: bool) {
         self.stats.pass_timings.push(PassTiming {
@@ -80,17 +80,17 @@ impl IrPasserEngine {
             self.stats.passes_failed += 1;
         }
     }
-    
+
     /// Get engine statistics
     pub fn stats(&self) -> &EngineStats {
         &self.stats
     }
-    
+
     /// Get metrics store
     pub fn metrics(&self) -> &MetricsStore {
         &self.metrics_store
     }
-    
+
     /// Set total time
     pub fn set_total_time(&mut self, duration: Duration) {
         self.stats.total_time_ms = duration.as_millis() as u64;

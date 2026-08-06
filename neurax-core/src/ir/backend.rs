@@ -11,10 +11,10 @@ use std::sync::Arc;
 pub trait IrBackend: Send + Sync {
     /// Get backend name
     fn name(&self) -> &'static str;
-    
+
     /// Check if backend is available
     fn is_available(&self) -> bool;
-    
+
     /// Get backend version
     fn version(&self) -> &'static str;
 }
@@ -51,12 +51,12 @@ impl IrBackend for MlirBackend {
     fn name(&self) -> &'static str {
         self.name
     }
-    
+
     fn is_available(&self) -> bool {
         // The analytical pipeline is always available; MLIR codegen is feature-gated.
         true
     }
-    
+
     fn version(&self) -> &'static str {
         self.version
     }

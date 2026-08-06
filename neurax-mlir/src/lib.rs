@@ -5,29 +5,35 @@
 //! - Multi-target lowering to CPU, CUDA, Vulkan, Metal, ROCm
 //! - IREE integration for cross-platform deployment
 
+pub mod compiler;
 pub mod context;
-pub mod module;
-pub mod passes;
 pub mod dialects;
 pub mod integration;
-pub mod compiler;
-pub mod lowering;
-pub mod targets;
 pub mod iree;
+pub mod lowering;
+pub mod module;
+pub mod passes;
+pub mod targets;
 
 // Re-export key types for convenience
+pub use compiler::compile_model_to_mlir;
 pub use context::NeuraxContext;
 pub use module::NeuraxModule;
-pub use compiler::compile_model_to_mlir;
 
 // Lowering infrastructure
-pub use lowering::{LoweringContext, LoweringPass, ArchitectureLowering, OperatorLowering, MemoryLowering, HardwareLowering, ParallelismLowering};
+pub use lowering::{
+    ArchitectureLowering, HardwareLowering, LoweringContext, LoweringPass, MemoryLowering,
+    OperatorLowering, ParallelismLowering,
+};
 
 // Target backends
-pub use targets::{TargetBackend, TargetLowering, CpuBackend, CudaBackend, VulkanBackend, MetalBackend, RocmBackend};
+pub use targets::{
+    CpuBackend, CudaBackend, MetalBackend, RocmBackend, TargetBackend, TargetLowering,
+    VulkanBackend,
+};
 
 // IREE integration
-pub use iree::{IreeDevice, IreeCompiler, IreeTarget};
+pub use iree::{IreeCompiler, IreeDevice, IreeTarget};
 
 #[cfg(test)]
 mod tests;

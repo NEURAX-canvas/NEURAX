@@ -50,29 +50,32 @@ impl Shape {
     pub fn known(shape: Vec<usize>) -> Self {
         Shape(shape.into_iter().map(Dim::Known).collect())
     }
-    
+
     pub fn symbolic(shape: Vec<Dim>) -> Self {
         Shape(shape)
     }
-    
+
     /// Check if all dimensions are known
     pub fn is_fully_known(&self) -> bool {
         self.0.iter().all(|d| matches!(d, Dim::Known(_)))
     }
-    
+
     /// Get concrete shape if fully known
     pub fn to_concrete(&self) -> Option<Vec<usize>> {
-        self.0.iter().map(|d| match d {
-            Dim::Known(n) => Some(*n),
-            _ => None,
-        }).collect()
+        self.0
+            .iter()
+            .map(|d| match d {
+                Dim::Known(n) => Some(*n),
+                _ => None,
+            })
+            .collect()
     }
-    
+
     /// Calculate number of elements
     pub fn num_elements(&self) -> Option<usize> {
         self.to_concrete().map(|s| s.iter().product())
     }
-    
+
     /// Calculate size in bytes
     pub fn size_bytes(&self, dtype: &str) -> u64 {
         let elements = self.num_elements().unwrap_or(0);
@@ -145,11 +148,11 @@ impl TensorMetrics {
 /// Tensor size distribution
 #[derive(Debug, Clone, Default)]
 pub struct TensorSizeDistribution {
-    pub tiny: usize,      // < 1KB
-    pub small: usize,     // 1KB - 1MB
-    pub medium: usize,    // 1MB - 100MB
-    pub large: usize,     // 100MB - 1GB
-    pub huge: usize,      // > 1GB
+    pub tiny: usize,   // < 1KB
+    pub small: usize,  // 1KB - 1MB
+    pub medium: usize, // 1MB - 100MB
+    pub large: usize,  // 100MB - 1GB
+    pub huge: usize,   // > 1GB
 }
 
 impl TensorSizeDistribution {
@@ -162,7 +165,7 @@ impl TensorSizeDistribution {
             _ => "huge",
         }
     }
-    
+
     pub fn add(&mut self, size_bytes: u64) {
         match size_bytes {
             0..=1024 => self.tiny += 1,

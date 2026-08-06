@@ -1,12 +1,12 @@
 //! Report formatting utilities
 
-use super::{ReportIR, Severity, Priority};
+use super::{Priority, ReportIR, Severity};
 use std::fmt::Write;
 
 /// Format report as Markdown (no panics, silently handles write errors)
 pub fn format_markdown(report: &ReportIR) -> String {
     let mut output = String::new();
-    
+
     macro_rules! safe_writeln {
         ($buf:expr) => {
             let _ = writeln!($buf);
@@ -15,85 +15,197 @@ pub fn format_markdown(report: &ReportIR) -> String {
             let _ = writeln!($buf, $($arg)*);
         };
     }
-    
+
     // Header
     safe_writeln!(output, "# NEURAX Analysis Report");
     safe_writeln!(output);
-    
+
     // Metadata
     safe_writeln!(output, "## Model Information");
     safe_writeln!(output, "| Property | Value |");
     safe_writeln!(output, "|----------|-------|");
     safe_writeln!(output, "| Model Name | {} |", report.metadata.model_name);
     safe_writeln!(output, "| Model Type | {} |", report.metadata.model_type);
-    safe_writeln!(output, "| Total Parameters | {} |", format_param_count(report.metrics.total_parameters));
-    safe_writeln!(output, "| Number of Layers | {} |", report.metrics.num_layers);
-    safe_writeln!(output, "| Generated | {} |", report.metadata.generated_at.format("%Y-%m-%d %H:%M:%S UTC"));
+    safe_writeln!(
+        output,
+        "| Total Parameters | {} |",
+        format_param_count(report.metrics.total_parameters)
+    );
+    safe_writeln!(
+        output,
+        "| Number of Layers | {} |",
+        report.metrics.num_layers
+    );
+    safe_writeln!(
+        output,
+        "| Generated | {} |",
+        report.metadata.generated_at.format("%Y-%m-%d %H:%M:%S UTC")
+    );
     safe_writeln!(output);
-    
+
     // Structure Metrics
     safe_writeln!(output, "## Structure Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(output, "| Total Parameters | {} |", format_param_count(report.metrics.total_parameters));
-    safe_writeln!(output, "| Number of Layers | {} |", report.metrics.num_layers);
+    safe_writeln!(
+        output,
+        "| Total Parameters | {} |",
+        format_param_count(report.metrics.total_parameters)
+    );
+    safe_writeln!(
+        output,
+        "| Number of Layers | {} |",
+        report.metrics.num_layers
+    );
     safe_writeln!(output, "| Graph Depth | {} |", report.metrics.graph_depth);
-    safe_writeln!(output, "| Total Operations | {} |", report.metrics.total_operations);
+    safe_writeln!(
+        output,
+        "| Total Operations | {} |",
+        report.metrics.total_operations
+    );
     safe_writeln!(output);
-    
+
     // Compute Metrics
     safe_writeln!(output, "## Compute Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(output, "| Total FLOPs | {} |", format_flops(report.metrics.total_flops));
-    safe_writeln!(output, "| Forward FLOPs | {} |", format_flops(report.metrics.forward_flops));
-    safe_writeln!(output, "| Backward FLOPs | {} |", format_flops(report.metrics.backward_flops));
-    safe_writeln!(output, "| FLOPs per Token | {:.2} |", report.metrics.flops_per_token);
-    safe_writeln!(output, "| Arithmetic Intensity | {:.2} FLOPs/byte |", report.metrics.arithmetic_intensity);
+    safe_writeln!(
+        output,
+        "| Total FLOPs | {} |",
+        format_flops(report.metrics.total_flops)
+    );
+    safe_writeln!(
+        output,
+        "| Forward FLOPs | {} |",
+        format_flops(report.metrics.forward_flops)
+    );
+    safe_writeln!(
+        output,
+        "| Backward FLOPs | {} |",
+        format_flops(report.metrics.backward_flops)
+    );
+    safe_writeln!(
+        output,
+        "| FLOPs per Token | {:.2} |",
+        report.metrics.flops_per_token
+    );
+    safe_writeln!(
+        output,
+        "| Arithmetic Intensity | {:.2} FLOPs/byte |",
+        report.metrics.arithmetic_intensity
+    );
     safe_writeln!(output);
-    
+
     // Memory Metrics
     safe_writeln!(output, "## Memory Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(output, "| Peak VRAM | {} |", format_bytes(report.metrics.peak_vram_bytes));
-    safe_writeln!(output, "| Parameter Memory | {} |", format_bytes(report.metrics.parameter_memory_bytes));
-    safe_writeln!(output, "| Activation Memory | {} |", format_bytes(report.metrics.activation_memory_bytes));
-    safe_writeln!(output, "| Gradient Memory | {} |", format_bytes(report.metrics.gradient_memory_bytes));
-    safe_writeln!(output, "| Optimizer State | {} |", format_bytes(report.metrics.optimizer_state_bytes));
-    safe_writeln!(output, "| Max Batch Size | {} |", report.metrics.max_batch_size_fit);
+    safe_writeln!(
+        output,
+        "| Peak VRAM | {} |",
+        format_bytes(report.metrics.peak_vram_bytes)
+    );
+    safe_writeln!(
+        output,
+        "| Parameter Memory | {} |",
+        format_bytes(report.metrics.parameter_memory_bytes)
+    );
+    safe_writeln!(
+        output,
+        "| Activation Memory | {} |",
+        format_bytes(report.metrics.activation_memory_bytes)
+    );
+    safe_writeln!(
+        output,
+        "| Gradient Memory | {} |",
+        format_bytes(report.metrics.gradient_memory_bytes)
+    );
+    safe_writeln!(
+        output,
+        "| Optimizer State | {} |",
+        format_bytes(report.metrics.optimizer_state_bytes)
+    );
+    safe_writeln!(
+        output,
+        "| Max Batch Size | {} |",
+        report.metrics.max_batch_size_fit
+    );
     safe_writeln!(output);
-    
+
     // Performance Metrics
     safe_writeln!(output, "## Performance Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(output, "| Latency per Step | {} |", format_latency(report.metrics.latency_ms));
-    safe_writeln!(output, "| Throughput | {} |", format_throughput(report.metrics.throughput_tokens_per_s));
-    safe_writeln!(output, "| GPU Utilization | {:.1}% |", report.metrics.gpu_utilization * 100.0);
+    safe_writeln!(
+        output,
+        "| Latency per Step | {} |",
+        format_latency(report.metrics.latency_ms)
+    );
+    safe_writeln!(
+        output,
+        "| Throughput | {} |",
+        format_throughput(report.metrics.throughput_tokens_per_s)
+    );
+    safe_writeln!(
+        output,
+        "| GPU Utilization | {:.1}% |",
+        report.metrics.gpu_utilization * 100.0
+    );
     safe_writeln!(output, "| Bottleneck | {} |", report.metrics.bottleneck);
     safe_writeln!(output);
-    
+
     // Parallelism Metrics
     safe_writeln!(output, "## Parallelism Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(output, "| Data Parallel Efficiency | {:.1}% |", report.metrics.data_parallel_efficiency * 100.0);
-    safe_writeln!(output, "| Communication Overhead | {:.1}% |", report.metrics.communication_overhead * 100.0);
-    safe_writeln!(output, "| Optimal GPU Count | {} |", report.metrics.optimal_gpu_count);
+    safe_writeln!(
+        output,
+        "| Data Parallel Efficiency | {:.1}% |",
+        report.metrics.data_parallel_efficiency * 100.0
+    );
+    safe_writeln!(
+        output,
+        "| Communication Overhead | {:.1}% |",
+        report.metrics.communication_overhead * 100.0
+    );
+    safe_writeln!(
+        output,
+        "| Optimal GPU Count | {} |",
+        report.metrics.optimal_gpu_count
+    );
     safe_writeln!(output);
-    
+
     // Cost Metrics
     safe_writeln!(output, "## Cost Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(output, "| Training Cost | {} |", format_cost(report.metrics.training_cost_usd));
-    safe_writeln!(output, "| Training Time | {:.1} hours |", report.metrics.training_time_hours);
-    safe_writeln!(output, "| Energy Consumption | {} |", format_energy(report.metrics.energy_kwh));
-    safe_writeln!(output, "| CO₂ Emissions | {} |", format_co2(report.metrics.co2_kg));
-    safe_writeln!(output, "| Cost per Million Tokens | ${:.2} |", report.metrics.cost_per_million_tokens_usd);
+    safe_writeln!(
+        output,
+        "| Training Cost | {} |",
+        format_cost(report.metrics.training_cost_usd)
+    );
+    safe_writeln!(
+        output,
+        "| Training Time | {:.1} hours |",
+        report.metrics.training_time_hours
+    );
+    safe_writeln!(
+        output,
+        "| Energy Consumption | {} |",
+        format_energy(report.metrics.energy_kwh)
+    );
+    safe_writeln!(
+        output,
+        "| CO₂ Emissions | {} |",
+        format_co2(report.metrics.co2_kg)
+    );
+    safe_writeln!(
+        output,
+        "| Cost per Million Tokens | ${:.2} |",
+        report.metrics.cost_per_million_tokens_usd
+    );
     safe_writeln!(output);
-    
+
     // Diagnostics
     if !report.diagnostics.is_empty() {
         safe_writeln!(output, "## Diagnostics");
@@ -112,7 +224,7 @@ pub fn format_markdown(report: &ReportIR) -> String {
             safe_writeln!(output);
         }
     }
-    
+
     // Recommendations
     if !report.recommendations.is_empty() {
         safe_writeln!(output, "## Recommendations");
@@ -129,7 +241,7 @@ pub fn format_markdown(report: &ReportIR) -> String {
             safe_writeln!(output);
         }
     }
-    
+
     // Warnings
     if !report.warnings.is_empty() {
         safe_writeln!(output, "## Warnings");
@@ -139,7 +251,7 @@ pub fn format_markdown(report: &ReportIR) -> String {
         }
         safe_writeln!(output);
     }
-    
+
     output
 }
 

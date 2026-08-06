@@ -1,13 +1,13 @@
 //! Memory IR - Dialecte de la simulation mémoire
 
+mod fragmentation;
 mod ir;
-mod pass;
 mod liveness;
 mod metrics;
-mod fragmentation;
+mod pass;
 
+pub use fragmentation::*;
 pub use ir::*;
-pub use pass::*;
 pub use liveness::*;
 pub use metrics::*;
-pub use fragmentation::*;
+pub use pass::*;

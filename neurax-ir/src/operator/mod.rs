@@ -1,13 +1,13 @@
 //! Operator IR - Dialecte des opérations ML standard
 
-mod ir;
-mod pass;
-mod metrics;
 mod formulas;
 mod fusion;
+mod ir;
+mod metrics;
+mod pass;
 
-pub use ir::*;
-pub use pass::*;
-pub use metrics::*;
 pub use formulas::*;
 pub use fusion::*;
+pub use ir::*;
+pub use metrics::*;
+pub use pass::*;

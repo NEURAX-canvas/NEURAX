@@ -68,7 +68,7 @@ impl GpuSpec {
             num_sms: None,
         }
     }
-    
+
     /// Get TFLOPS for a given precision
     pub fn tflops_for_precision(&self, precision: &str) -> f64 {
         match precision {
@@ -80,7 +80,7 @@ impl GpuSpec {
             _ => self.tflops_fp32,
         }
     }
-    
+
     /// Get efficiency factor (real-world vs theoretical performance)
     pub fn efficiency_factor(&self) -> f64 {
         // Typical efficiency is 40-70% of theoretical peak
@@ -92,12 +92,12 @@ impl GpuSpec {
             _ => 0.50,
         }
     }
-    
+
     /// Get effective TFLOPS (theoretical × efficiency)
     pub fn effective_tflops(&self, precision: &str) -> f64 {
         self.tflops_for_precision(precision) * self.efficiency_factor()
     }
-    
+
     /// Calculate ridge point (FLOPs/byte where compute = memory bound)
     pub fn ridge_point(&self, precision: &str) -> f64 {
         let tflops = self.tflops_for_precision(precision);
@@ -105,18 +105,18 @@ impl GpuSpec {
         // Ridge point = TFLOPS / Bandwidth (in FLOPs/byte)
         tflops * 1e12 / (bandwidth_gbs * 1e9)
     }
-    
+
     /// Estimate compute time for given FLOPs
     pub fn compute_time_ms(&self, flops: f64, precision: &str) -> f64 {
         let effective_tflops = self.effective_tflops(precision);
         flops / (effective_tflops * 1e12) * 1000.0
     }
-    
+
     /// Estimate memory time for given bytes
     pub fn memory_time_ms(&self, bytes: u64) -> f64 {
         bytes as f64 / (self.memory_bandwidth_gbs * 1e9) * 1000.0
     }
-    
+
     /// Check if model fits in memory
     pub fn fits_in_memory(&self, required_bytes: u64) -> bool {
         required_bytes <= self.memory_gb * 1024 * 1024 * 1024
@@ -155,7 +155,7 @@ mod tests {
             l2_cache_mb: None,
             num_sms: None,
         };
-        
+
         let ridge = gpu.ridge_point("fp16");
         // 100 TFLOPS / 1000 GB/s = 100 FLOPs/byte
         assert!((ridge - 100.0).abs() < 1.0);

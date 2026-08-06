@@ -18,9 +18,17 @@ pub enum Tab {
 
 impl Tab {
     pub fn all() -> &'static [Tab] {
-        &[Tab::Overview, Tab::Architecture, Tab::Compute, Tab::Memory, Tab::Hardware, Tab::Cost, Tab::Comparison]
+        &[
+            Tab::Overview,
+            Tab::Architecture,
+            Tab::Compute,
+            Tab::Memory,
+            Tab::Hardware,
+            Tab::Cost,
+            Tab::Comparison,
+        ]
     }
-    
+
     pub fn name(&self) -> &'static str {
         match self {
             Tab::Overview => "Overview",
@@ -32,7 +40,7 @@ impl Tab {
             Tab::Comparison => "Comparison",
         }
     }
-    
+
     pub fn index(&self) -> usize {
         match self {
             Tab::Overview => 0,
@@ -70,55 +78,55 @@ impl App {
             scroll_offset: 0,
         }
     }
-    
+
     pub fn next_model(&mut self) {
         if self.selected_model < self.models.len() - 1 {
             self.selected_model += 1;
         }
     }
-    
+
     pub fn previous_model(&mut self) {
         if self.selected_model > 0 {
             self.selected_model -= 1;
         }
     }
-    
+
     pub fn next_tab(&mut self) {
         let tabs = Tab::all();
         let current_idx = self.current_tab.index();
         self.current_tab = tabs[(current_idx + 1) % tabs.len()];
     }
-    
+
     pub fn previous_tab(&mut self) {
         let tabs = Tab::all();
         let current_idx = self.current_tab.index();
         self.current_tab = tabs[(current_idx + tabs.len() - 1) % tabs.len()];
     }
-    
+
     pub fn select_tab(&mut self, idx: usize) {
         let tabs = Tab::all();
         if idx < tabs.len() {
             self.current_tab = tabs[idx];
         }
     }
-    
+
     pub fn compile_selected_model(&mut self) {
         let model = &self.models[self.selected_model];
         self.status_message = format!("Compiling {}...", model.name);
-        
+
         match neurax_core::analyze_json(model.json_content) {
             Ok(result) => {
                 self.compiled_result = Some(result);
                 self.real_world_data = Some(RealWorldData::for_model(&model.name));
-                self.status_message = format!("✓ {} compiled successfully - {} metrics", 
-                    model.name, 77);
+                self.status_message =
+                    format!("✓ {} compiled successfully - {} metrics", model.name, 77);
             }
             Err(e) => {
                 self.status_message = format!("✗ Compilation failed: {}", e);
             }
         }
     }
-    
+
     pub fn refresh(&mut self) {
         self.compiled_result = None;
         self.real_world_data = None;

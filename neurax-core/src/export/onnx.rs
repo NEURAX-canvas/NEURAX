@@ -5,7 +5,7 @@
 //! PyTorch, or other ONNX-compatible frameworks.
 
 use neurax_ir::ArchitectureIR;
-use neurax_parser::{LayerType, LayerParams, ModelType, TrainingConfig, DataConfig, GlobalParams};
+use neurax_parser::{DataConfig, GlobalParams, LayerParams, LayerType, ModelType, TrainingConfig};
 
 // ─── ONNX Constants ────────────────────────────────────────────────────
 
@@ -216,7 +216,10 @@ impl OnnxModelBuilder {
         self.inputs.push(OnnxValueInfo {
             name: "input".to_string(),
             elem_type: OnnxDataType::Float as i32,
-            shape: vec![batch_size].into_iter().chain(input_shape.clone()).collect(),
+            shape: vec![batch_size]
+                .into_iter()
+                .chain(input_shape.clone())
+                .collect(),
         });
 
         // Track current tensor name
@@ -295,7 +298,11 @@ impl OnnxModelBuilder {
         encode_int64_field(1, IR_VERSION, &mut buf); // ir_version
         encode_string_field(2, PRODUCER_NAME, &mut buf); // producer_name
         encode_string_field(3, env!("CARGO_PKG_VERSION"), &mut buf); // producer_version
-        encode_string_field(5, &format!("Exported by NEURAX v{}", env!("CARGO_PKG_VERSION")), &mut buf); // doc_string
+        encode_string_field(
+            5,
+            &format!("Exported by NEURAX v{}", env!("CARGO_PKG_VERSION")),
+            &mut buf,
+        ); // doc_string
 
         // opset_import (field 7)
         let mut opset_buf = Vec::new();
@@ -482,14 +489,18 @@ fn map_layer_to_onnx_op(layer_type: &LayerType) -> &'static str {
         LayerType::Normalization => "LayerNormalization",
         LayerType::Embedding => "Gather",
         LayerType::MoE => "If", // MoE as conditional
-        LayerType::MambaBlock | LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace => "Squeeze",
+        LayerType::MambaBlock | LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace => {
+            "Squeeze"
+        }
         LayerType::Pooling => "MaxPool",
         LayerType::Mlp => "Gemm",
         LayerType::ResidualBlock => "Add",
         LayerType::LstmBlock => "LSTM",
         LayerType::GruBlock => "GRU",
         LayerType::RnnCell => "RNN",
-        LayerType::UnetBlock | LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => "Conv",
+        LayerType::UnetBlock | LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
+            "Conv"
+        }
         LayerType::CrossAttention => "MultiHeadAttention",
         LayerType::TimeEmbedding => "Gemm",
         LayerType::ResnetBlock => "Conv",
@@ -530,7 +541,12 @@ fn add_layer_attributes(node: &mut OnnxNode, layer_type: &LayerType, params: &La
                 node.attributes.push(OnnxAttribute {
                     name: "pads".to_string(),
                     attr_type: 7,
-                    ints: vec![padding as i64, padding as i64, padding as i64, padding as i64],
+                    ints: vec![
+                        padding as i64,
+                        padding as i64,
+                        padding as i64,
+                        padding as i64,
+                    ],
                     ..Default::default()
                 });
             }
@@ -647,41 +663,67 @@ fn has_bias(layer_type: &LayerType) -> bool {
     )
 }
 
-fn get_weight_dims(layer_type: &LayerType, params: &LayerParams, global: &GlobalParams, data: &DataConfig) -> Vec<i64> {
+fn get_weight_dims(
+    layer_type: &LayerType,
+    params: &LayerParams,
+    global: &GlobalParams,
+    data: &DataConfig,
+) -> Vec<i64> {
     match layer_type {
         LayerType::Dense | LayerType::Mlp => {
-            let in_dim = params.in_features.unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
-            let out_dim = params.out_features.unwrap_or(global.vocab_size.unwrap_or(data.vocab_size.unwrap_or(768))) as i64;
+            let in_dim = params
+                .in_features
+                .unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
+            let out_dim = params
+                .out_features
+                .unwrap_or(global.vocab_size.unwrap_or(data.vocab_size.unwrap_or(768)))
+                as i64;
             vec![in_dim, out_dim]
         }
         LayerType::Conv => {
             let out_ch = params.out_channels.unwrap_or(64) as i64;
-            let in_ch = params.in_channels.unwrap_or(data.image_channels.unwrap_or(3)) as i64;
+            let in_ch = params
+                .in_channels
+                .unwrap_or(data.image_channels.unwrap_or(3)) as i64;
             let k = params.kernel_size.unwrap_or(3) as i64;
             vec![out_ch, in_ch, k, k]
         }
         LayerType::Attention | LayerType::CrossAttention | LayerType::SelfAttention => {
-            let hidden = params.hidden_size.unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
+            let hidden = params
+                .hidden_size
+                .unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
             let heads = params.num_heads.unwrap_or(12) as i64;
             let head_dim = hidden / heads;
             vec![hidden, 3 * head_dim * heads]
         }
         LayerType::Embedding => {
-            let vocab = params.vocab_size.unwrap_or(global.vocab_size.unwrap_or(data.vocab_size.unwrap_or(30000))) as i64;
-            let hidden = params.hidden_size.unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
+            let vocab = params.vocab_size.unwrap_or(
+                global
+                    .vocab_size
+                    .unwrap_or(data.vocab_size.unwrap_or(30000)),
+            ) as i64;
+            let hidden = params
+                .hidden_size
+                .unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
             vec![vocab, hidden]
         }
         LayerType::Normalization => {
-            let hidden = params.hidden_size.unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
+            let hidden = params
+                .hidden_size
+                .unwrap_or(global.embedding_dim.unwrap_or(768)) as i64;
             vec![hidden]
         }
         LayerType::LstmBlock => {
-            let hidden = params.rnn_hidden_size.unwrap_or(global.rnn_hidden_size.unwrap_or(256)) as i64;
+            let hidden = params
+                .rnn_hidden_size
+                .unwrap_or(global.rnn_hidden_size.unwrap_or(256)) as i64;
             let input_size = params.in_features.unwrap_or(hidden as usize) as i64;
             vec![input_size + hidden, 4 * hidden]
         }
         LayerType::GruBlock => {
-            let hidden = params.rnn_hidden_size.unwrap_or(global.rnn_hidden_size.unwrap_or(256)) as i64;
+            let hidden = params
+                .rnn_hidden_size
+                .unwrap_or(global.rnn_hidden_size.unwrap_or(256)) as i64;
             let input_size = params.in_features.unwrap_or(hidden as usize) as i64;
             vec![input_size + hidden, 3 * hidden]
         }
@@ -787,8 +829,14 @@ mod tests {
         });
 
         let bytes = builder.serialize().unwrap();
-        assert!(!bytes.is_empty(), "Serialized ONNX model should not be empty");
+        assert!(
+            !bytes.is_empty(),
+            "Serialized ONNX model should not be empty"
+        );
         // Check that the protobuf starts with ir_version field (field 1, varint)
-        assert_eq!(bytes[0], 0x08, "First byte should be field 1 tag (ir_version)");
+        assert_eq!(
+            bytes[0], 0x08,
+            "First byte should be field 1 tag (ir_version)"
+        );
     }
 }

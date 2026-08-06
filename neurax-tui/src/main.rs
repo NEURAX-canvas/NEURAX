@@ -3,22 +3,19 @@
 //! A clean, organized interface to visualize all 35+ metrics and compare with real-world data
 
 mod app;
-mod ui;
-mod model_selector;
-mod metrics_display;
 mod comparison;
+mod metrics_display;
+mod model_selector;
 mod real_world_data;
+mod ui;
 
 use color_eyre::Result;
-use ratatui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 use app::App;
@@ -52,10 +49,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn run_app<B: ratatui::backend::Backend>(
-    terminal: &mut Terminal<B>,
-    mut app: App,
-) -> Result<()> {
+fn run_app<B: ratatui::backend::Backend>(terminal: &mut Terminal<B>, mut app: App) -> Result<()> {
     loop {
         terminal.draw(|f| ui::draw(f, &mut app))?;
 

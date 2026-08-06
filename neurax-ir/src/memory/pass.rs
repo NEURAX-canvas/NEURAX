@@ -1,12 +1,12 @@
 //! Memory IR pass
 
-use crate::traits::IrPass;
-use crate::error::MemoryError;
-use crate::NeuraxContext;
-use crate::compute::ComputeIR;
-use crate::tensor::TensorIR;
+use super::{LivenessInterval, MemoryIR, MemoryMetrics, MemorySnapshot, OomRisk, TensorSizeDist};
 use crate::architecture::ArchitectureIR;
-use super::{MemoryIR, MemoryMetrics, LivenessInterval, MemorySnapshot, OomRisk, TensorSizeDist};
+use crate::compute::ComputeIR;
+use crate::error::MemoryError;
+use crate::tensor::TensorIR;
+use crate::traits::IrPass;
+use crate::NeuraxContext;
 use neurax_formulas::dtype_bytes;
 
 /// Memory pass implementation
@@ -22,121 +22,189 @@ impl IrPass for MemoryPass {
         "MemoryIR"
     }
 
-    fn build(&self, input: &Self::Input, ctx: &NeuraxContext) -> Result<Self::Output, Self::PassError> {
+    fn build(
+        &self,
+        input: &Self::Input,
+        ctx: &NeuraxContext,
+    ) -> Result<Self::Output, Self::PassError> {
         let (_compute_ir, tensor_ir, arch_ir) = input;
         let mut memory_ir = MemoryIR::default();
-        
+
         // Calculate total_parameters with same scaling logic as ArchitecturePass
-        let global_num_layers = ctx.config.model.global_params.num_layers
-            .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
-        let num_dense_layers = ctx.config.model.global_params.num_dense_layers
-            .unwrap_or(0) as usize;
-        
-        let json_moe_count = ctx.config.model.layers.iter()
+        let global_num_layers =
+            ctx.config
+                .model
+                .global_params
+                .num_layers
+                .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
+        let num_dense_layers =
+            ctx.config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
+
+        let json_moe_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::MoE)
             .count();
-        let json_attention_count = ctx.config.model.layers.iter()
+        let json_attention_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::Attention)
             .count();
-        let json_mamba_count = ctx.config.model.layers.iter()
-            .filter(|l| matches!(l.layer_type, 
-                neurax_parser::LayerType::MambaBlock |
-                neurax_parser::LayerType::S4Block |
-                neurax_parser::LayerType::H3Block |
-                neurax_parser::LayerType::StateSpace))
+        let json_mamba_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
+            .filter(|l| {
+                matches!(
+                    l.layer_type,
+                    neurax_parser::LayerType::MambaBlock
+                        | neurax_parser::LayerType::S4Block
+                        | neurax_parser::LayerType::H3Block
+                        | neurax_parser::LayerType::StateSpace
+                )
+            })
             .count();
-        
-        let total_parameters: u64 = ctx.config.model.layers.iter().map(|l| {
-            let raw_params = crate::architecture::calculate_layer_params(&neurax_parser::Layer {
-                id: l.id.clone(),
-                layer_type: l.layer_type,
-                input_shape: l.input_shape.clone(),
-                output_shape: l.output_shape.clone(),
-                params: l.params.clone(),
-                custom_equations: l.custom_equations.clone(),
-            });
-            
-            let is_repeatable = matches!(l.layer_type,
-                neurax_parser::LayerType::Attention |
-                neurax_parser::LayerType::Mlp |
-                neurax_parser::LayerType::Normalization |
-                neurax_parser::LayerType::MoE |
-                neurax_parser::LayerType::MambaBlock |
-                neurax_parser::LayerType::S4Block |
-                neurax_parser::LayerType::H3Block |
-                neurax_parser::LayerType::StateSpace |
-                neurax_parser::LayerType::RwkvBlock |
-                neurax_parser::LayerType::RetentionBlock
-            );
-            
-            let scale = if num_dense_layers > 0 && json_moe_count > 0 {
-                if l.layer_type == neurax_parser::LayerType::MoE {
-                    let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
-                    num_moe_layers as f64 / json_moe_count.max(1) as f64
+
+        let total_parameters: u64 = ctx
+            .config
+            .model
+            .layers
+            .iter()
+            .map(|l| {
+                let raw_params =
+                    crate::architecture::calculate_layer_params(&neurax_parser::Layer {
+                        id: l.id.clone(),
+                        layer_type: l.layer_type,
+                        input_shape: l.input_shape.clone(),
+                        output_shape: l.output_shape.clone(),
+                        params: l.params.clone(),
+                        custom_equations: l.custom_equations.clone(),
+                    });
+
+                let is_repeatable = matches!(
+                    l.layer_type,
+                    neurax_parser::LayerType::Attention
+                        | neurax_parser::LayerType::Mlp
+                        | neurax_parser::LayerType::Normalization
+                        | neurax_parser::LayerType::MoE
+                        | neurax_parser::LayerType::MambaBlock
+                        | neurax_parser::LayerType::S4Block
+                        | neurax_parser::LayerType::H3Block
+                        | neurax_parser::LayerType::StateSpace
+                        | neurax_parser::LayerType::RwkvBlock
+                        | neurax_parser::LayerType::RetentionBlock
+                );
+
+                let scale = if num_dense_layers > 0 && json_moe_count > 0 {
+                    if l.layer_type == neurax_parser::LayerType::MoE {
+                        let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
+                        num_moe_layers as f64 / json_moe_count.max(1) as f64
+                    } else {
+                        let dense_blocks =
+                            json_attention_count.saturating_sub(json_moe_count).max(1);
+                        num_dense_layers as f64 / dense_blocks as f64
+                    }
                 } else {
-                    let dense_blocks = json_attention_count.saturating_sub(json_moe_count).max(1);
-                    num_dense_layers as f64 / dense_blocks as f64
-                }
-            } else {
-                // Use mamba_count for SSM models, attention_count for transformers
-                let json_block_count = json_attention_count.max(json_mamba_count).max(1);
-                if global_num_layers > json_block_count {
-                    global_num_layers as f64 / json_block_count as f64
+                    // Use mamba_count for SSM models, attention_count for transformers
+                    let json_block_count = json_attention_count.max(json_mamba_count).max(1);
+                    if global_num_layers > json_block_count {
+                        global_num_layers as f64 / json_block_count as f64
+                    } else {
+                        1.0
+                    }
+                };
+
+                if is_repeatable {
+                    (raw_params as f64 * scale).round() as u64
                 } else {
-                    1.0
+                    raw_params
                 }
-            };
-            
-            if is_repeatable { (raw_params as f64 * scale).round() as u64 } else { raw_params }
-        }).sum();
-        
+            })
+            .sum();
+
         memory_ir.total_parameters = total_parameters;
-        
+
         // Calculate liveness intervals
         memory_ir.liveness = calculate_liveness(tensor_ir, arch_ir);
-        
+
         // Build memory timeline
         memory_ir.memory_timeline = build_memory_timeline(&memory_ir.liveness, arch_ir);
-        
+
         Ok(memory_ir)
     }
 
-    fn compute_metrics(&self, output: &mut Self::Output, ctx: &NeuraxContext) -> Result<Self::Metrics, Self::PassError> {
+    fn compute_metrics(
+        &self,
+        output: &mut Self::Output,
+        ctx: &NeuraxContext,
+    ) -> Result<Self::Metrics, Self::PassError> {
         let dtype = &ctx.config.training.precision;
         let dtype_bytes_val = dtype_bytes(dtype) as u64;
-        
-        
+
         // Use total_parameters from ArchitectureIR (stored in MemoryIR during build)
         let total_parameters = output.total_parameters;
-        
-        let global_num_layers_check = ctx.config.model.global_params.num_layers
-            .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
+
+        let global_num_layers_check =
+            ctx.config
+                .model
+                .global_params
+                .num_layers
+                .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
         let _ = global_num_layers_check; // For validation purposes
-        
+
         // ── Scaling factor identical to ArchitecturePass ──────────────────────
-        let json_attention_count = ctx.config.model.layers.iter()
+        let json_attention_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::Attention)
             .count();
-        let json_mlp_count = ctx.config.model.layers.iter()
+        let json_mlp_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::Mlp)
             .count();
-        let json_moe_count = ctx.config.model.layers.iter()
+        let json_moe_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::MoE)
             .count();
-        
-        let global_num_layers = ctx.config.model.global_params.num_layers
-            .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
-        let num_dense_layers = ctx.config.model.global_params.num_dense_layers
-            .unwrap_or(0) as usize;
-        
+
+        let global_num_layers =
+            ctx.config
+                .model
+                .global_params
+                .num_layers
+                .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
+        let num_dense_layers =
+            ctx.config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
+
         // Use same scaling logic as ArchitecturePass
         let (dense_scale, moe_scale) = if num_dense_layers > 0 && json_moe_count > 0 {
             let dense_blocks = json_attention_count.saturating_sub(json_moe_count).max(1);
             let moe_blocks = json_moe_count.max(1);
             let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
-            
-            let ds = if dense_blocks > 0 { num_dense_layers as f64 / dense_blocks as f64 } else { 1.0 };
-            let ms = if moe_blocks > 0 { num_moe_layers as f64 / moe_blocks as f64 } else { 1.0 };
+
+            let ds = if dense_blocks > 0 {
+                num_dense_layers as f64 / dense_blocks as f64
+            } else {
+                1.0
+            };
+            let ms = if moe_blocks > 0 {
+                num_moe_layers as f64 / moe_blocks as f64
+            } else {
+                1.0
+            };
             (ds, ms)
         } else {
             let json_block_count = json_attention_count.max(json_mlp_count).max(1);
@@ -162,32 +230,36 @@ impl IrPass for MemoryPass {
         let num_layers = global_num_layers.max(1);
         let checkpoint_factor = if gradient_checkpointing {
             (num_layers as f64).sqrt() / num_layers as f64
-        } else { 
-            1.0 
+        } else {
+            1.0
         };
-        
+
         // Use realistic activation memory formula instead of raw liveness
         // Activation memory ≈ batch_size * seq_len * hidden_size * num_layers * dtype_bytes
         // With tensor parallelism, this is divided by tensor_parallel degree
         let batch_size = ctx.config.training.batch_size;
-        let seq_len = ctx.config.training.sequence_length
+        let seq_len = ctx
+            .config
+            .training
+            .sequence_length
             .or(ctx.config.model.global_params.sequence_length)
             .unwrap_or(2048);
         let hidden_size = ctx.config.model.global_params.embedding_dim.unwrap_or(512) as usize;
-        
+
         // For MoE models, account for expert routing overhead
         let moe_factor = if ctx.config.model.model_type.as_str() == "moe" {
             1.5 // MoE models have ~50% more activation memory due to expert routing
         } else {
             1.0
         };
-        
+
         // Per-layer activation: batch * seq * hidden * dtype_bytes
         let per_layer_activation = batch_size * seq_len * hidden_size * dtype_bytes_val as usize;
-        
+
         // Total activation across all layers
-        let total_activation = per_layer_activation as f64 * num_layers as f64 * moe_factor * checkpoint_factor;
-        
+        let total_activation =
+            per_layer_activation as f64 * num_layers as f64 * moe_factor * checkpoint_factor;
+
         // Divide by tensor parallelism degree (activations are sharded across TP ranks)
         let tensor_parallel = ctx.config.training.parallelism.tensor_parallel.max(1) as f64;
         let activation_memory_bytes = (total_activation / tensor_parallel).round() as u64;
@@ -230,13 +302,17 @@ impl IrPass for MemoryPass {
         let (param_factor, grad_factor, optim_factor) = match zero_stage {
             1 => (1.0, 1.0, 1.0 / num_gpus as f64),
             2 => (1.0, 1.0 / num_gpus as f64, 1.0 / num_gpus as f64),
-            3 => (1.0 / num_gpus as f64, 1.0 / num_gpus as f64, 1.0 / num_gpus as f64),
+            3 => (
+                1.0 / num_gpus as f64,
+                1.0 / num_gpus as f64,
+                1.0 / num_gpus as f64,
+            ),
             _ => (1.0, 1.0, 1.0),
         };
 
-        let effective_param_mem   = (parameter_memory_bytes as f64 * param_factor) as u64;
-        let effective_grad_mem    = (gradient_memory_bytes as f64 * grad_factor) as u64;
-        let effective_optim_mem   = (optimizer_state_bytes as f64 * optim_factor) as u64;
+        let effective_param_mem = (parameter_memory_bytes as f64 * param_factor) as u64;
+        let effective_grad_mem = (gradient_memory_bytes as f64 * grad_factor) as u64;
+        let effective_optim_mem = (optimizer_state_bytes as f64 * optim_factor) as u64;
 
         // ── Peak VRAM (correct formula) ───────────────────────────────────
         // Per-GPU peak = params_per_gpu + activations + gradients_per_gpu + optimizer_per_gpu
@@ -247,7 +323,11 @@ impl IrPass for MemoryPass {
             + effective_optim_mem;
 
         // GPU VRAM capacity
-        let gpu_vram_bytes = ctx.config.hardware.gpus.first()
+        let gpu_vram_bytes = ctx
+            .config
+            .hardware
+            .gpus
+            .first()
             .map(|g| g.memory_gb as u64 * 1024 * 1024 * 1024)
             .unwrap_or(40 * 1024 * 1024 * 1024);
 
@@ -264,7 +344,11 @@ impl IrPass for MemoryPass {
         );
 
         // Memory bandwidth requirement
-        let memory_bandwidth_req = ctx.config.hardware.gpus.first()
+        let memory_bandwidth_req = ctx
+            .config
+            .hardware
+            .gpus
+            .first()
             .map(|g| g.memory_bandwidth_gbs)
             .unwrap_or(1000.0);
 
@@ -287,12 +371,20 @@ impl IrPass for MemoryPass {
         Ok(metrics)
     }
 
-    fn validate(&self, _output: &Self::Output, metrics: &Self::Metrics) -> Result<(), Self::PassError> {
+    fn validate(
+        &self,
+        _output: &Self::Output,
+        metrics: &Self::Metrics,
+    ) -> Result<(), Self::PassError> {
         if metrics.peak_vram_bytes == 0 {
-            return Err(MemoryError::MemoryCalculationFailed("Peak VRAM is zero".to_string()));
+            return Err(MemoryError::MemoryCalculationFailed(
+                "Peak VRAM is zero".to_string(),
+            ));
         }
         if metrics.parameter_memory_bytes == 0 {
-            return Err(MemoryError::MemoryCalculationFailed("Parameter memory is zero".to_string()));
+            return Err(MemoryError::MemoryCalculationFailed(
+                "Parameter memory is zero".to_string(),
+            ));
         }
         Ok(())
     }
@@ -300,19 +392,22 @@ impl IrPass for MemoryPass {
 
 fn calculate_liveness(tensor_ir: &TensorIR, arch_ir: &ArchitectureIR) -> Vec<LivenessInterval> {
     let mut intervals = Vec::new();
-    
+
     for (id, tensor) in &tensor_ir.tensors {
         // Find the step where this tensor is created and last used
-        let start_step = arch_ir.layers.iter()
+        let start_step = arch_ir
+            .layers
+            .iter()
             .position(|l| l.id == tensor.produced_by)
             .unwrap_or(0);
-        
-        let end_step = tensor.consumed_by.iter()
-            .filter_map(|consumer| arch_ir.layers.iter()
-                .position(|l| &l.id == consumer))
+
+        let end_step = tensor
+            .consumed_by
+            .iter()
+            .filter_map(|consumer| arch_ir.layers.iter().position(|l| &l.id == consumer))
             .max()
             .unwrap_or(start_step);
-        
+
         intervals.push(LivenessInterval {
             tensor_id: id.clone(),
             size_bytes: tensor.size_bytes,
@@ -320,32 +415,37 @@ fn calculate_liveness(tensor_ir: &TensorIR, arch_ir: &ArchitectureIR) -> Vec<Liv
             end_step,
         });
     }
-    
+
     intervals
 }
 
-fn build_memory_timeline(liveness: &[LivenessInterval], arch_ir: &ArchitectureIR) -> Vec<MemorySnapshot> {
+fn build_memory_timeline(
+    liveness: &[LivenessInterval],
+    arch_ir: &ArchitectureIR,
+) -> Vec<MemorySnapshot> {
     let num_steps = arch_ir.layers.len();
     let mut timeline = Vec::new();
-    
+
     for step in 0..num_steps {
-        let live_tensors: Vec<_> = liveness.iter()
+        let live_tensors: Vec<_> = liveness
+            .iter()
             .filter(|l| l.start_step <= step && l.end_step >= step)
             .map(|l| l.tensor_id.clone())
             .collect();
-        
-        let total_memory: u64 = liveness.iter()
+
+        let total_memory: u64 = liveness
+            .iter()
             .filter(|l| l.start_step <= step && l.end_step >= step)
             .map(|l| l.size_bytes)
             .sum();
-        
+
         timeline.push(MemorySnapshot {
             step,
             live_tensors,
             total_memory,
         });
     }
-    
+
     timeline
 }
 
@@ -358,18 +458,18 @@ fn calculate_max_batch_size(
 ) -> u32 {
     // Fixed memory (params + optimizer states)
     let fixed = param_bytes + optim_bytes;
-    
+
     // Memory per sample (activation / batch)
     let per_sample = if current_batch > 0 {
         activation_bytes / current_batch as u64
     } else {
         1024 // Default estimate
     };
-    
+
     if per_sample == 0 {
         return current_batch as u32;
     }
-    
+
     let available = gpu_vram.saturating_sub(fixed);
     (available / per_sample) as u32
 }
@@ -378,10 +478,14 @@ fn calculate_max_batch_size(
 fn estimate_memory_time(ctx: &NeuraxContext, _bytes_moved: u64) -> f64 {
     // GB/s = bytes / time
     // Estimate based on GPU specs
-    let gpu_bw = ctx.config.hardware.gpus.first()
+    let gpu_bw = ctx
+        .config
+        .hardware
+        .gpus
+        .first()
         .map(|g| g.memory_bandwidth_gbs)
         .unwrap_or(1000.0);
-    
+
     // Assume we use ~70% of peak bandwidth
     gpu_bw * 0.7
 }
@@ -390,7 +494,10 @@ fn estimate_memory_time(ctx: &NeuraxContext, _bytes_moved: u64) -> f64 {
 #[allow(dead_code)]
 fn calculate_memory_bandwidth(ctx: &NeuraxContext, _peak_vram_bytes: u64) -> f64 {
     // Estimate memory bandwidth requirement based on GPU specs
-    ctx.config.hardware.gpus.first()
+    ctx.config
+        .hardware
+        .gpus
+        .first()
         .map(|g| g.memory_bandwidth_gbs)
         .unwrap_or(1000.0)
 }

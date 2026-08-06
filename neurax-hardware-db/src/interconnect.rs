@@ -22,12 +22,12 @@ impl InterconnectSpec {
             latency_ns: 1000.0,
         }
     }
-    
+
     /// Calculate transfer time for given bytes
     pub fn transfer_time_ms(&self, bytes: u64) -> f64 {
         bytes as f64 / (self.bandwidth_gbs * 1e9) * 1000.0 + self.latency_ns / 1e6
     }
-    
+
     /// Calculate All-Reduce time for N GPUs
     /// Ring All-Reduce: 2 × (N-1) / N × data_size / bandwidth
     pub fn allreduce_time_ms(&self, bytes: u64, num_gpus: u32) -> f64 {

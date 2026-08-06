@@ -1,8 +1,8 @@
 //! Integration test for JSON absorption with LLaMA-like model
 //! Validates that every JSON field is correctly absorbed and injected into IRs
 
-use neurax_parser::{parse_model_config, AbsorbedModel};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel};
 
 /// LLaMA-7B style JSON for testing complete absorption
 const LLAMA_7B_JSON: &str = r#"
@@ -103,96 +103,139 @@ const LLAMA_7B_JSON: &str = r#"
 #[test]
 fn test_llama7b_absorption() {
     // Parse JSON
-    let config = parse_model_config(LLAMA_7B_JSON)
-        .expect("Failed to parse LLaMA-7B JSON");
-    
+    let config = parse_model_config(LLAMA_7B_JSON).expect("Failed to parse LLaMA-7B JSON");
+
     // Absorb into AbsorbedModel
     let absorbed = AbsorbedModel::absorb(config);
-    
+
     // ── Validate GlobalResolutionContext ─────────────────────────────────
     let grc = &absorbed.resolution_context;
-    
+
     // Core dimensions
     assert_eq!(grc.hidden_size, Some(4096), "hidden_size should be 4096");
     assert_eq!(grc.num_layers, Some(32), "num_layers should be 32");
     assert_eq!(grc.vocab_size, Some(32000), "vocab_size should be 32000");
-    assert_eq!(grc.intermediate_size, Some(11008), "intermediate_size should be 11008");
-    assert_eq!(grc.num_attention_heads, Some(32), "num_attention_heads should be 32");
-    assert_eq!(grc.num_key_value_heads, Some(8), "num_key_value_heads should be 8 (GQA)");
+    assert_eq!(
+        grc.intermediate_size,
+        Some(11008),
+        "intermediate_size should be 11008"
+    );
+    assert_eq!(
+        grc.num_attention_heads,
+        Some(32),
+        "num_attention_heads should be 32"
+    );
+    assert_eq!(
+        grc.num_key_value_heads,
+        Some(8),
+        "num_key_value_heads should be 8 (GQA)"
+    );
     assert_eq!(grc.head_dim, 128, "head_dim should be 128");
-    
+
     // Derived values
     assert_eq!(grc.dtype_bytes, 2, "bf16 should be 2 bytes");
     assert_eq!(grc.optimizer_bytes_per_param, 8, "AdamW should be 8 bytes");
     assert!(grc.h_kv.is_some(), "h_kv should be calculated for GQA");
-    
+
     // Boolean flags
-    assert!(grc.gradient_checkpointing, "gradient_checkpointing should be true");
-    assert!(grc.tied_embeddings, "tied_embeddings should be true for transformer");
-    
+    assert!(
+        grc.gradient_checkpointing,
+        "gradient_checkpointing should be true"
+    );
+    assert!(
+        grc.tied_embeddings,
+        "tied_embeddings should be true for transformer"
+    );
+
     // Hardware
     assert_eq!(grc.num_gpus, 8, "num_gpus should be 8");
-    assert!((grc.primary_gpu_tflops - 312.0).abs() < 0.1, "GPU TFLOPs should be 312");
-    assert!((grc.primary_gpu_memory_gb - 80.0).abs() < 0.1, "GPU memory should be 80GB");
-    
+    assert!(
+        (grc.primary_gpu_tflops - 312.0).abs() < 0.1,
+        "GPU TFLOPs should be 312"
+    );
+    assert!(
+        (grc.primary_gpu_memory_gb - 80.0).abs() < 0.1,
+        "GPU memory should be 80GB"
+    );
+
     // Parallelism
     assert_eq!(grc.dp, 2, "Data parallel should be 2");
     assert_eq!(grc.tp, 1, "Tensor parallel should be 1");
     assert_eq!(grc.pp, 1, "Pipeline parallel should be 1");
     assert_eq!(grc.zero, 2, "ZeRO stage should be 2");
-    
+
     // Symbol table
-    assert!(grc.symbol_table.contains_key("B"), "B should be in symbol table");
-    assert!(grc.symbol_table.contains_key("H"), "H should be in symbol table");
-    assert!(grc.symbol_table.contains_key("V"), "V should be in symbol table");
-    
+    assert!(
+        grc.symbol_table.contains_key("B"),
+        "B should be in symbol table"
+    );
+    assert!(
+        grc.symbol_table.contains_key("H"),
+        "H should be in symbol table"
+    );
+    assert!(
+        grc.symbol_table.contains_key("V"),
+        "V should be in symbol table"
+    );
+
     // Confidence score
-    assert!(grc.confidence_score > 0.5, "Confidence score should be > 0.5");
-    
+    assert!(
+        grc.confidence_score > 0.5,
+        "Confidence score should be > 0.5"
+    );
+
     // ── Validate IR Injection ───────────────────────────────────────────
     let arch_input = IrInjector::to_architecture_ir(&absorbed);
-    
+
     assert_eq!(arch_input.hidden_size, Some(4096));
     assert_eq!(arch_input.num_layers, Some(32));
     assert_eq!(arch_input.vocab_size, Some(32000));
     assert_eq!(arch_input.head_dim, 128);
-    
+
     // Memory config
     let mem_config = IrInjector::configure_memory_pass(&absorbed);
-    
+
     assert_eq!(mem_config.dtype_bytes, 2);
     assert_eq!(mem_config.optimizer_bytes, 8);
     assert!(mem_config.checkpointing_enabled);
     assert_eq!(mem_config.zero_stage, 2);
     assert_eq!(mem_config.num_gpus, 8);
     assert_eq!(mem_config.num_kv_heads, 8);
-    
+
     // Hardware config
     let hw_config = IrInjector::configure_hardware_pass(&absorbed);
-    
+
     assert!((hw_config.gpu_tflops_fp16 - 312.0).abs() < 0.1);
     assert!(hw_config.has_tensor_cores);
     assert_eq!(hw_config.dp, 2);
-    
+
     // Cost config
     let cost_config = IrInjector::configure_cost_pass(&absorbed);
-    
+
     assert!((cost_config.gpu_hour_usd - 4.35).abs() < 0.01);
     assert!((cost_config.energy_kwh_usd - 0.12).abs() < 0.01);
     assert_eq!(cost_config.num_gpus, 8);
-    
+
     // ── Validate Parameter Calculation ───────────────────────────────────
     let total_params = IrInjector::calculate_total_params(&absorbed);
-    
+
     // Our calculation: embed + 32*(attn + mlp) + norms
     // = 131M + 32 * 177M + 266K ≈ 5.8B
     // (LLaMA-7B has ~6.7B with additional components we don't model)
-    assert!(total_params > 5_500_000_000, "Expected > 5.5B params, got {}", total_params);
-    assert!(total_params < 6_500_000_000, "Expected < 6.5B params, got {}", total_params);
-    
+    assert!(
+        total_params > 5_500_000_000,
+        "Expected > 5.5B params, got {}",
+        total_params
+    );
+    assert!(
+        total_params < 6_500_000_000,
+        "Expected < 6.5B params, got {}",
+        total_params
+    );
+
     // ── Validate FLOPs Calculation ───────────────────────────────────────
     let flops = IrInjector::calculate_flops_per_token(&absorbed);
-    
+
     // Should be non-zero for a valid model
     assert!(flops > 0, "FLOPs per token should be > 0");
 }
@@ -201,19 +244,19 @@ fn test_llama7b_absorption() {
 fn test_symbol_resolution() {
     let config = parse_model_config(LLAMA_7B_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
-    
+
     // Test symbol table resolution
     let grc = &absorbed.resolution_context;
-    
+
     // B should resolve to batch_size
     assert_eq!(grc.symbol_table.get("B"), Some(&32u64));
-    
+
     // H should resolve to hidden_size
     assert_eq!(grc.symbol_table.get("H"), Some(&4096u64));
-    
+
     // V should resolve to vocab_size
     assert_eq!(grc.symbol_table.get("V"), Some(&32000u64));
-    
+
     // dtype_bytes should be 2 for bf16
     assert_eq!(grc.symbol_table.get("dtype_bytes"), Some(&2u64));
 }

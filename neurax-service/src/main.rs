@@ -1,9 +1,9 @@
 use actix_cors::Cors;
+use actix_web::http::header::HeaderName;
 use actix_web::{
     http::{header, StatusCode},
     middleware, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-use actix_web::http::header::HeaderName;
 use base64::Engine;
 use chrono::Datelike;
 use dashmap::DashMap;
@@ -58,7 +58,11 @@ fn api_key_from_req(req: &HttpRequest) -> Option<String> {
         }
     }
     // Check Authorization: Bearer nrx_...
-    if let Some(auth) = req.headers().get(header::AUTHORIZATION).and_then(|v| v.to_str().ok()) {
+    if let Some(auth) = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
         if let Some(token) = auth.strip_prefix("Bearer ") {
             let token = token.trim();
             if token.starts_with("nrx_") {
@@ -108,14 +112,18 @@ async fn auth_any(req: &HttpRequest, state: &AppState) -> Result<String, HttpRes
 }
 
 /// Check if an API key has the required scope
-fn check_api_key_scope(req: &HttpRequest, state: &AppState, required_scope: &str) -> Result<(), HttpResponse> {
-    let key = api_key_from_req(req).ok_or_else(|| {
-        HttpResponse::build(StatusCode::UNAUTHORIZED).body("Missing API key")
-    })?;
+fn check_api_key_scope(
+    req: &HttpRequest,
+    state: &AppState,
+    required_scope: &str,
+) -> Result<(), HttpResponse> {
+    let key = api_key_from_req(req)
+        .ok_or_else(|| HttpResponse::build(StatusCode::UNAUTHORIZED).body("Missing API key"))?;
 
-    let api_key_info = state.api_keys.get(&key).ok_or_else(|| {
-        HttpResponse::build(StatusCode::UNAUTHORIZED).body("Invalid API key")
-    })?;
+    let api_key_info = state
+        .api_keys
+        .get(&key)
+        .ok_or_else(|| HttpResponse::build(StatusCode::UNAUTHORIZED).body("Invalid API key"))?;
 
     if !api_key_info.value().active {
         return Err(HttpResponse::build(StatusCode::FORBIDDEN).body("API key has been revoked"));
@@ -123,7 +131,10 @@ fn check_api_key_scope(req: &HttpRequest, state: &AppState, required_scope: &str
 
     let scopes = &api_key_info.value().scopes;
     // "agent" scope grants access to all agent endpoints
-    if !scopes.contains(&required_scope.to_string()) && !scopes.contains(&"agent".to_string()) && !scopes.contains(&"all".to_string()) {
+    if !scopes.contains(&required_scope.to_string())
+        && !scopes.contains(&"agent".to_string())
+        && !scopes.contains(&"all".to_string())
+    {
         return Err(HttpResponse::build(StatusCode::FORBIDDEN)
             .body(format!("API key lacks '{}' scope", required_scope)));
     }
@@ -1168,7 +1179,10 @@ async fn inference_simulate(
     tracing::info!("[INFERENCE] Request received");
 
     if let Err(resp) = require_verified_email(&http_req).await {
-        tracing::warn!("[INFERENCE] Auth failed after {}ms", start.elapsed().as_millis());
+        tracing::warn!(
+            "[INFERENCE] Auth failed after {}ms",
+            start.elapsed().as_millis()
+        );
         return resp;
     }
 
@@ -1177,8 +1191,7 @@ async fn inference_simulate(
         neurax_ir::inference::InferencePass::run(&params)
     });
 
-    let timeout_result =
-        actix_web::rt::time::timeout(Duration::from_secs(30), result).await;
+    let timeout_result = actix_web::rt::time::timeout(Duration::from_secs(30), result).await;
 
     let elapsed = start.elapsed();
     match timeout_result {
@@ -1187,7 +1200,10 @@ async fn inference_simulate(
             HttpResponse::Ok().json(InferenceResponse { report })
         }
         Ok(Err(_join_err)) => {
-            tracing::error!("[INFERENCE] Task join error after {}ms", elapsed.as_millis());
+            tracing::error!(
+                "[INFERENCE] Task join error after {}ms",
+                elapsed.as_millis()
+            );
             HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Inference task failed unexpectedly")
         }
@@ -1222,15 +1238,15 @@ struct ExportOnnxResponse {
     size_bytes: usize,
 }
 
-async fn export_onnx(
-    http_req: HttpRequest,
-    req: web::Json<ExportOnnxRequest>,
-) -> impl Responder {
+async fn export_onnx(http_req: HttpRequest, req: web::Json<ExportOnnxRequest>) -> impl Responder {
     let start = std::time::Instant::now();
     tracing::info!("[EXPORT ONNX] Request received");
 
     if let Err(resp) = require_verified_email(&http_req).await {
-        tracing::warn!("[EXPORT ONNX] Auth failed after {}ms", start.elapsed().as_millis());
+        tracing::warn!(
+            "[EXPORT ONNX] Auth failed after {}ms",
+            start.elapsed().as_millis()
+        );
         return resp;
     }
 
@@ -1262,8 +1278,7 @@ async fn export_onnx(
     let model_name = req.model_name.clone();
     let result = actix_web::rt::task::spawn_blocking(move || {
         // Run the analysis pipeline to get the ArchitectureIR
-        let analysis = neurax_core::run_analysis(config.clone())
-            .map_err(|e| e.to_string())?;
+        let analysis = neurax_core::run_analysis(config.clone()).map_err(|e| e.to_string())?;
 
         // Export to ONNX
         neurax_core::export::export_onnx(
@@ -1299,11 +1314,18 @@ async fn export_onnx(
             })
         }
         Ok(Ok(Err(e))) => {
-            tracing::error!("[EXPORT ONNX] Export error after {}ms: {}", elapsed.as_millis(), e);
+            tracing::error!(
+                "[EXPORT ONNX] Export error after {}ms: {}",
+                elapsed.as_millis(),
+                e
+            );
             HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string())
         }
         Ok(Err(_join_err)) => {
-            tracing::error!("[EXPORT ONNX] Task join error after {}ms", elapsed.as_millis());
+            tracing::error!(
+                "[EXPORT ONNX] Task join error after {}ms",
+                elapsed.as_millis()
+            );
             HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Export task failed unexpectedly")
         }
@@ -1360,40 +1382,45 @@ async fn export_github(
     tracing::info!("[EXPORT GITHUB] Request received");
 
     if let Err(resp) = require_verified_email(&http_req).await {
-        tracing::warn!("[EXPORT GITHUB] Auth failed after {}ms", start.elapsed().as_millis());
+        tracing::warn!(
+            "[EXPORT GITHUB] Auth failed after {}ms",
+            start.elapsed().as_millis()
+        );
         return resp;
     }
 
     let branch = req.branch.clone().unwrap_or_else(|| "main".to_string());
-    let commit_message = req.commit_message.clone().unwrap_or_else(|| {
-        "Add model architecture from NEURAX".to_string()
-    });
+    let commit_message = req
+        .commit_message
+        .clone()
+        .unwrap_or_else(|| "Add model architecture from NEURAX".to_string());
     let create_pr = req.create_pr.unwrap_or(false);
     let pr_branch = req.pr_branch.clone().unwrap_or_else(|| {
-        format!("neurax/update-{}", chrono::Utc::now().format("%Y%m%d%H%M%S"))
+        format!(
+            "neurax/update-{}",
+            chrono::Utc::now().format("%Y%m%d%H%M%S")
+        )
     });
 
     let github_token = req.github_token.trim().to_string();
     let repo = req.repo.trim().to_string();
 
     if github_token.is_empty() || repo.is_empty() {
-        return HttpResponse::build(StatusCode::BAD_REQUEST)
-            .json(ExportGitHubResponse {
-                success: false,
-                file_urls: vec![],
-                pr_url: None,
-                error: Some("GitHub token and repository are required".to_string()),
-            });
+        return HttpResponse::build(StatusCode::BAD_REQUEST).json(ExportGitHubResponse {
+            success: false,
+            file_urls: vec![],
+            pr_url: None,
+            error: Some("GitHub token and repository are required".to_string()),
+        });
     }
 
     if req.files.is_empty() {
-        return HttpResponse::build(StatusCode::BAD_REQUEST)
-            .json(ExportGitHubResponse {
-                success: false,
-                file_urls: vec![],
-                pr_url: None,
-                error: Some("No files to export".to_string()),
-            });
+        return HttpResponse::build(StatusCode::BAD_REQUEST).json(ExportGitHubResponse {
+            success: false,
+            file_urls: vec![],
+            pr_url: None,
+            error: Some("No files to export".to_string()),
+        });
     }
 
     let client = reqwest::Client::new();
@@ -1417,50 +1444,54 @@ async fn export_github(
                     Ok(v) => v,
                     Err(e) => {
                         tracing::error!("[EXPORT GITHUB] Failed to parse branch response: {}", e);
-                        return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                            .json(ExportGitHubResponse {
+                        return HttpResponse::build(StatusCode::BAD_GATEWAY).json(
+                            ExportGitHubResponse {
                                 success: false,
                                 file_urls: vec![],
                                 pr_url: None,
                                 error: Some(format!("Failed to read base branch: {}", e)),
-                            });
+                            },
+                        );
                     }
                 };
                 let sha = data["object"]["sha"].as_str().map(|s| s.to_string());
                 match sha {
                     Some(s) => s,
                     None => {
-                        return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                            .json(ExportGitHubResponse {
+                        return HttpResponse::build(StatusCode::BAD_GATEWAY).json(
+                            ExportGitHubResponse {
                                 success: false,
                                 file_urls: vec![],
                                 pr_url: None,
                                 error: Some("Could not resolve base branch SHA".to_string()),
-                            });
+                            },
+                        );
                     }
                 }
             }
             Ok(resp) => {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                tracing::error!("[EXPORT GITHUB] Failed to get branch: {} - {}", status, body);
-                return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                    .json(ExportGitHubResponse {
-                        success: false,
-                        file_urls: vec![],
-                        pr_url: None,
-                        error: Some(format!("GitHub API error ({}): {}", status, body)),
-                    });
+                tracing::error!(
+                    "[EXPORT GITHUB] Failed to get branch: {} - {}",
+                    status,
+                    body
+                );
+                return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
+                    success: false,
+                    file_urls: vec![],
+                    pr_url: None,
+                    error: Some(format!("GitHub API error ({}): {}", status, body)),
+                });
             }
             Err(e) => {
                 tracing::error!("[EXPORT GITHUB] Request failed: {}", e);
-                return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                    .json(ExportGitHubResponse {
-                        success: false,
-                        file_urls: vec![],
-                        pr_url: None,
-                        error: Some(format!("GitHub API request failed: {}", e)),
-                    });
+                return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
+                    success: false,
+                    file_urls: vec![],
+                    pr_url: None,
+                    error: Some(format!("GitHub API request failed: {}", e)),
+                });
             }
         }
     } else {
@@ -1489,24 +1520,26 @@ async fn export_github(
             Ok(resp) => {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                tracing::error!("[EXPORT GITHUB] Failed to create branch: {} - {}", status, body);
-                return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                    .json(ExportGitHubResponse {
-                        success: false,
-                        file_urls: vec![],
-                        pr_url: None,
-                        error: Some(format!("Failed to create branch ({}): {}", status, body)),
-                    });
+                tracing::error!(
+                    "[EXPORT GITHUB] Failed to create branch: {} - {}",
+                    status,
+                    body
+                );
+                return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
+                    success: false,
+                    file_urls: vec![],
+                    pr_url: None,
+                    error: Some(format!("Failed to create branch ({}): {}", status, body)),
+                });
             }
             Err(e) => {
                 tracing::error!("[EXPORT GITHUB] Request failed: {}", e);
-                return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                    .json(ExportGitHubResponse {
-                        success: false,
-                        file_urls: vec![],
-                        pr_url: None,
-                        error: Some(format!("GitHub API request failed: {}", e)),
-                    });
+                return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
+                    success: false,
+                    file_urls: vec![],
+                    pr_url: None,
+                    error: Some(format!("GitHub API request failed: {}", e)),
+                });
             }
         }
     }
@@ -1515,7 +1548,8 @@ async fn export_github(
     let mut file_urls: Vec<String> = vec![];
 
     for file in &req.files {
-        let content_base64 = base64::engine::general_purpose::STANDARD.encode(file.content.as_bytes());
+        let content_base64 =
+            base64::engine::general_purpose::STANDARD.encode(file.content.as_bytes());
         let put_url = format!("{}/contents/{}", api_base, file.path);
 
         // Check if file already exists to get the SHA
@@ -1528,11 +1562,11 @@ async fn export_github(
                 .send()
                 .await;
             match check_resp {
-                Ok(resp) if resp.status().is_success() => {
-                    resp.json::<serde_json::Value>().await
-                        .ok()
-                        .and_then(|data| data["sha"].as_str().map(|s| s.to_string()))
-                }
+                Ok(resp) if resp.status().is_success() => resp
+                    .json::<serde_json::Value>()
+                    .await
+                    .ok()
+                    .and_then(|data| data["sha"].as_str().map(|s| s.to_string())),
                 _ => None,
             }
         };
@@ -1564,24 +1598,33 @@ async fn export_github(
             Ok(resp) => {
                 let status = resp.status();
                 let response_body = resp.text().await.unwrap_or_default();
-                tracing::error!("[EXPORT GITHUB] Failed to push {}: {} - {}", file.path, status, response_body);
-                return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                    .json(ExportGitHubResponse {
-                        success: false,
-                        file_urls,
-                        pr_url: None,
-                        error: Some(format!("Failed to push {} ({}): {}", file.path, status, response_body)),
-                    });
+                tracing::error!(
+                    "[EXPORT GITHUB] Failed to push {}: {} - {}",
+                    file.path,
+                    status,
+                    response_body
+                );
+                return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
+                    success: false,
+                    file_urls,
+                    pr_url: None,
+                    error: Some(format!(
+                        "Failed to push {} ({}): {}",
+                        file.path, status, response_body
+                    )),
+                });
             }
             Err(e) => {
                 tracing::error!("[EXPORT GITHUB] Request failed for {}: {}", file.path, e);
-                return HttpResponse::build(StatusCode::BAD_GATEWAY)
-                    .json(ExportGitHubResponse {
-                        success: false,
-                        file_urls,
-                        pr_url: None,
-                        error: Some(format!("GitHub API request failed for {}: {}", file.path, e)),
-                    });
+                return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
+                    success: false,
+                    file_urls,
+                    pr_url: None,
+                    error: Some(format!(
+                        "GitHub API request failed for {}: {}",
+                        file.path, e
+                    )),
+                });
             }
         }
     }
@@ -1736,7 +1779,10 @@ async fn analyze_compare(
     req: web::Json<CompareRequest>,
 ) -> impl Responder {
     let start = std::time::Instant::now();
-    tracing::info!("[COMPARE] Request received with {} configs", req.configs.len());
+    tracing::info!(
+        "[COMPARE] Request received with {} configs",
+        req.configs.len()
+    );
 
     let _user_id = match auth_any(&http_req, &state).await {
         Ok(id) => id,
@@ -1775,18 +1821,21 @@ async fn analyze_compare(
             // Override hardware in the topology JSON
             if let Some(hw) = topology.get_mut("hardware") {
                 if let Some(hw_obj) = hw.as_object_mut() {
-                    hw_obj.insert("name".to_string(), serde_json::Value::String(cfg.hardware.clone()));
+                    hw_obj.insert(
+                        "name".to_string(),
+                        serde_json::Value::String(cfg.hardware.clone()),
+                    );
                     hw_obj.insert(
                         "count".to_string(),
-                        serde_json::Value::Number(
-                            serde_json::Number::from(cfg.gpu_count.unwrap_or(1)),
-                        ),
+                        serde_json::Value::Number(serde_json::Number::from(
+                            cfg.gpu_count.unwrap_or(1),
+                        )),
                     );
                     hw_obj.insert(
                         "memory_gb".to_string(),
-                        serde_json::Value::Number(
-                            serde_json::Number::from(cfg.gpu_memory_gb.unwrap_or(gpu_spec.memory_gb)),
-                        ),
+                        serde_json::Value::Number(serde_json::Number::from(
+                            cfg.gpu_memory_gb.unwrap_or(gpu_spec.memory_gb),
+                        )),
                     );
                     hw_obj.insert(
                         "tflops_fp16".to_string(),
@@ -1941,7 +1990,11 @@ async fn analyze_compare(
             HttpResponse::Ok().json(CompareResponse { results })
         }
         Err(e) => {
-            tracing::error!("[COMPARE] Task join error after {}ms: {}", elapsed.as_millis(), e);
+            tracing::error!(
+                "[COMPARE] Task join error after {}ms: {}",
+                elapsed.as_millis(),
+                e
+            );
             HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Comparison task failed unexpectedly")
         }
@@ -1982,18 +2035,13 @@ async fn time_machine(http_req: HttpRequest, req: web::Json<TimeMachineRequest>)
                 report.confidence_score,
                 &params,
             );
-            tracing::info!(
-                "[TIMEMACHINE] Success in {}ms",
-                start.elapsed().as_millis()
-            );
+            tracing::info!("[TIMEMACHINE] Success in {}ms", start.elapsed().as_millis());
             HttpResponse::Ok().json(TimeMachineResponse { projection })
         }
         Ok(Ok(Err(e))) => HttpResponse::build(StatusCode::BAD_REQUEST).body(e.to_string()),
         Ok(Err(_)) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
             .body("Time Machine task failed unexpectedly"),
-        Err(_) => {
-            HttpResponse::build(StatusCode::GATEWAY_TIMEOUT).body("Time Machine timed out")
-        }
+        Err(_) => HttpResponse::build(StatusCode::GATEWAY_TIMEOUT).body("Time Machine timed out"),
     }
 }
 
@@ -2048,15 +2096,18 @@ async fn analyze_stream_start(
 
     // Insert job info
     let view_token = uuid::Uuid::new_v4().to_string();
-    state.jobs.insert(job_id.clone(), JobInfo {
-        job_id: job_id.clone(),
-        user_id: user.id.clone(),
-        view_token: view_token.clone(),
-        status: "running".to_string(),
-        created_at_ms: created_at,
-        completed_at_ms: None,
-        error: None,
-    });
+    state.jobs.insert(
+        job_id.clone(),
+        JobInfo {
+            job_id: job_id.clone(),
+            user_id: user.id.clone(),
+            view_token: view_token.clone(),
+            status: "running".to_string(),
+            created_at_ms: created_at,
+            completed_at_ms: None,
+            error: None,
+        },
+    );
 
     let job_id_clone = job_id.clone();
     let topology = req.topology.clone();
@@ -2103,7 +2154,8 @@ async fn analyze_stream_start(
         };
 
         // Create emitter that broadcasts events
-        let (event_sender, event_receiver) = tokio::sync::broadcast::channel::<neurax_core::streaming::AnalysisEvent>(256);
+        let (event_sender, event_receiver) =
+            tokio::sync::broadcast::channel::<neurax_core::streaming::AnalysisEvent>(256);
         // Spawn a task that forwards AnalysisEvents to the SSE string channel
         {
             let channels_clone = state_inner.channels.clone();
@@ -2125,18 +2177,14 @@ async fn analyze_stream_start(
             });
         }
         let emitter = neurax_core::streaming::SharedEmitter::new(
-            neurax_core::streaming::BroadcastEmitter::from_sender(event_sender)
+            neurax_core::streaming::BroadcastEmitter::from_sender(event_sender),
         );
 
         // Clone job_id for use after spawn_blocking
         let job_id_result = job_id_clone.clone();
         // Run analysis in blocking context
         let result = actix_web::rt::task::spawn_blocking(move || {
-            neurax_core::streaming::run_analysis_streaming_fallible(
-                config,
-                emitter,
-                &job_id_clone,
-            )
+            neurax_core::streaming::run_analysis_streaming_fallible(config, emitter, &job_id_clone)
         })
         .await;
 
@@ -2149,15 +2197,19 @@ async fn analyze_stream_start(
                     Err(e) => serde_json::json!({"error": e.to_string()}),
                 };
 
-                state_inner.results.insert(job_id_result.clone(), report_value);
+                state_inner
+                    .results
+                    .insert(job_id_result.clone(), report_value);
 
                 // Update job status
                 if let Some(mut job) = state_inner.jobs.get_mut(&job_id_result) {
                     job.status = "completed".to_string();
-                    job.completed_at_ms = Some(std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_millis() as u64);
+                    job.completed_at_ms = Some(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_millis() as u64,
+                    );
                 }
             }
             Ok(Err(e)) => {
@@ -2373,10 +2425,7 @@ async fn analyze_status(
 
 // ─── Project CRUD Handlers ──────────────────────────────────────────
 
-async fn projects_list(
-    http_req: HttpRequest,
-    state: web::Data<AppState>,
-) -> impl Responder {
+async fn projects_list(http_req: HttpRequest, state: web::Data<AppState>) -> impl Responder {
     let user = match require_verified_email(&http_req).await {
         Ok(u) => u,
         Err(resp) => return resp,
@@ -2631,27 +2680,26 @@ async fn credits_get(http_req: HttpRequest, state: web::Data<AppState>) -> impl 
 
     let credit_info = state.credits.get(&user.id).unwrap().value().clone();
 
-    HttpResponse::Ok().json(CreditsResponse { credits: credit_info })
+    HttpResponse::Ok().json(CreditsResponse {
+        credits: credit_info,
+    })
 }
 
 /// Increment credit usage for a user. Returns false if limit exceeded.
 #[allow(dead_code)]
 fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
     let limit = plan_credit_limit(plan);
-    state
-        .credits
-        .entry(user_id.to_string())
-        .or_insert_with(|| {
-            let now = chrono::Utc::now();
-            CreditInfo {
-                user_id: user_id.to_string(),
-                used: 0,
-                limit,
-                plan: plan.to_string(),
-                period_start: now.to_rfc3339(),
-                period_end: now.to_rfc3339(),
-            }
-        });
+    state.credits.entry(user_id.to_string()).or_insert_with(|| {
+        let now = chrono::Utc::now();
+        CreditInfo {
+            user_id: user_id.to_string(),
+            used: 0,
+            limit,
+            plan: plan.to_string(),
+            period_start: now.to_rfc3339(),
+            period_end: now.to_rfc3339(),
+        }
+    });
 
     let mut entry = state.credits.get_mut(user_id).unwrap();
     if entry.value().used >= entry.value().limit && entry.value().limit != u32::MAX {
@@ -2718,25 +2766,46 @@ struct ListApiKeysResponse {
     keys: Vec<ApiKeyInfo>,
 }
 
-async fn api_keys_create(req: HttpRequest, state: web::Data<AppState>, body: web::Json<CreateApiKeyRequest>) -> impl Responder {
+async fn api_keys_create(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<CreateApiKeyRequest>,
+) -> impl Responder {
     let user = match get_supabase_user(&req).await {
         Ok(u) => u,
         Err(resp) => return resp,
     };
 
     // Validate scopes
-    let valid_scopes = ["analyze", "inference", "compare", "export", "projects", "agent", "all"];
-    let scopes: Vec<String> = body.scopes.iter()
+    let valid_scopes = [
+        "analyze",
+        "inference",
+        "compare",
+        "export",
+        "projects",
+        "agent",
+        "all",
+    ];
+    let scopes: Vec<String> = body
+        .scopes
+        .iter()
         .filter(|s| valid_scopes.contains(&s.as_str()))
         .cloned()
         .collect();
-    let scopes = if scopes.is_empty() { vec!["all".to_string()] } else { scopes };
+    let scopes = if scopes.is_empty() {
+        vec!["all".to_string()]
+    } else {
+        scopes
+    };
 
     // Limit to 10 API keys per user
-    let user_key_count = state.api_keys.iter().filter(|e| e.value().user_id == user.id).count();
+    let user_key_count = state
+        .api_keys
+        .iter()
+        .filter(|e| e.value().user_id == user.id)
+        .count();
     if user_key_count >= 10 {
-        return HttpResponse::build(StatusCode::BAD_REQUEST)
-            .body("Maximum 10 API keys per user");
+        return HttpResponse::build(StatusCode::BAD_REQUEST).body("Maximum 10 API keys per user");
     }
 
     let raw_key = generate_api_key();
@@ -2776,7 +2845,11 @@ async fn api_keys_list(req: HttpRequest, state: web::Data<AppState>) -> impl Res
     HttpResponse::Ok().json(ListApiKeysResponse { keys })
 }
 
-async fn api_keys_revoke(req: HttpRequest, state: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+async fn api_keys_revoke(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
     let user = match get_supabase_user(&req).await {
         Ok(u) => u,
         Err(resp) => return resp,
@@ -2787,7 +2860,9 @@ async fn api_keys_revoke(req: HttpRequest, state: web::Data<AppState>, path: web
     // Find the key by matching user_id (key_id could be the key itself or a short identifier)
     let mut found = false;
     for mut entry in state.api_keys.iter_mut() {
-        if entry.value().user_id == user.id && (entry.key() == &key_id || entry.value().key == key_id) {
+        if entry.value().user_id == user.id
+            && (entry.key() == &key_id || entry.value().key == key_id)
+        {
             entry.value_mut().active = false;
             found = true;
             break;
@@ -2801,7 +2876,11 @@ async fn api_keys_revoke(req: HttpRequest, state: web::Data<AppState>, path: web
     }
 }
 
-async fn api_keys_delete(req: HttpRequest, state: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+async fn api_keys_delete(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    path: web::Path<String>,
+) -> impl Responder {
     let user = match get_supabase_user(&req).await {
         Ok(u) => u,
         Err(resp) => return resp,
@@ -2812,7 +2891,9 @@ async fn api_keys_delete(req: HttpRequest, state: web::Data<AppState>, path: web
     // Find and remove the key
     let mut found_key: Option<String> = None;
     for entry in state.api_keys.iter() {
-        if entry.value().user_id == user.id && (entry.key() == &key_id || entry.value().key == key_id) {
+        if entry.value().user_id == user.id
+            && (entry.key() == &key_id || entry.value().key == key_id)
+        {
             found_key = Some(entry.key().clone());
             break;
         }
@@ -2832,14 +2913,18 @@ async fn api_keys_delete(req: HttpRequest, state: web::Data<AppState>, path: web
 // for the agent system to control the entire frontend.
 
 /// POST /agent/analyze — Run analysis and return full report (blocking)
-async fn agent_analyze(req: HttpRequest, state: web::Data<AppState>, body: web::Json<AnalyzeRequest>) -> impl Responder {
+async fn agent_analyze(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<AnalyzeRequest>,
+) -> impl Responder {
     // Auth: API key or JWT
     let user_id = match auth_any(&req, &state).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "analyze") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
@@ -2859,24 +2944,34 @@ async fn agent_analyze(req: HttpRequest, state: web::Data<AppState>, body: web::
             tracing::error!("Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
-        Err(_) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Analysis task failed"),
+        Err(_) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Analysis task failed")
+        }
     };
 
     // Cache the result for the agent to read back
     let report_json = analysis_result.to_json().unwrap_or_default();
-    state.user_analyses.insert(user_id, serde_json::from_str(&report_json).unwrap_or(serde_json::Value::Null));
+    state.user_analyses.insert(
+        user_id,
+        serde_json::from_str(&report_json).unwrap_or(serde_json::Value::Null),
+    );
 
     HttpResponse::Ok().body(report_json)
 }
 
 /// POST /agent/inference — Run inference simulation and return full report
-async fn agent_inference(req: HttpRequest, state: web::Data<AppState>, body: web::Json<serde_json::Value>) -> impl Responder {
+async fn agent_inference(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+) -> impl Responder {
     let user_id = match auth_any(&req, &state).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "inference") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
@@ -2896,7 +2991,8 @@ async fn agent_inference(req: HttpRequest, state: web::Data<AppState>, body: web
     };
 
     // Extract inference params from request or use defaults
-    let params: neurax_ir::inference::InferenceParams = body.get("params")
+    let params: neurax_ir::inference::InferenceParams = body
+        .get("params")
         .and_then(|p| serde_json::from_value(p.clone()).ok())
         .unwrap_or_default();
     let inference_report = neurax_ir::inference::InferencePass::run(&params);
@@ -2908,11 +3004,17 @@ async fn agent_inference(req: HttpRequest, state: web::Data<AppState>, body: web
             tracing::error!("Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
-        Err(_) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Analysis task failed"),
+        Err(_) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Analysis task failed")
+        }
     };
 
     let report_json = analysis_result.to_json().unwrap_or_default();
-    state.user_inferences.insert(user_id, serde_json::from_str(&report_json).unwrap_or(serde_json::Value::Null));
+    state.user_inferences.insert(
+        user_id,
+        serde_json::from_str(&report_json).unwrap_or(serde_json::Value::Null),
+    );
 
     HttpResponse::Ok().json(serde_json::json!({
         "report": serde_json::from_str::<serde_json::Value>(&report_json).unwrap_or(serde_json::Value::Null),
@@ -2924,13 +3026,17 @@ async fn agent_inference(req: HttpRequest, state: web::Data<AppState>, body: web
 /// Now uses the unified analyze_compare handler (supports both JWT and API key auth)
 
 /// GET /agent/audit — Audit a model: run analysis + inference + compliance check
-async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Json<serde_json::Value>) -> impl Responder {
+async fn agent_audit(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+) -> impl Responder {
     let user_id = match auth_any(&req, &state).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "agent") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
@@ -2956,7 +3062,10 @@ async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Js
             tracing::error!("Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
-        Err(_) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Analysis task failed"),
+        Err(_) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Analysis task failed")
+        }
     };
 
     // Run inference
@@ -2967,12 +3076,20 @@ async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Js
     let compliance = get_compliance_data();
 
     // Serialize report for JSON extraction
-    let report_json_str = analysis_result.to_json().unwrap_or_else(|_| "{}".to_string());
-    let report_val: serde_json::Value = serde_json::from_str(&report_json_str).unwrap_or(serde_json::Value::Null);
+    let report_json_str = analysis_result
+        .to_json()
+        .unwrap_or_else(|_| "{}".to_string());
+    let report_val: serde_json::Value =
+        serde_json::from_str(&report_json_str).unwrap_or(serde_json::Value::Null);
 
     // Cache results
-    state.user_analyses.insert(user_id.clone(), report_val.clone());
-    state.user_inferences.insert(user_id, serde_json::to_value(&inference_report).unwrap_or(serde_json::Value::Null));
+    state
+        .user_analyses
+        .insert(user_id.clone(), report_val.clone());
+    state.user_inferences.insert(
+        user_id,
+        serde_json::to_value(&inference_report).unwrap_or(serde_json::Value::Null),
+    );
 
     // Build audit summary
     let mut audit_issues: Vec<serde_json::Value> = vec![];
@@ -3001,11 +3118,13 @@ async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Js
     }
 
     // Check compliance thresholds
-    let total_params = report_val.get("architecture")
+    let total_params = report_val
+        .get("architecture")
         .and_then(|a| a.get("total_parameters"))
         .and_then(|p| p.as_f64())
         .unwrap_or(0.0);
-    let total_flops = report_val.get("compute")
+    let total_flops = report_val
+        .get("compute")
         .and_then(|c| c.get("total_flops_forward"))
         .and_then(|f| f.as_f64())
         .unwrap_or(0.0);
@@ -3053,13 +3172,17 @@ async fn agent_audit(req: HttpRequest, state: web::Data<AppState>, body: web::Js
 }
 
 /// POST /agent/carbon — Get carbon/cost analysis for a model
-async fn agent_carbon(req: HttpRequest, state: web::Data<AppState>, body: web::Json<serde_json::Value>) -> impl Responder {
+async fn agent_carbon(
+    req: HttpRequest,
+    state: web::Data<AppState>,
+    body: web::Json<serde_json::Value>,
+) -> impl Responder {
     let _user_id = match auth_any(&req, &state).await {
         Ok(id) => id,
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "agent") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
@@ -3084,17 +3207,38 @@ async fn agent_carbon(req: HttpRequest, state: web::Data<AppState>, body: web::J
             tracing::error!("Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
-        Err(_) => return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("Analysis task failed"),
+        Err(_) => {
+            return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+                .body("Analysis task failed")
+        }
     };
 
     // Extract carbon/cost metrics from report
-    let report_json_str = analysis_result.to_json().unwrap_or_else(|_| "{}".to_string());
-    let report_val: serde_json::Value = serde_json::from_str(&report_json_str).unwrap_or(serde_json::Value::Null);
-    let cost = report_val.get("cost").cloned().unwrap_or(serde_json::Value::Null);
-    let training_hours = cost.get("training_hours").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let training_cost_usd = cost.get("training_cost_usd").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let co2_tonnes = cost.get("co2_tonnes").and_then(|v| v.as_f64()).unwrap_or(0.0);
-    let energy_kwh = cost.get("energy_kwh").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let report_json_str = analysis_result
+        .to_json()
+        .unwrap_or_else(|_| "{}".to_string());
+    let report_val: serde_json::Value =
+        serde_json::from_str(&report_json_str).unwrap_or(serde_json::Value::Null);
+    let cost = report_val
+        .get("cost")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let training_hours = cost
+        .get("training_hours")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let training_cost_usd = cost
+        .get("training_cost_usd")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let co2_tonnes = cost
+        .get("co2_tonnes")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
+    let energy_kwh = cost
+        .get("energy_kwh")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(0.0);
 
     let compliance = get_compliance_data();
 
@@ -3140,7 +3284,7 @@ async fn agent_compliance(req: HttpRequest, state: web::Data<AppState>) -> impl 
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "agent") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
@@ -3155,12 +3299,20 @@ async fn agent_results(req: HttpRequest, state: web::Data<AppState>) -> impl Res
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "analyze") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
-    let analysis = state.user_analyses.get(&user_id).map(|e| e.value().clone()).unwrap_or(serde_json::Value::Null);
-    let inference = state.user_inferences.get(&user_id).map(|e| e.value().clone()).unwrap_or(serde_json::Value::Null);
+    let analysis = state
+        .user_analyses
+        .get(&user_id)
+        .map(|e| e.value().clone())
+        .unwrap_or(serde_json::Value::Null);
+    let inference = state
+        .user_inferences
+        .get(&user_id)
+        .map(|e| e.value().clone())
+        .unwrap_or(serde_json::Value::Null);
 
     HttpResponse::Ok().json(serde_json::json!({
         "analysis": analysis,
@@ -3175,7 +3327,7 @@ async fn agent_projects(req: HttpRequest, state: web::Data<AppState>) -> impl Re
         Err(resp) => return resp,
     };
     match check_api_key_scope(&req, &state, "projects") {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(resp) => return resp,
     };
 
@@ -3260,9 +3412,11 @@ fn get_compliance_data() -> ComplianceConfig {
     let recommendations = vec![
         "Monitor EU AI Act Phase 1 compliance for models exceeding 300 GFLOPs/request".to_string(),
         "Prepare CSRD carbon reporting for training runs exceeding 50 tonnes CO₂e/year".to_string(),
-        "Consider FP8 or INT8 quantization to reduce inference compute below regulatory thresholds".to_string(),
+        "Consider FP8 or INT8 quantization to reduce inference compute below regulatory thresholds"
+            .to_string(),
         "Document all training compute for models above 10²⁵ FLOPs (US EO requirement)".to_string(),
-        "Implement energy monitoring for GPU clusters to track real-time carbon footprint".to_string(),
+        "Implement energy monitoring for GPU clusters to track real-time carbon footprint"
+            .to_string(),
     ];
 
     ComplianceConfig {
@@ -3305,7 +3459,11 @@ async fn main() -> std::io::Result<()> {
             .allowed_origin("http://127.0.0.1:8080")
             .allowed_origin("https://127.0.0.1:8080")
             .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION, HeaderName::from_static("x-api-key")])
+            .allowed_headers(vec![
+                header::CONTENT_TYPE,
+                header::AUTHORIZATION,
+                HeaderName::from_static("x-api-key"),
+            ])
             .max_age(3600);
 
         App::new()
@@ -3337,7 +3495,10 @@ async fn main() -> std::io::Result<()> {
             .route("/analyze", web::post().to(analyze))
             .route("/analyze/compare", web::post().to(analyze_compare))
             .route("/analyze/stream", web::post().to(analyze_stream_start))
-            .route("/analyze/stream/{job_id}", web::get().to(analyze_stream_events))
+            .route(
+                "/analyze/stream/{job_id}",
+                web::get().to(analyze_stream_events),
+            )
             .route("/analyze/result/{job_id}", web::get().to(analyze_result))
             .route("/analyze/status/{job_id}", web::get().to(analyze_status))
             .route("/timemachine", web::post().to(time_machine))

@@ -1,7 +1,9 @@
 //! Common utilities for NEURAX dialects
 
-use melior::ir::{Attribute, Identifier, Location, Operation, Region, Type, operation::OperationBuilder};
 use melior::ir::attribute::FloatAttribute;
+use melior::ir::{
+    operation::OperationBuilder, Attribute, Identifier, Location, Operation, Region, Type,
+};
 use melior::Context;
 
 /// Create a string attribute

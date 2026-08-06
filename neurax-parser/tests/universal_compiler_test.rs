@@ -2,8 +2,8 @@
 //! Tests ALL model families, ALL layer types, ALL parameter extractions
 //! Generates comprehensive coverage report
 
-use neurax_parser::{parse_model_config, AbsorbedModel, LayerType, ModelType};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel, LayerType, ModelType};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODEL TYPE COVERAGE TEST
@@ -14,7 +14,7 @@ fn test_all_model_types() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              UNIVERSAL COMPILER TEST - MODEL TYPE COVERAGE               ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     let model_types = [
         ("transformer", ModelType::Transformer),
         ("cnn", ModelType::Cnn),
@@ -27,11 +27,11 @@ fn test_all_model_types() {
         ("hybrid", ModelType::Hybrid),
         ("multimodal", ModelType::Multimodal),
     ];
-    
+
     println!("┌────────────────────────────────────────────────────────────────┐");
     println!("│ Model Type     │ Parsing │ Status  │ Description             │");
     println!("├────────────────────────────────────────────────────────────────┤");
-    
+
     let mut all_passed = true;
     for (name, expected) in &model_types {
         let parsed = ModelType::from_str(name);
@@ -43,7 +43,7 @@ fn test_all_model_types() {
         if !parsed.is_ok() || parsed.as_ref().unwrap() != expected {
             all_passed = false;
         }
-        
+
         let desc = match expected {
             ModelType::Transformer => "Attention-based models",
             ModelType::Cnn => "Convolutional networks",
@@ -56,12 +56,15 @@ fn test_all_model_types() {
             ModelType::Hybrid => "Multi-architecture",
             ModelType::Multimodal => "Multimodal vision+language",
         };
-        
-        println!("│ {:<14} │ {:>7} │ {:>7} │ {:<23} │", name, "✓", status, desc);
+
+        println!(
+            "│ {:<14} │ {:>7} │ {:>7} │ {:<23} │",
+            name, "✓", status, desc
+        );
     }
-    
+
     println!("└────────────────────────────────────────────────────────────────┘\n");
-    
+
     assert!(all_passed, "Some model types failed parsing");
     println!("✓ All 9 model types supported!\n");
 }
@@ -75,7 +78,7 @@ fn test_all_layer_types() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              UNIVERSAL COMPILER TEST - LAYER TYPE COVERAGE               ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     let layer_types = [
         // Base layers (8)
         ("embedding", LayerType::Embedding, "Base"),
@@ -86,7 +89,6 @@ fn test_all_layer_types() {
         ("normalization", LayerType::Normalization, "Base"),
         ("pooling", LayerType::Pooling, "Base"),
         ("moe", LayerType::MoE, "Base"),
-        
         // CNN layers (9)
         ("residual_block", LayerType::ResidualBlock, "CNN"),
         ("mbconv", LayerType::Mbconv, "CNN"),
@@ -97,7 +99,6 @@ fn test_all_layer_types() {
         ("c2f", LayerType::C2f, "CNN"),
         ("detection", LayerType::Detection, "CNN"),
         ("transition", LayerType::Transition, "CNN"),
-        
         // SSM layers (6)
         ("mamba_block", LayerType::MambaBlock, "SSM"),
         ("s4_block", LayerType::S4Block, "SSM"),
@@ -105,18 +106,16 @@ fn test_all_layer_types() {
         ("state_space", LayerType::StateSpace, "SSM"),
         ("rwkv_block", LayerType::RwkvBlock, "SSM"),
         ("retention_block", LayerType::RetentionBlock, "SSM"),
-        
         // GAN layers (9)
         ("generator_block", LayerType::GeneratorBlock, "GAN"),
         ("discriminator_block", LayerType::DiscriminatorBlock, "GAN"),
         ("style_mod", LayerType::StyleMod, "GAN"),
-        ("adain", LayerType::AdaIN, "GAN"),  // alias: adaptive_instance_norm
+        ("adain", LayerType::AdaIN, "GAN"), // alias: adaptive_instance_norm
         ("minibatch_std", LayerType::MinibatchStd, "GAN"),
         ("pixel_norm", LayerType::PixelNorm, "GAN"),
-        ("gan_attention", LayerType::SelfAttention, "GAN"),  // GAN-specific self-attention
+        ("gan_attention", LayerType::SelfAttention, "GAN"), // GAN-specific self-attention
         ("spectral_norm", LayerType::SpectralNorm, "GAN"),
         ("progressive_block", LayerType::ProgressiveBlock, "GAN"),
-        
         // RNN/LSTM layers (6)
         ("lstm_block", LayerType::LstmBlock, "RNN"),
         ("gru_block", LayerType::GruBlock, "RNN"),
@@ -124,7 +123,6 @@ fn test_all_layer_types() {
         ("bidirectional", LayerType::Bidirectional, "RNN"),
         ("encoder_block", LayerType::EncoderBlock, "RNN"),
         ("decoder_block", LayerType::DecoderBlock, "RNN"),
-        
         // Diffusion layers (12)
         ("unet_block", LayerType::UnetBlock, "Diffusion"),
         ("time_embedding", LayerType::TimeEmbedding, "Diffusion"),
@@ -138,18 +136,17 @@ fn test_all_layer_types() {
         ("noise_predictor", LayerType::NoisePredictor, "Diffusion"),
         ("vae_encoder", LayerType::VaeEncoder, "Diffusion"),
         ("vae_decoder", LayerType::VaeDecoder, "Diffusion"),
-        
         // Custom (1)
         ("custom", LayerType::Custom, "Custom"),
     ];
-    
+
     println!("┌──────────────────────────────────────────────────────────────────────────────┐");
     println!("│ Layer Type          │ Family    │ Parsing │ IR Support │ Status            │");
     println!("├──────────────────────────────────────────────────────────────────────────────┤");
-    
+
     let mut all_passed = true;
     let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    
+
     for (name, expected, family) in &layer_types {
         let parsed = LayerType::from_str(name);
         let status = match &parsed {
@@ -160,17 +157,19 @@ fn test_all_layer_types() {
         if !parsed.is_ok() || parsed.as_ref().unwrap() != expected {
             all_passed = false;
         }
-        
+
         *counts.entry(*family).or_insert(0) += 1;
-        
-        println!("│ {:<19} │ {:<9} │ {:>7} │ {:>10} │ {:<17} │", 
-                 name, family, "✓", "✓", status);
+
+        println!(
+            "│ {:<19} │ {:<9} │ {:>7} │ {:>10} │ {:<17} │",
+            name, family, "✓", "✓", status
+        );
     }
-    
+
     println!("├──────────────────────────────────────────────────────────────────────────────┤");
     println!("│ TOTAL: 57 layer types across 7 families                                     │");
     println!("└──────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     // Print summary by family
     println!("┌─────────────────────────────────────────────────────────────┐");
     println!("│ Family     │ Layer Types │ Coverage                        │");
@@ -185,7 +184,7 @@ fn test_all_layer_types() {
     println!("├─────────────────────────────────────────────────────────────┤");
     println!("│ TOTAL      │    57       │ Universal coverage             │");
     println!("└─────────────────────────────────────────────────────────────┘\n");
-    
+
     assert!(all_passed, "Some layer types failed parsing");
     println!("✓ All 57 layer types supported!\n");
 }
@@ -199,59 +198,88 @@ fn test_compilation_pipeline_universality() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              UNIVERSAL COMPILER TEST - PIPELINE COVERAGE                 ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     // Test a model from each family
     let test_models = [
-        ("Transformer", r#"{"schema_version":"1.0","model":{"name":"test","type":"transformer","layers":[{"id":"embed","layer_type":"embedding","params":{"vocab_size":1000,"embedding_dim":256}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("CNN", r#"{"schema_version":"1.0","model":{"name":"test","type":"cnn","layers":[{"id":"conv","layer_type":"conv","params":{"in_channels":3,"out_channels":64,"kernel_size":3}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("Diffusion", r#"{"schema_version":"1.0","model":{"name":"test","type":"diffusion","layers":[{"id":"unet","layer_type":"unet_block","params":{}}],"global_params":{"diffusion_timesteps":1000}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("RNN", r#"{"schema_version":"1.0","model":{"name":"test","type":"rnn","layers":[{"id":"lstm","layer_type":"lstm_block","params":{"rnn_hidden_size":256}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("MoE", r#"{"schema_version":"1.0","model":{"name":"test","type":"moe","layers":[{"id":"moe","layer_type":"moe","params":{"num_experts":8}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("SSM", r#"{"schema_version":"1.0","model":{"name":"test","type":"ssm","layers":[{"id":"mamba","layer_type":"mamba_block","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("GAN", r#"{"schema_version":"1.0","model":{"name":"test","type":"gan","layers":[{"id":"gen","layer_type":"generator_block","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
-        ("Hybrid", r#"{"schema_version":"1.0","model":{"name":"test","type":"hybrid","layers":[{"id":"conv","layer_type":"conv","params":{}},{"id":"attn","layer_type":"attention","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#),
+        (
+            "Transformer",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"transformer","layers":[{"id":"embed","layer_type":"embedding","params":{"vocab_size":1000,"embedding_dim":256}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "CNN",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"cnn","layers":[{"id":"conv","layer_type":"conv","params":{"in_channels":3,"out_channels":64,"kernel_size":3}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "Diffusion",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"diffusion","layers":[{"id":"unet","layer_type":"unet_block","params":{}}],"global_params":{"diffusion_timesteps":1000}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "RNN",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"rnn","layers":[{"id":"lstm","layer_type":"lstm_block","params":{"rnn_hidden_size":256}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "MoE",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"moe","layers":[{"id":"moe","layer_type":"moe","params":{"num_experts":8}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "SSM",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"ssm","layers":[{"id":"mamba","layer_type":"mamba_block","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "GAN",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"gan","layers":[{"id":"gen","layer_type":"generator_block","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
+        (
+            "Hybrid",
+            r#"{"schema_version":"1.0","model":{"name":"test","type":"hybrid","layers":[{"id":"conv","layer_type":"conv","params":{}},{"id":"attn","layer_type":"attention","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
+        ),
     ];
-    
+
     println!("┌────────────────────────────────────────────────────────────────────────────┐");
     println!("│ Family     │ Parse │ Absorb │ IR Inject │ Params │ Status              │");
     println!("├────────────────────────────────────────────────────────────────────────────┤");
-    
+
     let mut all_passed = true;
-    
+
     for (family, json) in &test_models {
         // Step 1: Parse
         let config = match parse_model_config(json) {
             Ok(c) => c,
             Err(e) => {
-                println!("│ {:<10} │ ✗     │ -      │ -         │ -      │ Parse error: {} │", family, e);
+                println!(
+                    "│ {:<10} │ ✗     │ -      │ -         │ -      │ Parse error: {} │",
+                    family, e
+                );
                 all_passed = false;
                 continue;
             }
         };
-        
+
         // Step 2: Absorb
         let absorbed = AbsorbedModel::absorb(config);
-        
+
         // Step 3: IR Inject
         let _arch_ir = IrInjector::to_architecture_ir(&absorbed);
         let _mem_ir = IrInjector::configure_memory_pass(&absorbed);
-        
+
         // Step 4: Calculate params
         let params = IrInjector::calculate_total_params(&absorbed);
-        
+
         let status = if params > 0 || absorbed.resolution_context.confidence_score > 0.0 {
             "✓ Complete"
         } else {
             all_passed = false;
             "✗ Incomplete"
         };
-        
-        println!("│ {:<10} │ ✓     │ ✓      │ ✓         │ {:>6} │ {:<19} │", 
-                 family, params, status);
+
+        println!(
+            "│ {:<10} │ ✓     │ ✓      │ ✓         │ {:>6} │ {:<19} │",
+            family, params, status
+        );
     }
-    
+
     println!("└────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     assert!(all_passed, "Some families failed pipeline");
     println!("✓ All 8 families pass complete compilation pipeline!\n");
 }
@@ -265,32 +293,76 @@ fn test_parameter_extraction_universality() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║              UNIVERSAL COMPILER TEST - PARAMETER EXTRACTION              ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│ Parameter Category        │ Fields Tested │ Status                        │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
-    
+
     let param_categories = [
-        ("Transformer", vec!["hidden_size", "num_heads", "intermediate_size", "vocab_size", "num_layers"]),
-        ("CNN", vec!["in_channels", "out_channels", "kernel_size", "stride", "padding"]),
-        ("Diffusion", vec!["diffusion_timesteps", "latent_channels", "image_size", "noise_schedule"]),
-        ("RNN", vec!["rnn_hidden_size", "num_rnn_layers", "bidirectional_rnn", "cell_type"]),
-        ("MoE", vec!["num_experts", "num_experts_per_tok", "shared_experts"]),
+        (
+            "Transformer",
+            vec![
+                "hidden_size",
+                "num_heads",
+                "intermediate_size",
+                "vocab_size",
+                "num_layers",
+            ],
+        ),
+        (
+            "CNN",
+            vec![
+                "in_channels",
+                "out_channels",
+                "kernel_size",
+                "stride",
+                "padding",
+            ],
+        ),
+        (
+            "Diffusion",
+            vec![
+                "diffusion_timesteps",
+                "latent_channels",
+                "image_size",
+                "noise_schedule",
+            ],
+        ),
+        (
+            "RNN",
+            vec![
+                "rnn_hidden_size",
+                "num_rnn_layers",
+                "bidirectional_rnn",
+                "cell_type",
+            ],
+        ),
+        (
+            "MoE",
+            vec!["num_experts", "num_experts_per_tok", "shared_experts"],
+        ),
         ("SSM", vec!["state_dim", "expansion_factor", "conv_kernel"]),
         ("GAN", vec!["latent_dim", "style_dim", "progressive_stages"]),
-        ("Hybrid", vec!["mixed architectures", "cross-family parameters"]),
+        (
+            "Hybrid",
+            vec!["mixed architectures", "cross-family parameters"],
+        ),
     ];
-    
+
     for (category, fields) in &param_categories {
-        println!("│ {:<25} │ {:>13} fields │ ✓ Supported                   │", category, fields.len());
+        println!(
+            "│ {:<25} │ {:>13} fields │ ✓ Supported                   │",
+            category,
+            fields.len()
+        );
     }
-    
+
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
     println!("│ GlobalResolutionContext fields: 65+                                        │");
     println!("│ LayerParams fields: 50+                                                    │");
     println!("│ GlobalParams fields: 20+                                                   │");
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     println!("✓ All parameter categories supported!\n");
 }
 
@@ -303,7 +375,7 @@ fn test_universality_certification() {
     println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║                    UNIVERSAL COMPILER CERTIFICATION                      ║");
     println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-    
+
     println!("┌─────────────────────────────────────────────────────────────────────────────┐");
     println!("│                    NEURAX-IR COMPILER UNIVERSALITY REPORT                   │");
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
@@ -352,7 +424,7 @@ fn test_universality_certification() {
     println!("├─────────────────────────────────────────────────────────────────────────────┤");
     println!("│  STATUS: ✓ UNIVERSAL COMPILER - ALL NEURAL ARCHITECTURES SUPPORTED        │");
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
-    
+
     println!("╔══════════════════════════════════════════════════════════════════════════╗");
     println!("║  CERTIFICATION: NEURAX-IR IS A UNIVERSAL NEURAL NETWORK COMPILER         ║");
     println!("║                                                                           ║");

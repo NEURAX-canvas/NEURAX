@@ -13,11 +13,11 @@ impl LoweringPass for OperatorLowering {
     fn name() -> &'static str {
         "OperatorLowering"
     }
-    
+
     fn description() -> &'static str {
         "Lowers op.attention, op.matmul, op.conv, op.embedding, op.moe, op.ssm to linalg"
     }
-    
+
     fn run<'c>(_module: &mut Module<'c>, _context: &mut LoweringContext<'c>) -> Result<(), String> {
         Ok(())
     }
@@ -44,7 +44,9 @@ pub fn lower_attention(
     return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
   }}
 "#,
-        seq_len = seq_len, hidden_size = hidden_size, dtype = dtype
+        seq_len = seq_len,
+        hidden_size = hidden_size,
+        dtype = dtype
     )
 }
 
@@ -57,7 +59,10 @@ pub fn lower_matmul(m: usize, k: usize, n: usize, dtype: &str) -> String {
     return %c : tensor<{m}x{n}x{dtype}>
   }}
 "#,
-        m = m, k = k, n = n, dtype = dtype
+        m = m,
+        k = k,
+        n = n,
+        dtype = dtype
     )
 }
 
@@ -74,7 +79,7 @@ pub fn lower_conv2d(
 ) -> String {
     let out_height = (height - kernel_size) / stride + 1;
     let out_width = (width - kernel_size) / stride + 1;
-    
+
     format!(
         r#"  func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{out_channels}x{in_channels}x{kernel_size}x{kernel_size}x{dtype}>) -> tensor<{batch}x{out_height}x{out_width}x{out_channels}x{dtype}> {{
     %output_init = tensor.empty() : tensor<{batch}x{out_height}x{out_width}x{out_channels}x{dtype}>
@@ -82,25 +87,47 @@ pub fn lower_conv2d(
     return %output : tensor<{batch}x{out_height}x{out_width}x{out_channels}x{dtype}>
   }}
 "#,
-        batch = batch, height = height, width = width, in_channels = in_channels, dtype = dtype,
-        out_channels = out_channels, kernel_size = kernel_size, out_height = out_height, out_width = out_width, stride = stride
+        batch = batch,
+        height = height,
+        width = width,
+        in_channels = in_channels,
+        dtype = dtype,
+        out_channels = out_channels,
+        kernel_size = kernel_size,
+        out_height = out_height,
+        out_width = out_width,
+        stride = stride
     )
 }
 
 /// Generate an embedding lookup
-pub fn lower_embedding(vocab_size: usize, embedding_dim: usize, seq_len: usize, dtype: &str) -> String {
+pub fn lower_embedding(
+    vocab_size: usize,
+    embedding_dim: usize,
+    seq_len: usize,
+    dtype: &str,
+) -> String {
     format!(
         r#"  func.func @embedding(%ids: tensor<{seq_len}xi64>, %table: tensor<{vocab_size}x{embedding_dim}x{dtype}>) -> tensor<{seq_len}x{embedding_dim}x{dtype}> {{
     %output = tensor.gather %table[%ids] {{unique_indices = false}} : tensor<{vocab_size}x{embedding_dim}x{dtype}> -> tensor<{seq_len}x{embedding_dim}x{dtype}>
     return %output : tensor<{seq_len}x{embedding_dim}x{dtype}>
   }}
 "#,
-        seq_len = seq_len, vocab_size = vocab_size, embedding_dim = embedding_dim, dtype = dtype
+        seq_len = seq_len,
+        vocab_size = vocab_size,
+        embedding_dim = embedding_dim,
+        dtype = dtype
     )
 }
 
 /// Generate MoE layer
-pub fn lower_moe(hidden_size: usize, num_experts: usize, _top_k: usize, intermediate_size: usize, dtype: &str) -> String {
+pub fn lower_moe(
+    hidden_size: usize,
+    num_experts: usize,
+    _top_k: usize,
+    intermediate_size: usize,
+    dtype: &str,
+) -> String {
     format!(
         r#"  // MoE: Mixture of Experts with top-k routing
   func.func @moe_ffn(%input: tensor<{hidden_size}x{dtype}>, %router: tensor<{hidden_size}x{num_experts}x{dtype}>, %experts: tensor<{num_experts}x{hidden_size}x{intermediate_size}x{dtype}>) -> tensor<{hidden_size}x{dtype}> {{
@@ -109,12 +136,20 @@ pub fn lower_moe(hidden_size: usize, num_experts: usize, _top_k: usize, intermed
     return %output : tensor<{hidden_size}x{dtype}>
   }}
 "#,
-        hidden_size = hidden_size, num_experts = num_experts, intermediate_size = intermediate_size, dtype = dtype
+        hidden_size = hidden_size,
+        num_experts = num_experts,
+        intermediate_size = intermediate_size,
+        dtype = dtype
     )
 }
 
 /// Generate Mamba/SSM block
-pub fn lower_ssm(hidden_size: usize, state_dim: usize, expansion_factor: usize, dtype: &str) -> String {
+pub fn lower_ssm(
+    hidden_size: usize,
+    state_dim: usize,
+    expansion_factor: usize,
+    dtype: &str,
+) -> String {
     let expanded = hidden_size * expansion_factor;
     format!(
         r#"  // Mamba SSM block
@@ -130,7 +165,10 @@ pub fn lower_ssm(hidden_size: usize, state_dim: usize, expansion_factor: usize, 
     return %output : tensor<{hidden_size}x{dtype}>
   }}
 "#,
-        hidden_size = hidden_size, expanded = expanded, state_dim = state_dim, dtype = dtype
+        hidden_size = hidden_size,
+        expanded = expanded,
+        state_dim = state_dim,
+        dtype = dtype
     )
 }
 
@@ -144,45 +182,46 @@ pub fn lower_lstm(hidden_size: usize, dtype: &str) -> String {
     return %h_new, %c_new : tensor<{hidden_size}x{dtype}>, tensor<{hidden_size}x{dtype}>
   }}
 "#,
-        hidden_size = hidden_size, dtype = dtype
+        hidden_size = hidden_size,
+        dtype = dtype
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_attention_lowering() {
         let code = lower_attention(2048, 8192, 64, 8, "f32");
         assert!(code.contains("linalg.matmul"));
         assert!(code.contains("@attention"));
     }
-    
+
     #[test]
     fn test_matmul_lowering() {
         let code = lower_matmul(1024, 1024, 1024, "f32");
         assert!(code.contains("linalg.matmul"));
     }
-    
+
     #[test]
     fn test_conv2d_lowering() {
         let code = lower_conv2d(1, 3, 64, 224, 224, 3, 2, "f32");
         assert!(code.contains("linalg.conv_2d"));
     }
-    
+
     #[test]
     fn test_embedding_lowering() {
         let code = lower_embedding(50000, 768, 128, "f32");
         assert!(code.contains("tensor.gather"));
     }
-    
+
     #[test]
     fn test_moe_lowering() {
         let code = lower_moe(8192, 8, 2, 28672, "f32");
         assert!(code.contains("@moe_ffn"));
     }
-    
+
     #[test]
     fn test_ssm_lowering() {
         let code = lower_ssm(8192, 16, 2, "f32");

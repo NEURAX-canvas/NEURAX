@@ -1,6 +1,5 @@
 //! Memory IR structures
 
-
 /// Memory IR - dialecte de la simulation mémoire
 #[derive(Debug, Clone)]
 pub struct MemoryIR {
@@ -74,12 +73,12 @@ impl MemoryMetrics {
     pub fn is_valid(&self) -> bool {
         self.peak_vram_bytes > 0 && self.parameter_memory_bytes > 0
     }
-    
+
     /// Convertir en GB
     pub fn peak_vram_gb(&self) -> f64 {
         self.peak_vram_bytes as f64 / 1e9
     }
-    
+
     /// GPU VRAM en GB
     pub fn gpu_vram_gb(&self) -> f64 {
         self.gpu_vram_bytes as f64 / 1e9
@@ -126,7 +125,7 @@ impl OomRisk {
             Self::Overflow
         }
     }
-    
+
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Safe => "safe",

@@ -1,7 +1,7 @@
 //! Operator IR structures
 
-use std::collections::HashMap;
 use crate::tensor::Shape;
+use std::collections::HashMap;
 
 /// Operator IR - dialecte des opérations ML standard
 #[derive(Debug, Clone)]
@@ -53,47 +53,47 @@ pub enum OpType {
     Conv2D,
     DepthwiseConv2D,
     Linear,
-    
+
     // Attention variants
-    Attention,              // Standard Multi-Head Attention
-    FlashAttention,          // Memory-optimized attention
-    GroupedQueryAttention,   // GQA (LLaMA-style)
-    MultiQueryAttention,     // MQA
+    Attention,             // Standard Multi-Head Attention
+    FlashAttention,        // Memory-optimized attention
+    GroupedQueryAttention, // GQA (LLaMA-style)
+    MultiQueryAttention,   // MQA
     AttentionScores,
     AttentionOutput,
     Softmax,
-    
+
     // Normalization
     LayerNorm,
     BatchNorm,
     RMSNorm,
     GroupNorm,
-    
+
     // Embeddings
     Embedding,
     TokenEmbedding,
     PositionalEmbedding,
     RotaryEmbedding,
-    
+
     // MoE operations
     MoE,
-    MoERouter,               // Expert routing
-    MoEExpertGroup,          // Expert computation
-    
+    MoERouter,      // Expert routing
+    MoEExpertGroup, // Expert computation
+
     // State Space Models (SSM/Mamba)
-    SsmStateUpdate,          // Mamba/SSM state
-    MambaConv1d,             // Mamba convolution
+    SsmStateUpdate, // Mamba/SSM state
+    MambaConv1d,    // Mamba convolution
     S4Block,
     H3Block,
-    
+
     // RNN/LSTM/GRU
     LstmCell,
     GruCell,
     RnnCell,
-    
+
     // Fine-tuning
-    LoRALinear,              // LoRA adapter
-    
+    LoRALinear, // LoRA adapter
+
     // Activations
     Add,
     Mul,
@@ -103,16 +103,16 @@ pub enum OpType {
     SiLU,
     Tanh,
     Sigmoid,
-    
+
     // Pooling
     Pooling(PoolingType),
-    
+
     // Tensor ops
     Reshape,
     Transpose,
     Concat,
     Split,
-    
+
     // Custom
     Custom,
 }
@@ -126,7 +126,7 @@ impl OpType {
             Self::Conv2D => "conv2d",
             Self::DepthwiseConv2D => "depthwise_conv2d",
             Self::Linear => "linear",
-            
+
             // Attention variants
             Self::Attention => "attention",
             Self::FlashAttention => "flash_attention",
@@ -135,38 +135,38 @@ impl OpType {
             Self::AttentionScores => "attention_scores",
             Self::AttentionOutput => "attention_output",
             Self::Softmax => "softmax",
-            
+
             // Normalization
             Self::LayerNorm => "layer_norm",
             Self::BatchNorm => "batch_norm",
             Self::RMSNorm => "rms_norm",
             Self::GroupNorm => "group_norm",
-            
+
             // Embeddings
             Self::Embedding => "embedding",
             Self::TokenEmbedding => "token_embedding",
             Self::PositionalEmbedding => "positional_embedding",
             Self::RotaryEmbedding => "rotary_embedding",
-            
+
             // MoE operations
             Self::MoE => "moe",
             Self::MoERouter => "moe_router",
             Self::MoEExpertGroup => "moe_expert_group",
-            
+
             // State Space Models
             Self::SsmStateUpdate => "ssm_state_update",
             Self::MambaConv1d => "mamba_conv1d",
             Self::S4Block => "s4_block",
             Self::H3Block => "h3_block",
-            
+
             // RNN/LSTM/GRU
             Self::LstmCell => "lstm_cell",
             Self::GruCell => "gru_cell",
             Self::RnnCell => "rnn_cell",
-            
+
             // Fine-tuning
             Self::LoRALinear => "lora_linear",
-            
+
             // Activations
             Self::Add => "add",
             Self::Mul => "mul",
@@ -176,19 +176,19 @@ impl OpType {
             Self::SiLU => "silu",
             Self::Tanh => "tanh",
             Self::Sigmoid => "sigmoid",
-            
+
             // Pooling
             Self::Pooling(t) => match t {
                 PoolingType::Max => "max_pool",
                 PoolingType::Avg => "avg_pool",
             },
-            
+
             // Tensor ops
             Self::Reshape => "reshape",
             Self::Transpose => "transpose",
             Self::Concat => "concat",
             Self::Split => "split",
-            
+
             // Custom
             Self::Custom => "custom",
         }

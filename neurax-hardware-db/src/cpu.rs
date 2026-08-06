@@ -40,7 +40,7 @@ impl CpuSpec {
             memory_bandwidth_gbs: 200.0,
         }
     }
-    
+
     /// Estimate GFLOPS for CPU
     pub fn gflops_estimate(&self) -> f64 {
         // AVX-512 can do 32 FLOPs per cycle per core

@@ -5,19 +5,19 @@ use super::ArchitectureMetrics;
 /// Calculate parameter distribution statistics
 pub fn calculate_param_distribution(metrics: &ArchitectureMetrics) -> ParamDistribution {
     let mut dist = ParamDistribution::default();
-    
+
     if metrics.params_per_layer.is_empty() {
         return dist;
     }
-    
+
     let params: Vec<_> = metrics.params_per_layer.values().copied().collect();
     let total = params.iter().sum::<u64>() as f64;
-    
+
     dist.total = metrics.total_parameters;
     dist.mean = total / params.len() as f64;
     dist.max = params.iter().max().copied().unwrap_or(0);
     dist.min = params.iter().min().copied().unwrap_or(0);
-    
+
     // Find largest layer
     for (id, &count) in &metrics.params_per_layer {
         if count == dist.max {
@@ -25,7 +25,7 @@ pub fn calculate_param_distribution(metrics: &ArchitectureMetrics) -> ParamDistr
             break;
         }
     }
-    
+
     dist
 }
 

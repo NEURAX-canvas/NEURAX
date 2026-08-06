@@ -14,29 +14,39 @@
 /// # Returns
 /// Total FLOPs for the attention layer (forward pass)
 #[inline(always)]
-pub fn attention_flops(batch: usize, seq_len: usize, hidden_size: usize, num_heads: usize, causal: bool) -> f64 {
+pub fn attention_flops(
+    batch: usize,
+    seq_len: usize,
+    hidden_size: usize,
+    num_heads: usize,
+    causal: bool,
+) -> f64 {
     let head_dim = hidden_size / num_heads;
-    
+
     // Q, K, V projections: 3 × (B × S × H × H) matmuls
     // Each matmul: 2 × B × S × H × H
-    let qkv_flops = 3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64);
-    
+    let qkv_flops =
+        3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64);
+
     // QK^T attention scores: B × heads × S × S × head_dim
     // Matmul: [B, heads, S, head_dim] × [B, heads, head_dim, S] → [B, heads, S, S]
-    let attn_scores_flops = 2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
-    
+    let attn_scores_flops =
+        2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
+
     // Attention × V: [B, heads, S, S] × [B, heads, S, head_dim] → [B, heads, S, head_dim]
-    let attn_v_flops = 2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
-    
+    let attn_v_flops =
+        2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
+
     // Output projection: [B, S, H] × [H, H] → [B, S, H]
-    let out_proj_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
-    
+    let out_proj_flops =
+        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+
     // Softmax: ~5 × B × heads × S × S (exp, sum, div per position)
     let softmax_flops = 5.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64;
-    
+
     // For causal attention, we only compute half the attention matrix
     let causal_factor = if causal { 0.5 } else { 1.0 };
-    
+
     qkv_flops + (attn_scores_flops + attn_v_flops + softmax_flops) * causal_factor + out_proj_flops
 }
 
@@ -64,43 +74,45 @@ pub fn gqa_flops(
     causal: bool,
 ) -> f64 {
     let head_dim = hidden_size / num_heads;
-    
+
     // Q projection (full heads)
     let q_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
-    
+
     // K, V projections (reduced heads)
     let kv_dim = num_kv_heads * head_dim;
     let kv_flops = 2.0 * 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * kv_dim as f64;
-    
+
     // Attention computation
-    let attn_scores_flops = 2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
-    let attn_v_flops = 2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
-    
+    let attn_scores_flops =
+        2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
+    let attn_v_flops =
+        2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
+
     // Output projection
-    let out_proj_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
-    
+    let out_proj_flops =
+        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+
     let causal_factor = if causal { 0.5 } else { 1.0 };
-    
+
     q_flops + kv_flops + (attn_scores_flops + attn_v_flops) * causal_factor + out_proj_flops
 }
 
 /// Compute parameters for attention layer
 #[inline(always)]
 pub fn attention_params(hidden_size: usize, _num_heads: usize, bias: bool) -> u64 {
-    
     // Q, K, V projections: 3 × (H × H) weights
     let qkv_params = 3 * hidden_size * hidden_size;
-    
+
     // Output projection: H × H
     let out_params = hidden_size * hidden_size;
-    
+
     // Biases (optional)
     let bias_params = if bias {
         4 * hidden_size // Q, K, V, Out biases
     } else {
         0
     };
-    
+
     (qkv_params + out_params + bias_params) as u64
 }
 
@@ -108,23 +120,23 @@ pub fn attention_params(hidden_size: usize, _num_heads: usize, bias: bool) -> u6
 #[inline(always)]
 pub fn gqa_params(hidden_size: usize, num_heads: usize, num_kv_heads: usize, bias: bool) -> u64 {
     let head_dim = hidden_size / num_heads;
-    
+
     // Q projection
     let q_params = hidden_size * hidden_size;
-    
+
     // K, V projections (reduced)
     let kv_dim = num_kv_heads * head_dim;
     let kv_params = 2 * hidden_size * kv_dim;
-    
+
     // Output projection
     let out_params = hidden_size * hidden_size;
-    
+
     let bias_params = if bias {
         hidden_size + 2 * kv_dim + hidden_size
     } else {
         0
     };
-    
+
     (q_params + kv_params + out_params + bias_params) as u64
 }
 

@@ -1,7 +1,7 @@
 //! Stability Analysis Pass
-//! 
+//!
 //! Predicts training stability via Lyapunov exponents and chaos analysis.
-//! 
+//!
 //! Metrics produced:
 //! - M43: stability_margin_by_layer
 //! - M44: lyapunov_exponent_mean
@@ -26,69 +26,85 @@ pub struct StabilityAnalysisPass;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StabilityMetrics {
     /// M43 : Marge de stabilité par couche (layer_id → [0,1])
-    pub stability_margin_by_layer:   HashMap<String, f64>,
+    pub stability_margin_by_layer: HashMap<String, f64>,
     /// M44 : Exposant de Lyapunov moyen (> 0 = tendance au chaos)
-    pub lyapunov_exponent_mean:      f64,
+    pub lyapunov_exponent_mean: f64,
     /// M45 : Indice de chaos global [0,1]
-    pub chaos_index:                  f64,
+    pub chaos_index: f64,
     /// M46 : Couches à risque (margin < 0.2)
-    pub high_risk_layers:            Vec<String>,
+    pub high_risk_layers: Vec<String>,
     /// M47 : % de couches nécessitant fp32
-    pub fp32_required_pct:           f64,
+    pub fp32_required_pct: f64,
     /// M48 : Score de robustesse global [0,1]
-    pub global_robustness_score:     f64,
+    pub global_robustness_score: f64,
     /// M49 : Mémoire supplémentaire si fp32 forcé
     pub fp32_fallback_memory_overhead_gb: f64,
     /// Confiance de l'analyse
-    pub confidence:                   f64,
+    pub confidence: f64,
 }
 
 impl StabilityAnalysisPass {
-    pub fn new() -> Self { Self::default() }
-    
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn run(&self, graph: &GraphIR, mem: &MemoryMetrics) -> StabilityMetrics {
         let mut margins: HashMap<String, f64> = HashMap::new();
         let mut lyapunovs: Vec<f64> = Vec::new();
         let mut high_risk: Vec<String> = Vec::new();
         let mut fp32_count: u32 = 0;
         let depth = graph.metrics.graph_depth;
-        
+
         for node_idx in &graph.topo_order {
             let node = &graph.dag[*node_idx];
             let layer_id = node.layer_id.clone();
-            
+
             let lipschitz = self.estimate_lipschitz(node, depth);
             let epsilon_init = 1e-5f64;
             let epsilon_after = epsilon_init * lipschitz;
-            
+
             let lyapunov = if epsilon_after > 0.0 {
                 (epsilon_after / epsilon_init).ln()
             } else {
                 0.0
             };
             lyapunovs.push(lyapunov);
-            
+
             let margin = 1.0 / (1.0 + lyapunov.max(0.0));
             margins.insert(layer_id.clone(), margin);
-            
+
             if margin < 0.2 {
                 high_risk.push(layer_id.clone());
                 fp32_count += 1;
             }
         }
-        
+
         let n = lyapunovs.len() as f64;
-        let lyap_mean = if n > 0.0 { lyapunovs.iter().sum::<f64>() / n } else { 0.0 };
+        let lyap_mean = if n > 0.0 {
+            lyapunovs.iter().sum::<f64>() / n
+        } else {
+            0.0
+        };
         let chaos_index = 1.0 / (1.0 + (-lyap_mean).exp());
-        let robustness = if n > 0.0 { margins.values().sum::<f64>() / n } else { 1.0 };
-        let fp32_pct = if n > 0.0 { fp32_count as f64 / n * 100.0 } else { 0.0 };
-        
+        let robustness = if n > 0.0 {
+            margins.values().sum::<f64>() / n
+        } else {
+            1.0
+        };
+        let fp32_pct = if n > 0.0 {
+            fp32_count as f64 / n * 100.0
+        } else {
+            0.0
+        };
+
         let params_gb = mem.parameter_memory_bytes as f64 / 1e9;
         let fp32_overhead = if fp32_count > 0 && n > 0.0 && params_gb > 0.0 {
             let params_per_layer = params_gb / n;
             params_per_layer * fp32_count as f64
-        } else { 0.0 };
-        
+        } else {
+            0.0
+        };
+
         StabilityMetrics {
             stability_margin_by_layer: margins,
             lyapunov_exponent_mean: lyap_mean,
@@ -100,7 +116,7 @@ impl StabilityAnalysisPass {
             confidence: 0.70,
         }
     }
-    
+
     fn estimate_lipschitz(&self, node: &GraphNode, graph_depth: usize) -> f64 {
         let base = match &node.layer_type {
             LayerType::Attention => {
@@ -122,14 +138,16 @@ impl StabilityAnalysisPass {
             }
             _ => 1.0,
         };
-        
+
         let depth_factor = if graph_depth > 0 {
             1.0 + (node.param_count as f64 / 1e9 / graph_depth as f64).min(1.0) * 0.3
-        } else { 1.0 };
-        
+        } else {
+            1.0
+        };
+
         (base * depth_factor).min(10.0)
     }
-    
+
     pub fn validate(&self, metrics: &StabilityMetrics) -> Vec<String> {
         let mut diags = vec![];
         if !(0.0..=1.0).contains(&metrics.chaos_index) {

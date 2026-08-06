@@ -123,7 +123,9 @@ impl fmt::Display for FLOPs {
 
 /// Taille en bytes (mémoire, stockage).
 /// Type distinct pour éviter la confusion avec FLOPs ou Latency.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[repr(transparent)]
 pub struct Bytes(pub u64);
 
@@ -384,7 +386,9 @@ impl fmt::Display for TokensPerSec {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Nombre de paramètres d'un modèle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[repr(transparent)]
 pub struct ParamCount(pub u64);
 

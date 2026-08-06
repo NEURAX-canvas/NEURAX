@@ -12,11 +12,11 @@ impl TargetLowering for MetalBackend {
     fn backend() -> TargetBackend {
         TargetBackend::Metal
     }
-    
+
     fn supported_dtypes() -> &'static [&'static str] {
         &["f32", "f16", "bf16", "i32", "i64"]
     }
-    
+
     fn lower_matmul(
         batch: usize,
         m: usize,
@@ -33,10 +33,14 @@ impl TargetLowering for MetalBackend {
     return %c : tensor<{batch}x{m}x{n}x{dtype}>
   }}
 "#,
-            batch = batch, m = m, k = k, n = n, dtype = dtype
+            batch = batch,
+            m = m,
+            k = k,
+            n = n,
+            dtype = dtype
         ))
     }
-    
+
     fn lower_conv2d(
         batch: usize,
         in_channels: usize,
@@ -48,7 +52,7 @@ impl TargetLowering for MetalBackend {
     ) -> Result<String, String> {
         let out_h = height - kernel_size + 1;
         let out_w = width - kernel_size + 1;
-        
+
         Ok(format!(
             r#"  // Metal conv2d for Apple Silicon
   // Uses Metal Performance Shaders where available
@@ -58,12 +62,18 @@ impl TargetLowering for MetalBackend {
     return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
   }}
 "#,
-            batch = batch, height = height, width = width, in_channels = in_channels,
-            out_channels = out_channels, kernel_size = kernel_size, dtype = dtype,
-            out_h = out_h, out_w = out_w
+            batch = batch,
+            height = height,
+            width = width,
+            in_channels = in_channels,
+            out_channels = out_channels,
+            kernel_size = kernel_size,
+            dtype = dtype,
+            out_h = out_h,
+            out_w = out_w
         ))
     }
-    
+
     fn lower_attention(
         seq_len: usize,
         hidden_size: usize,
@@ -71,7 +81,7 @@ impl TargetLowering for MetalBackend {
         dtype: &str,
     ) -> Result<String, String> {
         let head_dim = hidden_size / num_heads;
-        
+
         Ok(format!(
             r#"  // Metal attention for Apple Silicon
   // Optimized for unified memory architecture
@@ -80,14 +90,17 @@ impl TargetLowering for MetalBackend {
     return %output : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
   }}
 "#,
-            seq_len = seq_len, num_heads = num_heads, head_dim = head_dim, dtype = dtype
+            seq_len = seq_len,
+            num_heads = num_heads,
+            head_dim = head_dim,
+            dtype = dtype
         ))
     }
-    
+
     fn module_attributes() -> String {
         "gpu.container_module".to_string()
     }
-    
+
     fn function_attributes() -> String {
         "gpu.kernel".to_string()
     }
@@ -113,7 +126,7 @@ impl AppleGpuSpec {
             tflops_fp32: 5.2,
         }
     }
-    
+
     pub fn m1_ultra() -> Self {
         Self {
             name: "M1 Ultra",
@@ -123,7 +136,7 @@ impl AppleGpuSpec {
             tflops_fp32: 10.4,
         }
     }
-    
+
     pub fn m2_max() -> Self {
         Self {
             name: "M2 Max",
@@ -133,7 +146,7 @@ impl AppleGpuSpec {
             tflops_fp32: 6.75,
         }
     }
-    
+
     pub fn m2_ultra() -> Self {
         Self {
             name: "M2 Ultra",
@@ -143,7 +156,7 @@ impl AppleGpuSpec {
             tflops_fp32: 13.5,
         }
     }
-    
+
     pub fn m3_max() -> Self {
         Self {
             name: "M3 Max",
@@ -178,33 +191,35 @@ pub fn generate_metal_module(
   }}
 }}
 "#,
-        model_name = model_name, hidden_size = hidden_size,
-        seq_len = seq_len, dtype = dtype
+        model_name = model_name,
+        hidden_size = hidden_size,
+        seq_len = seq_len,
+        dtype = dtype
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_metal_backend() {
         assert_eq!(MetalBackend::backend(), TargetBackend::Metal);
     }
-    
+
     #[test]
     fn test_metal_matmul() {
         let code = MetalBackend::lower_matmul(1, 1024, 1024, 1024, "f16").unwrap();
         assert!(code.contains("linalg.matmul"));
     }
-    
+
     #[test]
     fn test_apple_gpu_specs() {
         let m1_max = AppleGpuSpec::m1_max();
         assert_eq!(m1_max.gpu_cores, 32);
         assert_eq!(m1_max.name, "M1 Max");
     }
-    
+
     #[test]
     fn test_metal_module() {
         let code = generate_metal_module("test", 768, 12, 512, "f16");

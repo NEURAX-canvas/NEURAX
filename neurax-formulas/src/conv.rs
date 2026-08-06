@@ -32,10 +32,10 @@ pub fn conv2d_flops(
     // Output dimensions
     let out_h = (height + 2 * padding - kernel_h) / stride + 1;
     let out_w = (width + 2 * padding - kernel_w) / stride + 1;
-    
+
     // FLOPs per output position
     let flops_per_pos = 2.0 * (in_channels / groups) as f64 * kernel_h as f64 * kernel_w as f64;
-    
+
     // Total FLOPs
     batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 * flops_per_pos
 }
@@ -54,16 +54,24 @@ pub fn depthwise_separable_conv2d_flops(
     padding: usize,
 ) -> f64 {
     // Depthwise conv
-    let depthwise = conv2d_flops(batch, channels, channels, height, width, kernel_h, kernel_w, stride, padding, channels);
-    
+    let depthwise = conv2d_flops(
+        batch, channels, channels, height, width, kernel_h, kernel_w, stride, padding, channels,
+    );
+
     // Pointwise conv (1x1)
     let pointwise = conv2d_flops(
-        batch, channels, channels,
+        batch,
+        channels,
+        channels,
         (height + 2 * padding - kernel_h) / stride + 1,
         (width + 2 * padding - kernel_w) / stride + 1,
-        1, 1, 1, 0, 1
+        1,
+        1,
+        1,
+        0,
+        1,
     );
-    
+
     depthwise + pointwise
 }
 
@@ -86,9 +94,10 @@ pub fn conv3d_flops(
     let out_d = (depth + 2 * padding - kernel_d) / stride + 1;
     let out_h = (height + 2 * padding - kernel_h) / stride + 1;
     let out_w = (width + 2 * padding - kernel_w) / stride + 1;
-    
-    let flops_per_pos = 2.0 * in_channels as f64 * kernel_d as f64 * kernel_h as f64 * kernel_w as f64;
-    
+
+    let flops_per_pos =
+        2.0 * in_channels as f64 * kernel_d as f64 * kernel_h as f64 * kernel_w as f64;
+
     batch as f64 * out_channels as f64 * out_d as f64 * out_h as f64 * out_w as f64 * flops_per_pos
 }
 

@@ -19,13 +19,13 @@ pub fn diffusion_step_flops(
 ) -> f64 {
     // UNet forward pass
     let unet = unet_flops;
-    
+
     // Timestep embedding
     let t_emb = timestep_embedding_flops;
-    
+
     // Noise prediction head (typically a small conv)
     let head = 2.0 * batch as f64 * channels as f64 * height as f64 * width as f64 * 3.0 * 3.0;
-    
+
     unet + t_emb + head
 }
 
@@ -52,10 +52,10 @@ pub fn diffusion_training_step_flops(
 ) -> f64 {
     // Forward: add noise, predict noise
     let forward = diffusion_step_flops(batch, channels, height, width, unet_flops, 0.0);
-    
+
     // Loss computation: MSE between predicted and actual noise
     let loss = 2.0 * batch as f64 * channels as f64 * height as f64 * width as f64;
-    
+
     forward + loss
 }
 
@@ -68,16 +68,16 @@ pub fn unet_params(
     image_size: usize,
 ) -> u64 {
     let mut params: u64 = 0;
-    
+
     // Initial convolution
     params += (3 * base_channels * 3 * 3) as u64; // Assuming RGB input
-    
+
     // Encoder
     let mut channels = base_channels;
     let mut resolution = image_size;
     for (i, &mult) in channel_multipliers.iter().enumerate() {
         let out_channels = base_channels * mult;
-        
+
         // ResNet blocks
         for _ in 0..num_res_blocks {
             // Two convs per block
@@ -86,26 +86,26 @@ pub fn unet_params(
             params += (2 * out_channels * 2) as u64;
             channels = out_channels;
         }
-        
+
         // Attention at certain resolutions
         if attention_resolutions.contains(&resolution) {
             // Self-attention
             params += (4 * channels * channels) as u64;
         }
-        
+
         // Downsample (except last)
         if i < channel_multipliers.len() - 1 {
             params += (channels * channels * 4 * 4) as u64; // 2x2 conv with stride 2
             resolution /= 2;
         }
     }
-    
+
     // Middle block (similar logic)
     // Decoder (symmetric)
-    
+
     // Final output conv
     params += (channels * 3 * 3 * 3) as u64; // Back to RGB
-    
+
     params
 }
 

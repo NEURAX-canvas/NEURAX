@@ -11,13 +11,13 @@ impl NeuraxContext {
     /// Create a new NEURAX MLIR context
     pub fn new() -> Self {
         let context = Context::new();
-        
+
         // Enable unregistered dialects for NEURAX custom dialects
         context.set_allow_unregistered_dialects(true);
-        
+
         Self { context }
     }
-    
+
     /// Get the underlying MLIR context
     pub fn as_context(&self) -> &Context {
         &self.context

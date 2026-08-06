@@ -1,25 +1,25 @@
 //! NEURAX CLI - Command Line Interface
 
-use neurax_core::{analyze_json, validate_json, get_model_summary};
-use neurax_ir::report::{format_markdown, format_json_output};
-use std::path::PathBuf;
+use neurax_core::{analyze_json, get_model_summary, validate_json};
+use neurax_ir::report::{format_json_output, format_markdown};
 use std::fs;
+use std::path::PathBuf;
 
 fn main() {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    
+
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.len() < 2 {
         print_usage();
         std::process::exit(1);
     }
-    
+
     let command = &args[1];
-    
+
     let result: Result<(), i32> = match command.as_str() {
         "analyze" => cmd_analyze(&args[2..]),
         "compile" => cmd_compile(&args[2..]),
@@ -39,7 +39,7 @@ fn main() {
             Err(1)
         }
     };
-    
+
     let exit_code = match result {
         Ok(()) => 0,
         Err(code) => code,
@@ -49,26 +49,26 @@ fn main() {
 
 fn cmd_analyze(args: &[String]) -> Result<(), i32> {
     let (input_path, output_path, format) = parse_analyze_args(args)?;
-    
+
     // Read input file
     let content = fs::read_to_string(&input_path).map_err(|e| {
         eprintln!("Error reading file '{}': {}", input_path.display(), e);
         1
     })?;
-    
+
     // Run analysis
     println!("Analyzing '{}'...", input_path.display());
     let start = std::time::Instant::now();
-    
+
     let result = analyze_json(&content).map_err(|e| {
         eprintln!("Analysis failed: {}", e);
         1
     })?;
-    
+
     let duration = start.elapsed();
     let _analysis_time_ms = duration.as_millis() as u64;
     println!("Analysis completed in {:.2}s", duration.as_secs_f64());
-    
+
     // Generate output based on format
     let _input_file_str = input_path.to_string_lossy().to_string();
     let output = match format.as_str() {
@@ -79,7 +79,7 @@ fn cmd_analyze(args: &[String]) -> Result<(), i32> {
         "markdown" | "md" => format_markdown(&result.report),
         _ => format_markdown(&result.report),
     };
-    
+
     // Determine output path
     let final_output_path = output_path.or_else(|| {
         // Auto-generate output path: input.json -> input_output.json
@@ -87,7 +87,7 @@ fn cmd_analyze(args: &[String]) -> Result<(), i32> {
         let parent = input_path.parent()?;
         Some(parent.join(format!("{}_output.json", stem)))
     });
-    
+
     // Write output
     if let Some(out_path) = final_output_path {
         fs::write(&out_path, &output).map_err(|e| {
@@ -98,26 +98,26 @@ fn cmd_analyze(args: &[String]) -> Result<(), i32> {
     } else {
         println!("\n{}", output);
     }
-    
+
     Ok(())
 }
 
 fn cmd_compile(args: &[String]) -> Result<(), i32> {
     let (input_path, output_dir) = parse_compile_args(args)?;
-    
+
     // Read input file
     let content = fs::read_to_string(&input_path).map_err(|e| {
         eprintln!("Error reading file '{}': {}", input_path.display(), e);
         1
     })?;
-    
+
     println!("╔════════════════════════════════════════════════════════════╗");
     println!("║         NEURAX COMPILER - FULL COMPILATION PIPELINE         ║");
     println!("╚════════════════════════════════════════════════════════════╝");
     println!("Model: {}", input_path.display());
     println!("Output: {}", output_dir.display());
     println!();
-    
+
     // Step 1: Validate JSON
     println!("[1/6] Validating JSON configuration...");
     let config = validate_json(&content).map_err(|e| {
@@ -125,10 +125,13 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
         1
     })?;
     println!("      ✓ JSON is valid");
-    println!("      • Model: {}", config.model.name.as_deref().unwrap_or("Unknown"));
+    println!(
+        "      • Model: {}",
+        config.model.name.as_deref().unwrap_or("Unknown")
+    );
     println!("      • Type: {}", config.model.model_type.as_str());
     println!("      • Layers: {}", config.model.layers.len());
-    
+
     // Step 2: Analyze model
     println!("\n[2/6] Analyzing model architecture...");
     let start = std::time::Instant::now();
@@ -138,37 +141,54 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
     })?;
     let analysis_time_ms = start.elapsed().as_millis() as u64;
     println!("      ✓ Analysis completed in {} ms", analysis_time_ms);
-    println!("      • Total params: {}", result.arch.metrics.total_parameters);
-    println!("      • Total params: {:.2}M ({:.4}B)", 
+    println!(
+        "      • Total params: {}",
+        result.arch.metrics.total_parameters
+    );
+    println!(
+        "      • Total params: {:.2}M ({:.4}B)",
         result.arch.metrics.total_parameters as f64 / 1e6,
-        result.arch.metrics.total_parameters as f64 / 1e9);
-    
+        result.arch.metrics.total_parameters as f64 / 1e9
+    );
+
     // Step 3: Compute FLOPs
     println!("\n[3/6] Computing FLOPs...");
     let forward_flops = result.compute.metrics.forward_flops;
-    println!("      • Forward FLOPs/token: {:.2e} ({:.2} GFLOPs)", 
-        forward_flops, forward_flops / 1e9);
-    println!("      • Backward FLOPs/token: {:.2e}", result.compute.metrics.backward_flops);
-    println!("      • Total FLOPs/token: {:.2e} ({:.2} TFLOPs)", 
-        result.compute.metrics.total_flops, result.compute.metrics.total_flops / 1e12);
-    
+    println!(
+        "      • Forward FLOPs/token: {:.2e} ({:.2} GFLOPs)",
+        forward_flops,
+        forward_flops / 1e9
+    );
+    println!(
+        "      • Backward FLOPs/token: {:.2e}",
+        result.compute.metrics.backward_flops
+    );
+    println!(
+        "      • Total FLOPs/token: {:.2e} ({:.2} TFLOPs)",
+        result.compute.metrics.total_flops,
+        result.compute.metrics.total_flops / 1e12
+    );
+
     // Step 4: Compute memory
     println!("\n[4/6] Computing memory requirements...");
     let param_mem = result.memory.metrics.parameter_memory_bytes;
     let total_mem = result.memory.metrics.peak_vram_bytes;
     println!("      • Parameter memory: {:.2} GB", param_mem as f64 / 1e9);
-    println!("      • Activation memory: {:.2} GB", result.memory.metrics.activation_memory_bytes as f64 / 1e9);
+    println!(
+        "      • Activation memory: {:.2} GB",
+        result.memory.metrics.activation_memory_bytes as f64 / 1e9
+    );
     println!("      • Total memory: {:.2} GB", total_mem as f64 / 1e9);
-    
+
     // Step 5: Generate code
     println!("\n[5/6] Generating native code...");
-    
+
     // Create output directory
     fs::create_dir_all(&output_dir).map_err(|e| {
         eprintln!("Failed to create output directory: {}", e);
         1
     })?;
-    
+
     // Generate LLVM IR
     let llvm_ir = generate_llvm_ir(&result);
     let llvm_path = output_dir.join("model.ll");
@@ -176,7 +196,10 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
         eprintln!("Failed to write LLVM IR: {}", e);
         1
     })?;
-    println!("      ✓ LLVM IR generated: {} lines", llvm_ir.lines().count());
+    println!(
+        "      ✓ LLVM IR generated: {} lines",
+        llvm_ir.lines().count()
+    );
 
     // Generate real MLIR via the NEURAX MLIR backend (feature-gated, requires LLVM 18)
     #[cfg(feature = "mlir")]
@@ -197,7 +220,7 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
             }
         }
     }
-    
+
     // Generate Assembly
     let asm = generate_assembly(&result);
     let asm_path = output_dir.join("model.s");
@@ -206,7 +229,7 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
         1
     })?;
     println!("      ✓ Assembly generated: {} lines", asm.lines().count());
-    
+
     // Generate Object file (placeholder)
     let obj_path = output_dir.join("model.o");
     fs::write(&obj_path, vec![0u8; 890]).map_err(|e| {
@@ -214,10 +237,14 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
         1
     })?;
     println!("      ✓ Object code generated: 890 bytes");
-    
+
     // Step 6: Write metrics
     println!("\n[6/6] Writing output files...");
-    let metrics_json = format_json_output(&result.report, &input_path.to_string_lossy(), analysis_time_ms);
+    let metrics_json = format_json_output(
+        &result.report,
+        &input_path.to_string_lossy(),
+        analysis_time_ms,
+    );
     let metrics_path = output_dir.join("metrics.json");
     fs::write(&metrics_path, &metrics_json).map_err(|e| {
         eprintln!("Failed to write metrics: {}", e);
@@ -226,17 +253,26 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
     println!("      ✓ Metrics: {}", metrics_path.display());
     println!("      ✓ LLVM IR: {}", llvm_path.display());
     println!("      ✓ Assembly: {}", asm_path.display());
-    println!("      ✓ Object code: {} ({} bytes)", obj_path.display(), 890);
-    
+    println!(
+        "      ✓ Object code: {} ({} bytes)",
+        obj_path.display(),
+        890
+    );
+
     // Summary
     println!("\n╔════════════════════════════════════════════════════════════╗");
     println!("║                    COMPILATION SUMMARY                     ║");
     println!("╚════════════════════════════════════════════════════════════╝");
-    println!("  Model:        {}", config.model.name.as_deref().unwrap_or("Unknown"));
+    println!(
+        "  Model:        {}",
+        config.model.name.as_deref().unwrap_or("Unknown")
+    );
     println!("  Type:         {}", config.model.model_type.as_str());
-    println!("  Parameters:   {:.2}M ({:.4}B)", 
+    println!(
+        "  Parameters:   {:.2}M ({:.4}B)",
         result.arch.metrics.total_parameters as f64 / 1e6,
-        result.arch.metrics.total_parameters as f64 / 1e9);
+        result.arch.metrics.total_parameters as f64 / 1e9
+    );
     println!("  FLOPs/token:  {:.2} GFLOPs", forward_flops / 1e9);
     println!("  Memory:       {:.2} GB", total_mem as f64 / 1e9);
     println!();
@@ -246,20 +282,38 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
     println!("  Compile time: {} ms", analysis_time_ms);
     println!();
     println!("  Hardware:     Unknown GPU");
-    println!("  Fits VRAM:    {}", if total_mem < 80_000_000_000 { "Yes" } else { "No" });
-    println!("  Max batch:    {}", result.memory.metrics.max_batch_size_fit);
-    println!("  Latency:      {:.2} ms/token", result.hardware.metrics.latency_ms);
-    println!("  Throughput:   {:.0} tokens/sec", result.hardware.metrics.throughput_tokens_per_s);
+    println!(
+        "  Fits VRAM:    {}",
+        if total_mem < 80_000_000_000 {
+            "Yes"
+        } else {
+            "No"
+        }
+    );
+    println!(
+        "  Max batch:    {}",
+        result.memory.metrics.max_batch_size_fit
+    );
+    println!(
+        "  Latency:      {:.2} ms/token",
+        result.hardware.metrics.latency_ms
+    );
+    println!(
+        "  Throughput:   {:.0} tokens/sec",
+        result.hardware.metrics.throughput_tokens_per_s
+    );
     println!();
     println!("✅ Compilation complete!");
-    
+
     Ok(())
 }
 
 fn generate_llvm_ir(result: &neurax_core::AnalysisResult) -> String {
-    let hidden_size = result.arch.metrics.total_parameters / result.arch.metrics.num_layers.max(1) as u64;
-    
-    let ir = format!(r#"; Generated by Neurax Compiler
+    let hidden_size =
+        result.arch.metrics.total_parameters / result.arch.metrics.num_layers.max(1) as u64;
+
+    let ir = format!(
+        r#"; Generated by Neurax Compiler
 target triple = "x86_64-unknown-linux-gnu"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 
@@ -306,12 +360,15 @@ entry:
   %total = add i64 %param_bytes, %act_total
   ret i64 %total
 }}
-"#, hidden_size, result.arch.metrics.num_layers);
+"#,
+        hidden_size, result.arch.metrics.num_layers
+    );
     ir
 }
 
 fn generate_assembly(result: &neurax_core::AnalysisResult) -> String {
-    format!(r#"    .file "neurax_module.s"
+    format!(
+        r#"    .file "neurax_module.s"
     .text
     .code64
     .att_syntax prefix
@@ -352,13 +409,15 @@ neurax_analyze:
 
     .section .comment
     .asciz "Neurax Compiler v0.1.0"
-"#, num_layers = result.arch.metrics.num_layers)
+"#,
+        num_layers = result.arch.metrics.num_layers
+    )
 }
 
 fn parse_compile_args(args: &[String]) -> Result<(PathBuf, PathBuf), i32> {
     let mut input_path: Option<PathBuf> = None;
     let mut output_dir: Option<PathBuf> = None;
-    
+
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -380,41 +439,44 @@ fn parse_compile_args(args: &[String]) -> Result<(PathBuf, PathBuf), i32> {
         }
         i += 1;
     }
-    
+
     let input = input_path.ok_or_else(|| {
         eprintln!("Error: No input file specified");
         print_compile_usage();
         1
     })?;
-    
+
     // Default output directory based on input filename
     let output = output_dir.unwrap_or_else(|| {
-        let stem = input.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "output".to_string());
+        let stem = input
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "output".to_string());
         PathBuf::from(format!("output/{}", stem))
     });
-    
+
     Ok((input, output))
 }
 
 fn cmd_validate(args: &[String]) -> Result<(), i32> {
-    let input_path = args.first()
-        .map(|s| PathBuf::from(s))
-        .ok_or_else(|| {
-            eprintln!("Error: No input file specified");
-            print_validate_usage();
-            1
-        })?;
-    
-    let content = fs::read_to_string(&input_path)
-        .map_err(|e| {
-            eprintln!("Error reading file '{}': {}", input_path.display(), e);
-            1
-        })?;
-    
+    let input_path = args.first().map(|s| PathBuf::from(s)).ok_or_else(|| {
+        eprintln!("Error: No input file specified");
+        print_validate_usage();
+        1
+    })?;
+
+    let content = fs::read_to_string(&input_path).map_err(|e| {
+        eprintln!("Error reading file '{}': {}", input_path.display(), e);
+        1
+    })?;
+
     match validate_json(&content) {
         Ok(config) => {
             println!("✓ JSON is valid");
-            println!("  Model: {}", config.model.name.as_deref().unwrap_or("Unknown"));
+            println!(
+                "  Model: {}",
+                config.model.name.as_deref().unwrap_or("Unknown")
+            );
             println!("  Type: {}", config.model.model_type.as_str());
             println!("  Layers: {}", config.model.layers.len());
             Ok(())
@@ -427,26 +489,23 @@ fn cmd_validate(args: &[String]) -> Result<(), i32> {
 }
 
 fn cmd_summary(args: &[String]) -> Result<(), i32> {
-    let input_path = args.first()
-        .map(|s| PathBuf::from(s))
-        .ok_or_else(|| {
-            eprintln!("Error: No input file specified");
-            1
-        })?;
-    
-    let content = fs::read_to_string(&input_path)
-        .map_err(|e| {
-            eprintln!("Error reading file '{}': {}", input_path.display(), e);
-            1
-        })?;
-    
+    let input_path = args.first().map(|s| PathBuf::from(s)).ok_or_else(|| {
+        eprintln!("Error: No input file specified");
+        1
+    })?;
+
+    let content = fs::read_to_string(&input_path).map_err(|e| {
+        eprintln!("Error reading file '{}': {}", input_path.display(), e);
+        1
+    })?;
+
     let config = neurax_parser::parse_model_config(&content).map_err(|e| {
         eprintln!("Parse error: {}", e);
         1
     })?;
-    
+
     let summary = get_model_summary(&config);
-    
+
     println!("Model Summary:");
     println!("  Name: {}", summary.name);
     println!("  Type: {}", summary.model_type);
@@ -454,7 +513,7 @@ fn cmd_summary(args: &[String]) -> Result<(), i32> {
     println!("  Batch Size: {}", summary.batch_size);
     println!("  Precision: {}", summary.precision);
     println!("  GPUs: {}", summary.gpu_count);
-    
+
     Ok(())
 }
 
@@ -462,7 +521,7 @@ fn parse_analyze_args(args: &[String]) -> Result<(PathBuf, Option<PathBuf>, Stri
     let mut input_path: Option<PathBuf> = None;
     let mut output_path: Option<PathBuf> = None;
     let mut format = "markdown".to_string();
-    
+
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -492,18 +551,19 @@ fn parse_analyze_args(args: &[String]) -> Result<(PathBuf, Option<PathBuf>, Stri
         }
         i += 1;
     }
-    
+
     let input = input_path.ok_or_else(|| {
         eprintln!("Error: No input file specified");
         print_analyze_usage();
         1
     })?;
-    
+
     Ok((input, output_path, format))
 }
 
 fn print_usage() {
-    println!(r#"
+    println!(
+        r#"
 NEURAX - Universal Analytic Compiler for AI Architectures
 
 USAGE:
@@ -540,7 +600,8 @@ EXAMPLES:
     neurax summary model.json
 
 For more information, see https://github.com/neurax/neurax
-"#);
+"#
+    );
 }
 
 fn print_analyze_usage() {

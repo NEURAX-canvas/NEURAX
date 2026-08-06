@@ -3,21 +3,21 @@
 //! This module provides lowering passes to convert NEURAX dialects
 //! to standard MLIR operations (linalg, tensor, arith, scf).
 
-mod context;
-mod pass;
 mod architecture;
-mod operator;
-mod memory;
+mod context;
 mod hardware;
+mod memory;
+mod operator;
 mod parallelism;
+mod pass;
 
-pub use context::LoweringContext;
-pub use pass::LoweringPass;
 pub use architecture::ArchitectureLowering;
-pub use operator::OperatorLowering;
-pub use memory::MemoryLowering;
+pub use context::LoweringContext;
 pub use hardware::HardwareLowering;
+pub use memory::MemoryLowering;
+pub use operator::OperatorLowering;
 pub use parallelism::ParallelismLowering;
+pub use pass::LoweringPass;
 
 use melior::ir::Module;
 
@@ -32,6 +32,6 @@ pub fn run_lowering_pipeline<'c>(
     MemoryLowering::run(module, context)?;
     HardwareLowering::run(module, context)?;
     ParallelismLowering::run(module, context)?;
-    
+
     Ok(())
 }

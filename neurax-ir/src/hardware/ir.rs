@@ -113,7 +113,7 @@ impl GpuProfile {
         };
         base * self.efficiency_factor
     }
-    
+
     /// Get bandwidth for a specific cache level
     pub fn bandwidth_for_cache(&self, level: CacheLevel) -> f64 {
         match level {
@@ -241,7 +241,7 @@ impl RooflineModel {
             kernel_launch_overhead_us: 5.0,
         }
     }
-    
+
     /// Estimate latency for an operation using Industrial Roofline
     pub fn estimate_latency(
         &self,
@@ -255,7 +255,7 @@ impl RooflineModel {
         // 1. Compute time
         let peak_compute = gpu.effective_tflops("bf16") * 1e12 * efficiency;
         let t_compute = flops / peak_compute;
-        
+
         // 2. Memory time based on cache level
         let peak_bw = gpu.bandwidth_for_cache(cache_level);
         let t_memory = match cache_level {
@@ -263,7 +263,7 @@ impl RooflineModel {
             CacheLevel::L2 => bytes_l2 as f64 / peak_bw,
             CacheLevel::Hbm => bytes_hbm as f64 / peak_bw,
         };
-        
+
         // 3. Overlap
         let t_effective = if self.overlap_factor > 0.0 {
             let max_t = t_compute.max(t_memory);
@@ -272,20 +272,24 @@ impl RooflineModel {
         } else {
             t_compute.max(t_memory)
         };
-        
+
         // 4. Kernel overhead
         let kernel_overhead = self.kernel_launch_overhead_us * 1e-6;
-        
+
         let total_latency_ms = (t_effective + kernel_overhead) * 1000.0;
-        
+
         // 5. Determine bottleneck
-        let arith_intensity = if bytes_hbm > 0 { flops / bytes_hbm as f64 } else { 0.0 };
+        let arith_intensity = if bytes_hbm > 0 {
+            flops / bytes_hbm as f64
+        } else {
+            0.0
+        };
         let bottleneck = if arith_intensity >= self.ridge_point {
             Bottleneck::ComputeBound
         } else {
             Bottleneck::MemoryBound
         };
-        
+
         LatencyEstimate {
             latency_ms: total_latency_ms,
             compute_time_ms: t_compute * 1000.0,

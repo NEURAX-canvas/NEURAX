@@ -11,11 +11,11 @@ impl TargetLowering for CpuBackend {
     fn backend() -> TargetBackend {
         TargetBackend::Cpu
     }
-    
+
     fn supported_dtypes() -> &'static [&'static str] {
         &["f32", "f64", "i8", "i16", "i32", "i64"]
     }
-    
+
     fn lower_matmul(
         batch: usize,
         m: usize,
@@ -31,10 +31,14 @@ impl TargetLowering for CpuBackend {
     return %c : tensor<{batch}x{m}x{n}x{dtype}>
   }}
 "#,
-            batch = batch, m = m, k = k, n = n, dtype = dtype
+            batch = batch,
+            m = m,
+            k = k,
+            n = n,
+            dtype = dtype
         ))
     }
-    
+
     fn lower_conv2d(
         batch: usize,
         in_channels: usize,
@@ -46,7 +50,7 @@ impl TargetLowering for CpuBackend {
     ) -> Result<String, String> {
         let out_h = height - kernel_size + 1;
         let out_w = width - kernel_size + 1;
-        
+
         Ok(format!(
             r#"  // CPU conv2d using linalg
   func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{out_channels}x{in_channels}x{kernel_size}x{kernel_size}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}> attributes {{llvm.readonly}} {{
@@ -55,12 +59,18 @@ impl TargetLowering for CpuBackend {
     return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
   }}
 "#,
-            batch = batch, height = height, width = width, in_channels = in_channels,
-            out_channels = out_channels, kernel_size = kernel_size, dtype = dtype,
-            out_h = out_h, out_w = out_w
+            batch = batch,
+            height = height,
+            width = width,
+            in_channels = in_channels,
+            out_channels = out_channels,
+            kernel_size = kernel_size,
+            dtype = dtype,
+            out_h = out_h,
+            out_w = out_w
         ))
     }
-    
+
     fn lower_attention(
         seq_len: usize,
         hidden_size: usize,
@@ -74,14 +84,16 @@ impl TargetLowering for CpuBackend {
     return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
   }}
 "#,
-            seq_len = seq_len, hidden_size = hidden_size, dtype = dtype
+            seq_len = seq_len,
+            hidden_size = hidden_size,
+            dtype = dtype
         ))
     }
-    
+
     fn module_attributes() -> String {
         "llvm.target_triple".to_string()
     }
-    
+
     fn function_attributes() -> String {
         "llvm.readonly".to_string()
     }
@@ -97,7 +109,7 @@ pub fn generate_cpu_module(
     dtype: &str,
 ) -> String {
     let attention = CpuBackend::lower_attention(seq_len, hidden_size, num_heads, dtype).unwrap();
-    
+
     format!(
         r#"module @{model_name} attributes {{
   llvm.target_triple
@@ -130,8 +142,12 @@ pub fn generate_cpu_module(
   }}
 }}
 "#,
-        model_name = model_name, hidden_size = hidden_size, num_heads = num_heads,
-        num_layers = num_layers, seq_len = seq_len, dtype = dtype,
+        model_name = model_name,
+        hidden_size = hidden_size,
+        num_heads = num_heads,
+        num_layers = num_layers,
+        seq_len = seq_len,
+        dtype = dtype,
         attention = attention
     )
 }
@@ -139,19 +155,19 @@ pub fn generate_cpu_module(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_cpu_backend() {
         assert_eq!(CpuBackend::backend(), TargetBackend::Cpu);
         assert!(CpuBackend::supported_dtypes().contains(&"f32"));
     }
-    
+
     #[test]
     fn test_cpu_matmul() {
         let code = CpuBackend::lower_matmul(1, 1024, 1024, 1024, "f32").unwrap();
         assert!(code.contains("linalg.matmul"));
     }
-    
+
     #[test]
     fn test_cpu_module() {
         let code = generate_cpu_module("test", 768, 12, 12, 512, "f32");

@@ -1,6 +1,5 @@
 //! Parallelism IR structures
 
-
 /// Parallelism IR - dialecte de l'analyse de scalabilité
 #[derive(Debug, Clone)]
 pub struct ParallelismIR {

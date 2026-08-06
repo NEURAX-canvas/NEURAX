@@ -1,22 +1,25 @@
 //! Architecture IR - Premier dialecte du pipeline NEURAX
 
 mod ir;
-mod pass;
 mod metrics;
+mod pass;
 
 pub use ir::*;
-pub use pass::*;
 pub use metrics::*;
+pub use pass::*;
 
-use neurax_parser::{Layer, LayerType};
 use neurax_formulas::*;
+use neurax_parser::{Layer, LayerType};
 
 /// Calculate parameters for a single layer
 pub fn calculate_layer_params(layer: &Layer) -> u64 {
     match layer.layer_type {
         LayerType::Embedding => {
             let vocab = layer.params.vocab_size.unwrap_or(50000);
-            let dim = layer.params.embedding_dim.unwrap_or(layer.params.hidden_size.unwrap_or(512));
+            let dim = layer
+                .params
+                .embedding_dim
+                .unwrap_or(layer.params.hidden_size.unwrap_or(512));
             embedding::embedding_params(vocab, dim)
         }
         LayerType::Attention => {
@@ -39,11 +42,15 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             }
         }
         LayerType::Dense => {
-            let in_features = layer.params.in_features
+            let in_features = layer
+                .params
+                .in_features
                 .or(layer.params.in_channels)
                 .or(layer.params.hidden_size)
                 .unwrap_or(512);
-            let out_features = layer.params.out_features
+            let out_features = layer
+                .params
+                .out_features
                 .or(layer.params.out_channels)
                 .or(layer.params.hidden_size)
                 .unwrap_or(512);
@@ -53,8 +60,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         LayerType::Conv => {
             let in_ch = layer.params.in_channels.unwrap_or(3);
             let out_ch = layer.params.out_channels.unwrap_or(64);
-            let kh = layer.params.kernel_h.unwrap_or(layer.params.kernel_size.unwrap_or(3));
-            let kw = layer.params.kernel_w.unwrap_or(layer.params.kernel_size.unwrap_or(3));
+            let kh = layer
+                .params
+                .kernel_h
+                .unwrap_or(layer.params.kernel_size.unwrap_or(3));
+            let kw = layer
+                .params
+                .kernel_w
+                .unwrap_or(layer.params.kernel_size.unwrap_or(3));
             let groups = layer.params.groups.unwrap_or(1);
             conv::conv2d_params(in_ch, out_ch, kh, kw, groups, layer.params.bias)
         }
@@ -76,7 +89,13 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             // Each expert is a gated MLP (2 matrices for up/down projection)
             let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
             // Router + all experts + shared experts
-            moe::moe_params_with_shared(hidden, intermediate, num_experts, shared_experts, expert_params)
+            moe::moe_params_with_shared(
+                hidden,
+                intermediate,
+                num_experts,
+                shared_experts,
+                expert_params,
+            )
         }
         // CNN layer types - use dedicated formulas
         LayerType::ResidualBlock => {
@@ -97,11 +116,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let in_ch = layer.params.in_channels.unwrap_or(288);
             let out_1x1 = layer.params.out_channels.unwrap_or(64);
             cnn_blocks::inception_module_params(
-                in_ch, out_1x1,
-                out_1x1 / 2, out_1x1,  // 3x3 branch
-                out_1x1 / 8, out_1x1 / 2,  // 5x5 branch
-                out_1x1,  // pool branch
-                layer.params.bias
+                in_ch,
+                out_1x1,
+                out_1x1 / 2,
+                out_1x1, // 3x3 branch
+                out_1x1 / 8,
+                out_1x1 / 2, // 5x5 branch
+                out_1x1,     // pool branch
+                layer.params.bias,
             )
         }
         LayerType::DenseBlock => {
@@ -142,8 +164,11 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let expansion = layer.params.expansion_factor.unwrap_or(2);
             ssm::mamba_params(hidden, state_dim, expansion)
         }
-        LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace 
-        | LayerType::RwkvBlock | LayerType::RetentionBlock => {
+        LayerType::S4Block
+        | LayerType::H3Block
+        | LayerType::StateSpace
+        | LayerType::RwkvBlock
+        | LayerType::RetentionBlock => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let state_dim = layer.params.state_dim.unwrap_or(16);
             let expansion = layer.params.expansion_factor.unwrap_or(2);
@@ -213,8 +238,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         }
         // Diffusion layer types - use dedicated formulas
         LayerType::UnetBlock | LayerType::ResnetBlock => {
-            let in_ch = layer.params.in_channels_diff.unwrap_or(layer.params.in_channels.unwrap_or(320));
-            let out_ch = layer.params.out_channels_diff.unwrap_or(layer.params.out_channels.unwrap_or(320));
+            let in_ch = layer
+                .params
+                .in_channels_diff
+                .unwrap_or(layer.params.in_channels.unwrap_or(320));
+            let out_ch = layer
+                .params
+                .out_channels_diff
+                .unwrap_or(layer.params.out_channels.unwrap_or(320));
             // UNet ResNet block: 2 convs + 2 norms + skip
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
         }
@@ -230,8 +261,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             attention::attention_params(hidden, heads, true)
         }
         LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
-            let in_ch = layer.params.in_channels_diff.unwrap_or(layer.params.in_channels.unwrap_or(320));
-            let out_ch = layer.params.out_channels_diff.unwrap_or(layer.params.out_channels.unwrap_or(320));
+            let in_ch = layer
+                .params
+                .in_channels_diff
+                .unwrap_or(layer.params.in_channels.unwrap_or(320));
+            let out_ch = layer
+                .params
+                .out_channels_diff
+                .unwrap_or(layer.params.out_channels.unwrap_or(320));
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
         }
         LayerType::ConditionBlock => {

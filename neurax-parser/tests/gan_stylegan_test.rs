@@ -2,8 +2,8 @@
 //! Validates complete absorption pipeline with GAN architecture
 //! Based on StyleGAN-3 and BigGAN architectures
 
-use neurax_parser::{parse_model_config, AbsorbedModel};
 use neurax_ir::IrInjector;
+use neurax_parser::{parse_model_config, AbsorbedModel};
 
 /// StyleGAN-3 style GAN for high-resolution image generation
 const STYLEGAN_3_JSON: &str = r#"
@@ -320,15 +320,15 @@ impl RealGanSpecs {
     /// StyleGAN-3-T (translation equivariant) specifications
     fn stylegan3_t_1024() -> Self {
         Self {
-            gen_params_million: 24.0,      // ~24M for generator
-            disc_params_million: 18.0,     // ~18M for discriminator
-            total_params_million: 42.0,    // ~42M total
+            gen_params_million: 24.0,   // ~24M for generator
+            disc_params_million: 18.0,  // ~18M for discriminator
+            total_params_million: 42.0, // ~42M total
             resolution: 1024,
             z_dim: 512,
             w_dim: 512,
         }
     }
-    
+
     /// StyleGAN-2 1024 specifications
     fn stylegan2_1024() -> Self {
         Self {
@@ -340,13 +340,13 @@ impl RealGanSpecs {
             w_dim: 512,
         }
     }
-    
+
     /// Calculate expected generator params
     fn calculate_gen_params(style_dim: u64, max_channels: u64, num_blocks: u32) -> f64 {
         // Each block: conv + style modulation
         // Rough estimate: 2 * (in_ch * out_ch * kernel^2) per block
-        let base = style_dim * max_channels * 2;  // Mapping network
-        let blocks = num_blocks as u64 * max_channels * max_channels * 9;  // 3x3 convs
+        let base = style_dim * max_channels * 2; // Mapping network
+        let blocks = num_blocks as u64 * max_channels * max_channels * 9; // 3x3 convs
         (base + blocks) as f64 / 1e6
     }
 }
@@ -358,84 +358,89 @@ fn test_gan_stylegan_compilation() {
     println!("Architecture: Generative Adversarial Network");
     println!("Resolution: 1024×1024");
     println!("GPUs: 8× A100-80GB");
-    
+
     // ── Step 1: Parse JSON ─────────────────────────────────────────────
     let start = std::time::Instant::now();
-    let config = parse_model_config(STYLEGAN_3_JSON)
-        .expect("Failed to parse GAN JSON");
+    let config = parse_model_config(STYLEGAN_3_JSON).expect("Failed to parse GAN JSON");
     let parse_time = start.elapsed();
     println!("✓ Parsed in {:?}", parse_time);
-    
+
     // ── Step 2: Absorb into AbsorbedModel ───────────────────────────────
     let start = std::time::Instant::now();
     let absorbed = AbsorbedModel::absorb(config);
     let absorb_time = start.elapsed();
     println!("✓ Absorbed in {:?}", absorb_time);
-    
+
     // ── Step 3: Validate GlobalResolutionContext ────────────────────────
     let grc = &absorbed.resolution_context;
-    
+
     // ── GAN-Specific Parameters ────────────────────────────────────────
     println!("\n=== GAN Parameters ===");
-    
+
     // Image dimensions
     assert_eq!(grc.image_height, Some(1024), "image_height should be 1024");
     assert_eq!(grc.image_width, Some(1024), "image_width should be 1024");
     assert_eq!(grc.image_channels, Some(3), "image_channels should be 3");
-    println!("  Output resolution: {}x{}x{}", 
-             grc.image_width.unwrap(), 
-             grc.image_height.unwrap(),
-             grc.image_channels.unwrap());
-    
+    println!(
+        "  Output resolution: {}x{}x{}",
+        grc.image_width.unwrap(),
+        grc.image_height.unwrap(),
+        grc.image_channels.unwrap()
+    );
+
     // Hidden size (style dimension)
     assert_eq!(grc.hidden_size, Some(512), "hidden_size should be 512");
     println!("  Style dimension (w_dim): {}", grc.hidden_size.unwrap());
-    
+
     // Number of layers
     assert_eq!(grc.num_layers, Some(10), "num_layers should be 10");
     println!("  Generator blocks: {}", grc.num_layers.unwrap());
-    
+
     // Initial channels
-    assert_eq!(grc.initial_channels, Some(512), "initial_channels should be 512");
+    assert_eq!(
+        grc.initial_channels,
+        Some(512),
+        "initial_channels should be 512"
+    );
     println!("  Initial channels: {}", grc.initial_channels.unwrap());
-    
+
     // Base channels
     assert_eq!(grc.base_channels, Some(64), "base_channels should be 64");
     println!("  Base channels: {}", grc.base_channels.unwrap());
-    
+
     // ── Derived Values ─────────────────────────────────────────────────
     println!("\n=== Derived Values ===");
-    
+
     assert_eq!(grc.dtype_bytes, 2, "fp16 = 2 bytes");
     println!("  dtype_bytes: {}", grc.dtype_bytes);
-    
+
     assert_eq!(grc.optimizer_bytes_per_param, 8, "Adam = 8 bytes");
     println!("  optimizer_bytes: {}", grc.optimizer_bytes_per_param);
-    
+
     // ── Hardware & Parallelism ─────────────────────────────────────────
     println!("\n=== Hardware & Parallelism ===");
-    
+
     assert_eq!(grc.num_gpus, 8, "8 GPUs");
     println!("  num_gpus: {}", grc.num_gpus);
-    
+
     assert!((grc.primary_gpu_tflops - 312.0).abs() < 1.0, "A100 TFLOPs");
     println!("  GPU TFLOPs: {}", grc.primary_gpu_tflops);
-    
+
     assert_eq!(grc.dp, 8, "Data parallel = 8");
     println!("  Parallelism: DP={}", grc.dp);
-    
+
     // ── Symbol Table ───────────────────────────────────────────────────
     println!("\n=== Symbol Table ===");
-    
+
     assert!(grc.symbol_table.contains_key("B"), "B in symbol table");
     println!("  B (batch): {:?}", grc.symbol_table.get("B"));
     println!("  H_img: {:?}", grc.symbol_table.get("H_img"));
     println!("  W_img: {:?}", grc.symbol_table.get("W_img"));
     println!("  C_img: {:?}", grc.symbol_table.get("C_img"));
-    
+
     // Confidence score
     println!("\n  Confidence score: {:.2}%", grc.confidence_score * 100.0);
-    
+
     // ── Step 4: IR Injection ───────────────────────────────────────────
     let start = std::time::Instant::now();
     let arch_input = IrInjector::to_architecture_ir(&absorbed);
@@ -444,43 +449,63 @@ fn test_gan_stylegan_compilation() {
     let cost_config = IrInjector::configure_cost_pass(&absorbed);
     let inject_time = start.elapsed();
     println!("\n✓ IRs injected in {:?}", inject_time);
-    
+
     // Validate Architecture IR
     assert_eq!(arch_input.hidden_size, Some(512));
     assert_eq!(arch_input.num_layers, Some(10));
-    
+
     // Validate Memory config
     assert_eq!(mem_config.dtype_bytes, 2);
     assert_eq!(mem_config.num_gpus, 8);
-    
+
     // ── Step 5: Parameter Calculation ───────────────────────────────────
     let start = std::time::Instant::now();
     let total_params = IrInjector::calculate_total_params(&absorbed);
     let calc_time = start.elapsed();
     println!("✓ Parameters calculated in {:?}", calc_time);
     println!("  Total parameters: {:.2}M", total_params as f64 / 1e6);
-    
+
     // ── Step 6: Compare with Real Model Specs ───────────────────────────
     println!("\n=== Comparison with Real GAN ===");
-    
+
     let real_stylegan3 = RealGanSpecs::stylegan3_t_1024();
     let real_stylegan2 = RealGanSpecs::stylegan2_1024();
-    
-    println!("  StyleGAN-3-T 1024 params: {:.2}M", real_stylegan3.total_params_million);
-    println!("  StyleGAN-2 1024 params: {:.2}M", real_stylegan2.total_params_million);
+
+    println!(
+        "  StyleGAN-3-T 1024 params: {:.2}M",
+        real_stylegan3.total_params_million
+    );
+    println!(
+        "  StyleGAN-2 1024 params: {:.2}M",
+        real_stylegan2.total_params_million
+    );
     println!("  Calculated params: {:.2}M", total_params as f64 / 1e6);
-    
+
     // Verify resolution matches
-    assert_eq!(grc.image_width.unwrap(), real_stylegan3.resolution, 
-               "Resolution should match real specs");
-    
+    assert_eq!(
+        grc.image_width.unwrap(),
+        real_stylegan3.resolution,
+        "Resolution should match real specs"
+    );
+
     // Verify params are in reasonable range for GAN
-    assert!(total_params > 1_000_000, "Expected > 1M params, got {}", total_params);
-    assert!(total_params < 500_000_000, "Expected < 500M params, got {}", total_params);
-    
+    assert!(
+        total_params > 1_000_000,
+        "Expected > 1M params, got {}",
+        total_params
+    );
+    assert!(
+        total_params < 500_000_000,
+        "Expected < 500M params, got {}",
+        total_params
+    );
+
     // ── Summary ─────────────────────────────────────────────────────────
     println!("\n=== GAN Compilation Summary ===");
-    println!("Total time: {:?}", parse_time + absorb_time + inject_time + calc_time);
+    println!(
+        "Total time: {:?}",
+        parse_time + absorb_time + inject_time + calc_time
+    );
     println!("✓ All GAN fields absorbed correctly");
     println!("✓ All IRs configured");
     println!("✓ Parameter count: {:.2}M", total_params as f64 / 1e6);
@@ -492,22 +517,22 @@ fn test_gan_specific_fields() {
     let config = parse_model_config(STYLEGAN_3_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // Verify GAN-specific fields are absorbed
     assert_eq!(grc.image_height, Some(1024), "Image height");
     assert_eq!(grc.image_width, Some(1024), "Image width");
     assert_eq!(grc.image_channels, Some(3), "Image channels");
     assert_eq!(grc.initial_channels, Some(512), "Initial channels");
     assert_eq!(grc.base_channels, Some(64), "Base channels");
-    
+
     // GAN should NOT have language model parameters
     assert_eq!(grc.vocab_size, None, "GAN has no vocabulary");
     assert_eq!(grc.num_attention_heads, None, "GAN has no attention heads");
     assert_eq!(grc.seq_len, None, "GAN has no sequence length");
-    
+
     // GAN should NOT have SSM parameters
     assert_eq!(grc.ssm_state_size, None, "GAN has no SSM state");
-    
+
     // GAN should NOT have GNN parameters
     assert_eq!(grc.node_features, None, "GAN has no node features");
     assert_eq!(grc.edge_features, None, "GAN has no edge features");
@@ -518,25 +543,28 @@ fn test_gan_vs_other_architectures() {
     let config = parse_model_config(STYLEGAN_3_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // GAN should have image-related parameters
     assert!(grc.image_height.is_some(), "GAN should have image height");
     assert!(grc.image_width.is_some(), "GAN should have image width");
-    assert!(grc.image_channels.is_some(), "GAN should have image channels");
-    
+    assert!(
+        grc.image_channels.is_some(),
+        "GAN should have image channels"
+    );
+
     // GAN should NOT have transformer parameters
     assert_eq!(grc.num_attention_heads, None, "GAN has no attention heads");
     assert_eq!(grc.num_key_value_heads, None, "GAN has no KV heads");
     assert_eq!(grc.vocab_size, None, "GAN has no vocabulary");
-    
+
     // GAN should NOT have SSM parameters
     assert_eq!(grc.ssm_state_size, None, "GAN has no SSM state");
     assert_eq!(grc.ssm_expand, None, "GAN has no SSM expand");
-    
+
     // GAN should NOT have GNN parameters
     assert_eq!(grc.node_features, None, "GAN has no node features");
     assert_eq!(grc.num_message_passing, None, "GAN has no message passing");
-    
+
     // tied_embeddings should be false for GAN
     assert!(!grc.tied_embeddings, "GAN should not have tied embeddings");
 }
@@ -546,21 +574,21 @@ fn test_gan_symbol_table() {
     let config = parse_model_config(STYLEGAN_3_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     let sym = &grc.symbol_table;
-    
+
     // Standard symbols
     assert!(sym.contains_key("B"), "B (batch)");
     assert!(sym.contains_key("H_img"), "H_img (image height)");
     assert!(sym.contains_key("W_img"), "W_img (image width)");
     assert!(sym.contains_key("C_img"), "C_img (image channels)");
-    
+
     // Verify values
     assert_eq!(sym.get("B"), Some(&32u64), "Batch size");
     assert_eq!(sym.get("H_img"), Some(&1024u64), "Image height");
     assert_eq!(sym.get("W_img"), Some(&1024u64), "Image width");
     assert_eq!(sym.get("C_img"), Some(&3u64), "Image channels");
-    
+
     // dtype_bytes for fp16
     assert_eq!(sym.get("dtype_bytes"), Some(&2u64), "fp16 = 2 bytes");
 }
@@ -570,31 +598,52 @@ fn test_gan_metrics_accuracy() {
     let config = parse_model_config(STYLEGAN_3_JSON).unwrap();
     let absorbed = AbsorbedModel::absorb(config);
     let grc = &absorbed.resolution_context;
-    
+
     // Compare with real-world specifications
     let real = RealGanSpecs::stylegan3_t_1024();
-    
+
     // Verify resolution matches
-    assert_eq!(grc.image_width.unwrap(), real.resolution, 
-               "Resolution should match real specs");
-    assert_eq!(grc.image_height.unwrap(), real.resolution,
-               "Resolution should match real specs");
-    
+    assert_eq!(
+        grc.image_width.unwrap(),
+        real.resolution,
+        "Resolution should match real specs"
+    );
+    assert_eq!(
+        grc.image_height.unwrap(),
+        real.resolution,
+        "Resolution should match real specs"
+    );
+
     // Verify style dimension matches
-    assert_eq!(grc.hidden_size.unwrap(), real.w_dim,
-               "Style dim should match real specs");
-    
+    assert_eq!(
+        grc.hidden_size.unwrap(),
+        real.w_dim,
+        "Style dim should match real specs"
+    );
+
     // Calculate params
     let calculated = IrInjector::calculate_total_params(&absorbed) as f64 / 1e6;
-    
+
     // Verify params are in reasonable range
-    assert!(calculated > 1.0 && calculated < 500.0,
-            "GAN params should be in reasonable range (1-500M), got {:.2}M", calculated);
-    
+    assert!(
+        calculated > 1.0 && calculated < 500.0,
+        "GAN params should be in reasonable range (1-500M), got {:.2}M",
+        calculated
+    );
+
     println!("✓ GAN Metrics accuracy verified:");
-    println!("  Resolution: {}x{} (matches StyleGAN-3)", 
-             grc.image_width.unwrap(), grc.image_height.unwrap());
-    println!("  Style dim: {} (matches StyleGAN-3)", grc.hidden_size.unwrap());
+    println!(
+        "  Resolution: {}x{} (matches StyleGAN-3)",
+        grc.image_width.unwrap(),
+        grc.image_height.unwrap()
+    );
+    println!(
+        "  Style dim: {} (matches StyleGAN-3)",
+        grc.hidden_size.unwrap()
+    );
     println!("  Calculated params: {:.2}M", calculated);
-    println!("  Real StyleGAN-3 params: ~{:.2}M", real.total_params_million);
+    println!(
+        "  Real StyleGAN-3 params: ~{:.2}M",
+        real.total_params_million
+    );
 }

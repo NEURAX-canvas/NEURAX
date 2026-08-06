@@ -16,7 +16,11 @@ pub fn embedding_params(vocab_size: usize, embedding_dim: usize) -> u64 {
 }
 
 /// Compute FLOPs for positional encoding (learned)
-pub fn learned_positional_encoding_flops(batch: usize, seq_len: usize, embedding_dim: usize) -> f64 {
+pub fn learned_positional_encoding_flops(
+    batch: usize,
+    seq_len: usize,
+    embedding_dim: usize,
+) -> f64 {
     // Just addition with learned embeddings
     batch as f64 * seq_len as f64 * embedding_dim as f64
 }

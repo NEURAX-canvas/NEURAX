@@ -2,15 +2,15 @@
 
 mod cpu;
 mod cuda;
-mod vulkan;
 mod metal;
 mod rocm;
+mod vulkan;
 
 pub use cpu::CpuBackend;
 pub use cuda::CudaBackend;
-pub use vulkan::VulkanBackend;
 pub use metal::MetalBackend;
 pub use rocm::RocmBackend;
+pub use vulkan::VulkanBackend;
 
 /// Supported target backends
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,7 +38,7 @@ impl TargetBackend {
             Self::Rocm => "rocm",
         }
     }
-    
+
     /// Parse from string
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
@@ -50,17 +50,17 @@ impl TargetBackend {
             _ => None,
         }
     }
-    
+
     /// Get all supported backends
     pub fn all() -> &'static [TargetBackend] {
         &[Self::Cpu, Self::Cuda, Self::Vulkan, Self::Metal, Self::Rocm]
     }
-    
+
     /// Check if this is a GPU backend
     pub fn is_gpu(&self) -> bool {
         matches!(self, Self::Cuda | Self::Vulkan | Self::Metal | Self::Rocm)
     }
-    
+
     /// Get the IREE target device name
     pub fn iree_target(&self) -> &'static str {
         match self {
@@ -71,7 +71,7 @@ impl TargetBackend {
             Self::Rocm => "rocm",
         }
     }
-    
+
     /// Get the IREE backend flag
     pub fn iree_backend_flag(&self) -> &'static str {
         match self {
@@ -88,12 +88,12 @@ impl TargetBackend {
 pub trait TargetLowering {
     /// Get the target backend this lowering supports
     fn backend() -> TargetBackend;
-    
+
     /// Get supported data types for this target
     fn supported_dtypes() -> &'static [&'static str];
-    
+
     /// Lower a tensor operation to target-specific MLIR
-    /// 
+    ///
     /// Returns the lowered operation as MLIR text
     fn lower_matmul(
         batch: usize,
@@ -102,7 +102,7 @@ pub trait TargetLowering {
         n: usize,
         dtype: &str,
     ) -> Result<String, String>;
-    
+
     /// Lower a convolution operation
     fn lower_conv2d(
         batch: usize,
@@ -113,7 +113,7 @@ pub trait TargetLowering {
         kernel_size: usize,
         dtype: &str,
     ) -> Result<String, String>;
-    
+
     /// Lower an attention operation
     fn lower_attention(
         seq_len: usize,
@@ -121,12 +121,12 @@ pub trait TargetLowering {
         num_heads: usize,
         dtype: &str,
     ) -> Result<String, String>;
-    
+
     /// Get target-specific module attributes
     fn module_attributes() -> String {
         String::new()
     }
-    
+
     /// Get target-specific function attributes
     fn function_attributes() -> String {
         String::new()

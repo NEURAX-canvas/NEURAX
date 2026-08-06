@@ -1,9 +1,9 @@
 //! Dynamic Feedback Module
 
-use crate::memory::MemoryMetrics;
-use crate::{Diagnostic, DiagnosticCode, Severity, DiagnosticCategory};
 use super::types::DynamicResults;
 use super::virtual_memory::AllocationStrategy;
+use crate::memory::MemoryMetrics;
+use crate::{Diagnostic, DiagnosticCategory, DiagnosticCode, Severity};
 
 /// Apply dynamic feedback to memory metrics
 pub fn apply_dynamic_feedback(
@@ -11,7 +11,7 @@ pub fn apply_dynamic_feedback(
     dynamic: &DynamicResults,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    
+
     // AMPLIFICATION 1 : Couche instable → recalcul en fp32
     if let Some(ref sta) = dynamic.stability {
         for (layer_id, &margin) in &sta.stability_margin_by_layer {
@@ -30,20 +30,20 @@ pub fn apply_dynamic_feedback(
                 });
             }
         }
-        
+
         // Apply fp32 fallback overhead
         if sta.fp32_fallback_memory_overhead_gb > 0.0 {
             mem.peak_vram_bytes += (sta.fp32_fallback_memory_overhead_gb * 1e9) as u64;
         }
     }
-    
+
     // AMPLIFICATION 2 : Déséquilibre MoE → extension liveness
     if let Some(ref bps) = dynamic.behavioral {
         if bps.expert_load_imbalance > 0.5 {
             let extension_factor = 1.0 + bps.expert_load_imbalance * 0.3;
             let new_activation = (mem.activation_memory_bytes as f64 * extension_factor) as u64;
             mem.activation_memory_bytes = new_activation;
-            
+
             diagnostics.push(Diagnostic {
                 severity: Severity::Warning,
                 category: DiagnosticCategory::ArchitectureInefficiency,
@@ -59,7 +59,7 @@ pub fn apply_dynamic_feedback(
             });
         }
     }
-    
+
     // AMPLIFICATION 3 : Fragmentation élevée → recommandation Flash Attention
     if let Some(ref vm) = dynamic.virtual_memory {
         if vm.fragmentation_pct > 20.0 {
@@ -76,7 +76,7 @@ pub fn apply_dynamic_feedback(
                 precision_impact: 0.0,
             });
         }
-        
+
         match vm.recommended_strategy {
             AllocationStrategy::EnableCompaction => {
                 diagnostics.push(Diagnostic {
@@ -114,7 +114,7 @@ pub fn apply_dynamic_feedback(
             AllocationStrategy::NoAction => {}
         }
     }
-    
+
     diagnostics
 }
 
@@ -122,21 +122,25 @@ pub fn apply_dynamic_feedback(
 pub fn calculate_dynamic_confidence(dynamic: &DynamicResults) -> f64 {
     let mut confidence = 1.0;
     let mut count = 0;
-    
+
     if let Some(ref vm) = dynamic.virtual_memory {
         confidence *= vm.confidence;
         count += 1;
     }
-    
+
     if let Some(ref sta) = dynamic.stability {
         confidence *= sta.confidence;
         count += 1;
     }
-    
+
     if let Some(ref bps) = dynamic.behavioral {
         confidence *= bps.prediction_confidence;
         count += 1;
     }
-    
-    if count > 0 { confidence.powf(1.0 / count as f64) } else { 1.0 }
+
+    if count > 0 {
+        confidence.powf(1.0 / count as f64)
+    } else {
+        1.0
+    }
 }

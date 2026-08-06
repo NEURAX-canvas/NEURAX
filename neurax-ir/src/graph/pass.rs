@@ -1,12 +1,12 @@
 //! Graph IR pass
 
-use crate::traits::IrPass;
-use crate::error::GraphError;
-use crate::NeuraxContext;
+use super::{GraphEdge, GraphIR, GraphMetrics, GraphNode};
 use crate::architecture::ArchitectureIR;
-use super::{GraphIR, GraphNode, GraphEdge, GraphMetrics};
-use petgraph::graph::NodeIndex;
+use crate::error::GraphError;
+use crate::traits::IrPass;
+use crate::NeuraxContext;
 use neurax_formulas::dtype_bytes;
+use petgraph::graph::NodeIndex;
 
 /// Graph pass implementation
 pub struct GraphPass;
@@ -21,13 +21,17 @@ impl IrPass for GraphPass {
         "GraphIR"
     }
 
-    fn build(&self, input: &Self::Input, _ctx: &NeuraxContext) -> Result<Self::Output, Self::PassError> {
+    fn build(
+        &self,
+        input: &Self::Input,
+        _ctx: &NeuraxContext,
+    ) -> Result<Self::Output, Self::PassError> {
         if input.layers.is_empty() {
             return Err(GraphError::EmptyGraph);
         }
 
         let mut graph = GraphIR::new();
-        
+
         // Add all layers as nodes
         let mut prev_idx: Option<NodeIndex> = None;
         for layer in &input.layers {
@@ -35,33 +39,46 @@ impl IrPass for GraphPass {
                 layer_id: layer.id.clone(),
                 layer_type: layer.layer_type,
                 flops_approx: 0.0, // Will be computed in Operator IR
-                input_shapes: if !layer.input_shape.is_empty() { vec![layer.input_shape.clone()] } else { vec![] },
+                input_shapes: if !layer.input_shape.is_empty() {
+                    vec![layer.input_shape.clone()]
+                } else {
+                    vec![]
+                },
                 output_shape: layer.output_shape.clone(),
                 param_count: layer.param_count,
             };
-            
+
             let idx = graph.add_node(node);
-            
+
             // Add edge from previous layer (sequential model assumption)
             if let Some(prev) = prev_idx {
                 let edge = GraphEdge {
                     tensor_shape: layer.input_shape.clone(),
                     dtype: input.training_config.precision.clone(),
-                    size_bytes: calculate_tensor_size(&layer.input_shape, &input.training_config.precision),
+                    size_bytes: calculate_tensor_size(
+                        &layer.input_shape,
+                        &input.training_config.precision,
+                    ),
                 };
                 graph.add_edge(prev, idx, edge);
             }
-            
+
             prev_idx = Some(idx);
         }
 
         // Compute topological order
-        graph.compute_topo_order().map_err(GraphError::TopologicalSortFailed)?;
+        graph
+            .compute_topo_order()
+            .map_err(GraphError::TopologicalSortFailed)?;
 
         Ok(graph)
     }
 
-    fn compute_metrics(&self, output: &mut Self::Output, _ctx: &NeuraxContext) -> Result<Self::Metrics, Self::PassError> {
+    fn compute_metrics(
+        &self,
+        output: &mut Self::Output,
+        _ctx: &NeuraxContext,
+    ) -> Result<Self::Metrics, Self::PassError> {
         let metrics = GraphMetrics {
             graph_depth: output.calculate_depth(),
             total_operations: output.dag.node_count(),
@@ -70,13 +87,17 @@ impl IrPass for GraphPass {
             parallel_paths: vec![], // Computed later for non-sequential models
             critical_path_length: output.topo_order.len(),
         };
-        
+
         output.metrics = metrics.clone();
         output.metrics_done = true;
         Ok(metrics)
     }
 
-    fn validate(&self, output: &Self::Output, metrics: &Self::Metrics) -> Result<(), Self::PassError> {
+    fn validate(
+        &self,
+        output: &Self::Output,
+        metrics: &Self::Metrics,
+    ) -> Result<(), Self::PassError> {
         if output.has_cycle() {
             return Err(GraphError::CycleDetected);
         }
@@ -99,7 +120,7 @@ fn calculate_tensor_size(shape: &[usize], dtype: &str) -> u64 {
 mod tests {
     use super::*;
     use neurax_parser::parse_model_config;
-    
+
     fn create_test_config() -> neurax_parser::ModelConfig {
         let json = r#"{
             "schema_version": "1.0",
@@ -113,7 +134,7 @@ mod tests {
         }"#;
         parse_model_config(json).unwrap()
     }
-    
+
     #[test]
     fn test_graph_construction() {
         let mut arch_ir = ArchitectureIR::default();
@@ -135,12 +156,12 @@ mod tests {
             custom_equations: None,
             param_count: 32896,
         });
-        
+
         let ctx = NeuraxContext::new(create_test_config());
         let pass = GraphPass;
         let mut graph = pass.build(&arch_ir, &ctx).unwrap();
         let metrics = pass.compute_metrics(&mut graph, &ctx).unwrap();
-        
+
         assert_eq!(metrics.total_operations, 2);
         assert!(!graph.has_cycle());
     }

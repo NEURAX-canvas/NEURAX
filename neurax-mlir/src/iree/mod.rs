@@ -35,7 +35,7 @@ impl IreeDevice {
             TargetBackend::Rocm => Self::Rocm,
         }
     }
-    
+
     /// Get IREE target device flag
     pub fn iree_flag(&self) -> &'static str {
         match self {
@@ -46,7 +46,7 @@ impl IreeDevice {
             Self::Rocm => "--iree-hal-target-device=rocm",
         }
     }
-    
+
     /// Get IREE backend flag
     pub fn backend_flag(&self) -> &'static str {
         match self {
@@ -57,7 +57,7 @@ impl IreeDevice {
             Self::Rocm => "--iree-hal-target-backends=rocm",
         }
     }
-    
+
     /// Get the output file extension
     pub fn output_extension(&self) -> &'static str {
         ".vmfb"
@@ -85,11 +85,11 @@ pub fn generate_iree_compatible_mlir(
     dtype: &str,
 ) -> String {
     let head_dim = hidden_size / num_heads;
-    
+
     // IREE prefers StableHLO or TOSA as input
     // For now, generate linalg which IREE can process
     format!(
-r#"// IREE-compatible MLIR for {model_name}
+        r#"// IREE-compatible MLIR for {model_name}
 // Input dialect: linalg (IREE will convert internally)
 // Target: Multi-backend (CPU, CUDA, Vulkan, Metal, ROCm)
 
@@ -152,11 +152,7 @@ pub fn generate_iree_compile_command(
 }
 
 /// Generate IREE run command
-pub fn generate_iree_run_command(
-    vmfb_path: &str,
-    function: &str,
-    input_shape: &str,
-) -> String {
+pub fn generate_iree_run_command(vmfb_path: &str, function: &str, input_shape: &str) -> String {
     format!(
         "iree-run-module --module={} --function={} --input={}",
         vmfb_path, function, input_shape
@@ -166,19 +162,19 @@ pub fn generate_iree_run_command(
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_iree_device_flags() {
         assert!(IreeDevice::Cuda.iree_flag().contains("cuda"));
         assert!(IreeDevice::Vulkan.backend_flag().contains("vulkan"));
     }
-    
+
     #[test]
     fn test_iree_compatible_mlir() {
         let code = generate_iree_compatible_mlir("test", 768, 12, 512, "f32");
         assert!(code.contains("iree.module.export"));
     }
-    
+
     #[test]
     fn test_iree_compile_command() {
         let cmd = generate_iree_compile_command("model.mlir", "model.vmfb", IreeDevice::Cuda);
