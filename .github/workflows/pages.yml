@@ -1,4 +1,4 @@
-name: Deploy documentation to GitHub Pages
+name: Publish documentation to GitHub Pages
 
 on:
   push:
@@ -8,41 +8,36 @@ on:
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
-# Allow only one concurrent deployment
+# Build the mdBook and publish the static site to the `gh-pages` branch,
+# which GitHub Pages serves from. This mirrors the classic mdBook -> gh-pages
+# workflow and avoids the deploy-pages API queuing issue on this repository.
+permissions:
+  contents: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Install mdBook
         run: |
-          curl -LsSf https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          curl -LsSf https://github.com/rust-lang/mdBook/releases/download/v0.5.4/mdbook-v0.5.4-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin
+          mdbook --version
 
       - name: Build book
         run: mdbook build book
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: book/book
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: book/book
+          publish_branch: gh-pages
+          force_orphan: true
