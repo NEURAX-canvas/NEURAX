@@ -335,4 +335,4 @@ NEURAX builds on the shoulders of giants:
 
 ---
 
-Built by Martial-Christian Fossouo.
+Built by  Fossouo.
