@@ -119,4 +119,4 @@ Example: `feat(neurax): add Multimodal (VLM) support + build tooling`
 ## Publishing
 
 Releases are versioned with SemVer and tagged `vX.Y.Z`. See
-[DEPLOYMENT.md](DEPLOYMENT.md) for the full release and deployment process.
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full release and deployment process.

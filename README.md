@@ -19,7 +19,7 @@
 [![Discussions](https://img.shields.io/github/discussions/rustnew/NEURAX?style=flat-square)](https://github.com/rustnew/NEURAX/discussions)
 [![Stars](https://img.shields.io/github/stars/rustnew/NEURAX?style=flat-square)](https://github.com/rustnew/NEURAX)
 
-[**🚀 Live Demo**](https://neurax.ai) · [**📚 Documentation**](DESIGN.md) · [**🎯 API Reference**](API_REFERENCE.md) · [**💬 Discussions**](https://github.com/rustnew/NEURAX/discussions)
+[**🚀 Live Demo**](https://neurax.ai) · [**📚 Documentation**](docs/DESIGN.md) · [**🎯 API Reference**](docs/API_REFERENCE.md) · [**💬 Discussions**](https://github.com/rustnew/NEURAX/discussions)
 
 </div>
 
@@ -377,21 +377,21 @@ NEURAX ships with **88 reference templates** across 11 families:
 ## 📚 Documentation
 
 ### Getting Started
-- 📖 [**Complete Guide**](DESIGN.md) — Architecture deep-dive
-- 🎯 [**API Reference**](API_REFERENCE.md) — 38 REST endpoints
-- 🚀 [**Deployment Guide**](DEPLOYMENT.md) — Production setup
-- 🎭 [**Notionists Avatars**](NOTIONISTS_AVATARS.md) — Profile system guide
+- 📖 [**Complete Guide**](docs/DESIGN.md) — Architecture deep-dive
+- 🎯 [**API Reference**](docs/API_REFERENCE.md) — 38 REST endpoints
+- 🚀 [**Deployment Guide**](docs/DEPLOYMENT.md) — Production setup
+- 🎭 [**Notionists Avatars**](docs/NOTIONISTS_AVATARS.md) — Profile system guide
 
 ### Landing Page (v0.6.1)
-- 🎨 [**Implementation Guide**](LANDING_PAGE_IMPLEMENTATION.md) — Technical docs
-- 🔧 [**Update Plan**](LANDING_PAGE_UPDATE_PLAN.md) — Feature roadmap
-- ✅ [**Corrections**](LANDING_PAGE_CORRECTIONS.md) — Bug fixes
-- 📊 [**Final Audit**](AUDIT_FINAL.md) — Quality assurance
+- 🎨 [**Implementation Guide**](docs/LANDING_PAGE_IMPLEMENTATION.md) — Technical docs
+- 🔧 [**Update Plan**](docs/LANDING_PAGE_UPDATE_PLAN.md) — Feature roadmap
+- 🗺️ [**Roadmap v2.0**](docs/ROADMAP.md) — Development roadmap
+- 📊 [**Final Audit**](docs/AUDIT_FINAL.md) — Quality assurance
 
 ### Development
 - 📝 [**CHANGELOG**](CHANGELOG.md) — Version history
-- 🗺️ [**PRIORITIES**](PRIORITES.md) — Development priorities
-- 🏆 [**Final Render**](RENDU_FINAL.md) — Project summary
+- 🗺️ [**PRIORITIES**](docs/PRIORITES.md) — Development priorities
+- 🏆 [**Final Render**](docs/RENDU_FINAL.md) — Project summary
 
 ---
 
@@ -639,6 +639,6 @@ Special thanks to the open-source community for making this possible.
 
 **Built with ❤️ by Martial-Christian Fossouo**
 
-[🚀 Try NEURAX](https://neurax.ai) · [⭐ Star on GitHub](https://github.com/rustnew/NEURAX) · [📚 Read Docs](DESIGN.md)
+[🚀 Try NEURAX](https://neurax.ai) · [⭐ Star on GitHub](https://github.com/rustnew/NEURAX) · [📚 Read Docs](docs/DESIGN.md)
 
 </div>
