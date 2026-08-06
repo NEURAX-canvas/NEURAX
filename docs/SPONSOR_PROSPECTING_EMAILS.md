@@ -353,6 +353,6 @@ https://github.com/rustnew/NEURAX
 
 ---
 
-**Créé par :** Kiro AI Agent
+**Créé par :** Martial
 **Date :** 6 Août 2026
 **Version :** 1.0
