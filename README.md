@@ -320,6 +320,11 @@ Every contribution, no matter the size, makes a difference. Thank you for suppor
 - [Sentient Foundation ($42M)](docs/SENTIENT_FOUNDATION_APPLICATION.md)
 - [Linux Foundation Grants ($12.5M)](docs/LINUX_FOUNDATION_APPLICATION.md)
 
+**Community & growth:**
+- [Go-To-Market Strategy](GO_TO_MARKET_STRATEGY.md)
+- [Promotion Checklist](PROMOTION_CHECKLIST.md)
+- [Social Media Assets](SOCIAL_MEDIA_ASSETS.md)
+
 ---
 
 ## License
