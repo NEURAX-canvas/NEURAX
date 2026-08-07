@@ -53,7 +53,7 @@
 ### Jour 1-2 : Préparation (6-7 Août)
 
 #### Plateformes
-- [ ] **Créer compte Twitter @neurax_ai**
+- [ ] **Créer compte Twitter officiel NEURAX (choisir un handle disponible)**
   - Bio: "Predict ML training costs in 50ms, no GPU required. Open source."
   - Photo: Logo NEURAX
   - Cover: Screenshot du canvas
@@ -68,7 +68,7 @@
   
 - [ ] **Créer mailing list**
   - Plateforme: Mailchimp ou ConvertKit
-  - Formulaire: neurax.ai/newsletter
+  - Formulaire: rustnew.github.io/NEURAX
 
 #### Contenu
 - [ ] **Créer logo professionnel** (Figma/Canva)
@@ -98,7 +98,7 @@
 
 #### Articles
 - [ ] **"Why We Built NEURAX"** (Blog)
-  - Publier sur: neurax.ai/blog
+  - Publier sur: rustnew.github.io/NEURAX
   - Cross-post: Medium, Dev.to
   
 - [ ] **"How NEURAX Works"** (Technical)
@@ -109,7 +109,7 @@
 - [ ] **Créer 10 benchmarks initiaux**
   - Modèles: GPT-2, LLaMA 7B, ResNet-50, etc.
   - Comparer predictions vs real
-  - Publier sur neurax.ai/benchmarks
+  - Publier sur rustnew.github.io/NEURAX
 
 ### Jour 5-7 : Lancement (10-12 Août)
 
@@ -275,7 +275,7 @@
 - [ ] Community engagement
 
 ### Outils
-- [ ] Google Analytics (neurax.ai)
+- [ ] Google Analytics
 - [ ] GitHub Insights
 - [ ] Discord Insights
 - [ ] Twitter Analytics
@@ -331,7 +331,7 @@
 ### Technique
 - [x] CI/CD fonctionnel
 - [x] Documentation complète
-- [x] Demo live (neurax.ai)
+- [x] Demo live
 - [x] Docker image
 - [ ] Benchmark publique
 - [ ] Release stable (v0.6.3) ✅
@@ -403,9 +403,9 @@
 
 **AUJOURD'HUI (6 Août) :**
 
-1. **Créer compte Twitter @neurax_ai**
+1. **Créer compte Twitter officiel NEURAX (choisir un handle disponible)**
    - aller sur twitter.com
-   - créer @neurax_ai
+   - choisir un handle disponible
    - bio: "Predict ML training costs in 50ms, no GPU required. Open source."
    
 2. **Créer serveur Discord**
@@ -414,7 +414,7 @@
    - setup channels: #general, #support, #contributing
    
 3. **Poster le premier tweet**
-   - "🧠 Introducing NEURAX: Predict ML training costs in 50ms, no GPU required. Live demo: neurax.ai GitHub: github.com/rustnew/NEURAX"
+   - "🧠 Introducing NEURAX: Predict ML training costs in 50ms, no GPU required. Live demo: rustnew.github.io/NEURAX GitHub: github.com/rustnew/NEURAX"
 
 ---
 

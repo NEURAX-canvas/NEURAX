@@ -50,7 +50,7 @@ To add a new benchmark:
 
 ## Public Dataset
 
-Benchmark results are available at: [https://neurax.ai/benchmarks](https://neurax.ai/benchmarks)
+Benchmark results are available at: [https://rustnew.github.io/NEURAX/benchmarks](https://rustnew.github.io/NEURAX/benchmarks)
 
 ## Citation
 

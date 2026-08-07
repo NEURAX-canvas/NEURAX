@@ -29,11 +29,8 @@ NEURAX helps ML engineers and researchers:
 
 ### Quick Links
 
-- 🌐 **Live Demo:** [neurax.ai](https://neurax.ai)
+- 📚 **Documentation:** [rustnew.github.io/NEURAX](https://rustnew.github.io/NEURAX/)
 - 💻 **GitHub:** [github.com/rustnew/NEURAX](https://github.com/rustnew/NEURAX)
-- 📚 **Documentation:** [rustnew.github.io/NEURAX](https://rustnew.github.io/NEURAX)
-- 💬 **Discord:** [Join our community](https://discord.gg/neurax)
-- 🐦 **Twitter:** [@neurax_ai](https://twitter.com/neurax_ai)
 
 ### Tech Stack
 
@@ -73,4 +70,4 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 **Built by [Martial-Christian Fossouo](https://github.com/rustnew)**
 
-[Website](https://neurax.ai) · [GitHub](https://github.com/rustnew/NEURAX) · [Twitter](https://twitter.com/neurax_ai) · [Discord](https://discord.gg/neurax)
+[Website](https://rustnew.github.io/NEURAX/) · [GitHub](https://github.com/rustnew/NEURAX)

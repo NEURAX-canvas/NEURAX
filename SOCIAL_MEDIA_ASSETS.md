@@ -32,7 +32,7 @@ Features:
 - MLIR backend for code generation
 - Open source (MIT)
 
-Try it: https://neurax.ai
+Try it: https://rustnew.github.io/NEURAX/
 Code: https://github.com/rustnew/NEURAX
 
 Happy to answer questions!
@@ -81,7 +81,7 @@ neurax analyze models/gpt2_small.json
 ```
 
 **Links:**
-- Live demo: https://neurax.ai
+- Live demo: https://rustnew.github.io/NEURAX/
 - GitHub: https://github.com/rustnew/NEURAX
 - Docs: https://rustnew.github.io/NEURAX/
 
@@ -98,7 +98,7 @@ Open source (MIT). Would love feedback from the community!
 
 Thread 🧵👇
 
-neurax.ai
+rustnew.github.io/NEURAX
 ```
 
 **Tweet 2:**
@@ -165,7 +165,7 @@ github.com/rustnew/NEURAX
 **Tweet 7:**
 ```
 Try it now:
-- Live demo: neurax.ai
+- Live demo: rustnew.github.io/NEURAX
 - CLI: cargo install neurax-cli
 - Docker: docker compose up
 
@@ -236,7 +236,7 @@ What's included:
 
 Try it:
 
-- Live demo: https://neurax.ai
+- Live demo: https://rustnew.github.io/NEURAX/
 - GitHub: https://github.com/rustnew/NEURAX
 - Documentation: https://rustnew.github.io/NEURAX/
 
@@ -401,7 +401,7 @@ NEURAX is MIT licensed and fully open source:
 
 - GitHub: https://github.com/rustnew/NEURAX
 - Docs: https://rustnew.github.io/NEURAX/
-- Live Demo: https://neurax.ai
+- Live Demo: https://rustnew.github.io/NEURAX/
 
 Built with:
 - Rust (core engine)
@@ -422,7 +422,6 @@ I'd love your feedback! What features would make NEURAX more useful for your ML 
 
 ---
 
-*[Follow me on Twitter @neurax_ai for updates]*
 ```
 
 ---
@@ -441,7 +440,7 @@ NEURAX: Predict ML training costs in 50ms, no GPU required
 
 Open source: github.com/rustnew/NEURAX
 
-Try it: neurax.ai
+Try it: rustnew.github.io/NEURAX
 ```
 
 ### Reddit (Short)
@@ -479,7 +478,7 @@ It analyzes neural architectures and computes:
 Would be great to get your thoughts on it. 
 
 Links:
-- Live demo: https://neurax.ai
+- Live demo: https://rustnew.github.io/NEURAX/
 - GitHub: https://github.com/rustnew/NEURAX
 
 Let me know if you'd like more details!

@@ -100,7 +100,7 @@ setSelectedAvatarId(NOTIONISTS_AVATARS[0].id);
 ```typescript
 const onDemoSignIn = () => {
   setDemoUser({ 
-    email: 'demo@neurax.ai', 
+    email: 'contact@rustnew.github.io', 
     name: 'Demo User' 
   });
   localStorage.setItem('neurax_demo_user', 'true');

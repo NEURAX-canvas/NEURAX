@@ -65,25 +65,22 @@ A curated list of awesome resources, tutorials, articles, and tools for NEURAX.
 ## 📝 Articles & Blog Posts
 
 ### Official Blog
-- [Why We Built NEURAX](https://neurax.ai/blog/why-neurax) - Origin story
-- [The Science Behind Analytical Compilation](https://neurax.ai/blog/science) - Technical deep-dive
-- [NEURAX vs Traditional Profilers](https://neurax.ai/blog/comparison) - Comparison guide
+- [Why We Built NEURAX](docs/WHY_NEURAX.md) - Origin story
+- [The Science Behind Analytical Compilation](docs/SCIENCE.md) - Technical deep-dive
+- [NEURAX vs Traditional Profilers](docs/COMPARISON.md) - Comparison guide
 
 ### Community Articles
-- [Analyzing LLaMA 2 with NEURAX](https://dev.to/neurax-llama2) - Tutorial
-- [Optimizing MoE Models](https://medium.com/neurax-moe) - Case study
+- Coming soon
 
 ---
 
 ## 🎥 Videos
 
 ### Official Videos
-- [NEURAX in 5 Minutes](https://youtube.com/watch?v=xxxxx) - Quick demo
-- [Design Your First Transformer](https://youtube.com/watch?v=xxxxx) - Tutorial
-- [Architecture Deep-Dive](https://youtube.com/watch?v=xxxxx) - Technical talk
+- Coming soon
 
 ### Conference Talks
-- [NeurIPS 2026: Analytical Compilation for Neural Nets](https://youtube.com/watch?v=xxxxx)
+- Coming soon
 
 ---
 
@@ -127,8 +124,6 @@ Real-world applications of NEURAX:
 
 ### Discussion Forums
 - [GitHub Discussions](https://github.com/rustnew/NEURAX/discussions) - Q&A and ideas
-- [Discord](https://discord.gg/neurax) - Real-time chat
-- [Twitter](https://twitter.com/neurax_ai) - News and updates
 
 ### Contributing
 - [Contributing Guide](CONTRIBUTING.md) - How to contribute
@@ -145,8 +140,8 @@ Real-world applications of NEURAX:
 - `neurax` - PyPI package (coming soon)
 
 ### Community Packages
-- [neurax-python](https://github.com/user/neurax-python) - Python SDK
-- [neurax-js](https://github.com/user/neurax-js) - JavaScript SDK
+- Python SDK - coming soon
+- JavaScript SDK - coming soon
 
 ---
 

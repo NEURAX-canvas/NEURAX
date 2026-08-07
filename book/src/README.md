@@ -4,7 +4,7 @@
 
 NEURAX predicts the **cost, memory, and performance** of neural network architectures **before training** — in under 50 ms, with zero GPU, and fully deterministically.
 
-- [Live Demo](https://neurax.ai)
+- [Live Demo](https://rustnew.github.io/NEURAX/)
 - [GitHub Repository](https://github.com/rustnew/NEURAX)
 - [Releases](https://github.com/rustnew/NEURAX/releases)
 

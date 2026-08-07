@@ -206,7 +206,7 @@ const QUICKSTART_STEPS = [
     step: 2,
     title: "Run Analysis",
     description: "Get 55+ metrics in under 50ms—no signup required",
-    code: `curl -X POST https://api.neurax.ai/analyze \\
+    code: `curl -X POST https://rustnew.github.io/NEURAX/analyze \\
   -H "Content-Type: application/json" \\
   -d @model.json`,
     visual: null

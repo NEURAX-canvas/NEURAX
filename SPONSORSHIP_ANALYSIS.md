@@ -121,7 +121,7 @@ mkdir -p benchmarks
 |-----------|--------|----------|
 | **Hacker News** | Show HN: NEURAX - Analytical Compiler for Neural Nets | P0 |
 | **Reddit** | r/MachineLearning, r/rust, r/programming | P0 |
-| **Twitter/X** | Créer @neurax_ai, tweets réguliers | P1 |
+| **Twitter/X** | Créer compte Twitter officiel, tweets réguliers | P1 |
 | **LinkedIn** | Articles techniques, annonces | P1 |
 | **Product Hunt** | Lancement officiel | P1 |
 | **Dev.to** | Tutoriaux, "How NEURAX works" | P2 |
@@ -167,7 +167,7 @@ mkdir -p benchmarks
 | **Discord** | Créer serveur NEURAX | ❌ À faire |
 | **GitHub Discussions** | Activer | ❌ À faire |
 | **Newsletter** | Créer mailing list | ❌ À faire |
-| **Twitter** | @neurax_ai | ❌ À créer |
+| **Twitter** | handle à définir | ❌ À créer |
 
 #### 3.2 **Programmes d'Engagement**
 
@@ -313,7 +313,7 @@ ko_fi: neurax    # À activer
 ## 🎯 Actions Immédiates (Cette Semaine)
 
 ### Jour 1-2 : Préparation
-- [ ] Créer compte Twitter @neurax_ai
+- [ ] Créer compte Twitter officiel NEURAX (choisir un handle disponible)
 - [ ] Créer serveur Discord
 - [ ] Activer GitHub Discussions
 - [ ] Créer mailing list (Mailchimp/ConvertKit)

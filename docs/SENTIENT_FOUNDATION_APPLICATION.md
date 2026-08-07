@@ -103,7 +103,7 @@ With Sentient Foundation support, we would:
 ## 🔗 Liens Utiles
 
 - **NEURAX:** https://github.com/rustnew/NEURAX
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 - **Docs:** https://rustnew.github.io/NEURAX/
 - **Sponsor:** https://github.com/sponsors/rustnew
 

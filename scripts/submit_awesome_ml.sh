@@ -159,7 +159,7 @@ It helps ML engineers answer critical questions **before** committing GPU resour
 - **Language:** Rust + TypeScript
 - **Status:** Active development
 - **Documentation:** https://rustnew.github.io/NEURAX/
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 
 ### Entry Added
 

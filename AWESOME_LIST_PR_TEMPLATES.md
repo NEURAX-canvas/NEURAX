@@ -65,7 +65,7 @@ It helps ML engineers answer critical questions **before** committing GPU resour
 - **Language:** Rust + TypeScript
 - **Status:** Active development
 - **Documentation:** https://rustnew.github.io/NEURAX/
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 
 ### Entry Added
 
@@ -147,7 +147,7 @@ NEURAX is built from the ground up in Rust for:
 
 ### Links
 
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 - **Documentation:** https://rustnew.github.io/NEURAX/
 - **GitHub:** https://github.com/rustnew/NEURAX
 
@@ -256,7 +256,7 @@ println!("VRAM: {} GB", report.vram_gb);
 
 ### Links
 
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 - **Documentation:** https://rustnew.github.io/NEURAX/
 - **GitHub:** https://github.com/rustnew/NEURAX
 - **License:** MIT
@@ -358,7 +358,7 @@ Analysis time: 47ms
 
 ### Links
 
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 - **Documentation:** https://rustnew.github.io/NEURAX/
 - **GitHub:** https://github.com/rustnew/NEURAX
 
@@ -445,7 +445,7 @@ Would be great to have NEURAX listed as a showcase!
 **Links:**
 - GitHub: https://github.com/rustnew/NEURAX
 - Docs: https://rustnew.github.io/NEURAX/
-- Demo: https://neurax.ai
+- Demo: https://rustnew.github.io/NEURAX/
 ```
 
 ---
@@ -462,7 +462,7 @@ Would be great to have NEURAX listed as a showcase!
 
 2. **Cloner et créer une branche**
    ```bash
-   git clone https://github.com/votre-username/awesome-machine-learning
+   git clone https://github.com/rustnew/awesome-machine-learning
    cd awesome-machine-learning
    git checkout -b add-neurax
    ```

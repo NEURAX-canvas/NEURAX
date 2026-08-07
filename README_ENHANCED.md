@@ -16,7 +16,7 @@
 - 99%+ accuracy
 - Open source (MIT)
 
-[Live Demo](https://neurax.ai) · [Documentation](https://rustnew.github.io/NEURAX/) · [Quick Start](#getting-started) · [Contributing](CONTRIBUTING.md)
+[Live Demo](https://rustnew.github.io/NEURAX/) · [Documentation](https://rustnew.github.io/NEURAX/) · [Quick Start](#getting-started) · [Contributing](CONTRIBUTING.md)
 
 ---
 
@@ -316,8 +316,6 @@ New to NEURAX? Start with [good first issues](https://github.com/rustnew/NEURAX/
 ## Community
 
 - **GitHub Discussions** - [Join the conversation](https://github.com/rustnew/NEURAX/discussions)
-- **Discord** - [Join our server](https://discord.gg/neurax) *(coming soon)*
-- **Twitter** - [@neurax_ai](https://twitter.com/neurax_ai) *(coming soon)*
 
 ---
 
@@ -366,4 +364,4 @@ If you find NEURAX useful, please consider giving it a star ⭐
 
 **Built by [Martial-Christian Fossouo](https://github.com/rustnew)**
 
-[Website](https://neurax.ai) · [GitHub](https://github.com/rustnew/NEURAX) · [Documentation](https://rustnew.github.io/NEURAX/) · [Twitter](https://twitter.com/neurax_ai)
+[Website](https://rustnew.github.io/NEURAX/) · [GitHub](https://github.com/rustnew/NEURAX) · [Documentation](https://rustnew.github.io/NEURAX/)

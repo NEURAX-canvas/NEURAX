@@ -474,7 +474,7 @@ Push model files to a GitHub repository and optionally create a pull request.
 {
   "success": true,
   "commit_sha": "abc123...",
-  "pr_url": "https://github.com/username/repo-name/pull/1"
+  "pr_url": "https://github.com/rustnew/NEURAX/pull/1"
 }
 ```
 

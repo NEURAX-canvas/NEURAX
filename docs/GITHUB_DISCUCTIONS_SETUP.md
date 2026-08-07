@@ -47,14 +47,14 @@ Thank you for joining the NEURAX community! This is the place to:
 ## Quick Links
 
 - 📖 [Documentation](https://rustnew.github.io/NEURAX/)
-- 🎮 [Live Demo](https://neurax.ai)
+- 🎮 [Live Demo](https://rustnew.github.io/NEURAX/)
 - 💻 [GitHub](https://github.com/rustnew/NEURAX)
 - 🐛 [Report a Bug](https://github.com/rustnew/NEURAX/issues)
 
 ## Getting Started
 
 1. Check out the [README](https://github.com/rustnew/NEURAX/blob/main/README.md)
-2. Try the [web interface](https://neurax.ai)
+2. Try the [web interface](https://rustnew.github.io/NEURAX/)
 3. Read the [API Reference](https://github.com/rustnew/NEURAX/blob/main/docs/API_REFERENCE.md)
 
 ## Community Guidelines

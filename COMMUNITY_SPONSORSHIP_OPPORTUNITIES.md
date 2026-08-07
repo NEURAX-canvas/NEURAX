@@ -88,7 +88,7 @@ Thanks for maintaining this awesome list! 🙏
 - 99%+ accuracy on predictions
 
 ### Links
-- Live demo: https://neurax.ai
+- Live demo: https://rustnew.github.io/NEURAX/
 - Docs: https://rustnew.github.io/NEURAX/
 - GitHub: https://github.com/rustnew/NEURAX
 
@@ -438,7 +438,7 @@ Would you be open to a 15-minute call to discuss?
 Best,
 Martial Fossouo
 Creator, NEURAX
-https://neurax.ai
+https://rustnew.github.io/NEURAX/
 ```
 
 ### Email pour Sponsors Individuels
@@ -537,7 +537,7 @@ https://github.com/sponsors/rustnew
 ## 🔗 Liens Utiles
 
 - **NEURAX:** https://github.com/rustnew/NEURAX
-- **Live Demo:** https://neurax.ai
+- **Live Demo:** https://rustnew.github.io/NEURAX/
 - **Docs:** https://rustnew.github.io/NEURAX/
 - **Sponsor:** https://github.com/sponsors/rustnew
 
