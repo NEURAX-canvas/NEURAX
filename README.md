@@ -300,7 +300,7 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the develo
 
 NEURAX is free and open source, built and maintained by the community. Your sponsorship helps us keep the project sustainable and growing.
 
-[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?style=flat-square&logo=github&logoColor=white)](https://github.com/sponsors/rustnew)
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?style=flat-square&logo=github&logoColor=white)](https://github.com/sponsors/rustnew) [![Open Collective](https://img.shields.io/badge/Open%20Collective-Support-7FADF2?style=flat-square&logo=opencollective&logoColor=white)](https://opencollective.com/neurax)
 
 **Why sponsor NEURAX?**
 - Support the development of the first analytical compiler for neural architectures
