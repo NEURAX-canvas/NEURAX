@@ -322,6 +322,7 @@ Every contribution, no matter the size, makes a difference. Thank you for suppor
 
 **Community & growth:**
 - [Go-To-Market Strategy](GO_TO_MARKET_STRATEGY.md)
+- [ArXiv Technical Report](ARXIV_PAPER.md)
 - [Promotion Checklist](PROMOTION_CHECKLIST.md)
 - [Social Media Assets](SOCIAL_MEDIA_ASSETS.md)
 
