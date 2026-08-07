@@ -1,13 +1,27 @@
-impl/
-target/
-node_modules/
-.env
-.env.local
-.env.*.local
-*.key
-*.pem
+# Build artifacts
+/target/
+neurax-service/target/
+Cargo.lock
 
+# Python
 __pycache__/
+*.pyc
+.venv/
 
-# mdBook build output
-book/book/
+# Node
+node_modules/
+dist/
+
+# LaTeX auxiliary files
+paper/*.aux
+paper/*.log
+paper/*.out
+
+# Editor
+.vscode/
+.idea/
+
+# Environment files (secrets)
+.env
+*.env
+!*.env.example
