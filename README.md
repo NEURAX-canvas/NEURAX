@@ -14,6 +14,18 @@ NEURAX predicts the **cost, memory, and performance** of neural network architec
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
 [![Sponsor](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?style=flat-square&logo=github&logoColor=white)](https://github.com/sponsors/rustnew)
 
+### Crates.io
+
+[![neurax-core](https://img.shields.io/crates/v/neurax-core?style=flat-square&label=neurax-core)](https://crates.io/crates/neurax-core)
+[![neurax-ir](https://img.shields.io/crates/v/neurax-ir?style=flat-square&label=neurax-ir)](https://crates.io/crates/neurax-ir)
+[![neurax-parser](https://img.shields.io/crates/v/neurax-parser?style=flat-square&label=neurax-parser)](https://crates.io/crates/neurax-parser)
+[![neurax-formulas](https://img.shields.io/crates/v/neurax-formulas?style=flat-square&label=neurax-formulas)](https://crates.io/crates/neurax-formulas)
+[![neurax-hardware-db](https://img.shields.io/crates/v/neurax-hardware-db?style=flat-square&label=neurax-hardware-db)](https://crates.io/crates/neurax-hardware-db)
+[![neurax-mlir](https://img.shields.io/crates/v/neurax-mlir?style=flat-square&label=neurax-mlir)](https://crates.io/crates/neurax-mlir)
+[![neurax-cli](https://img.shields.io/crates/v/neurax-cli?style=flat-square&label=neurax-cli)](https://crates.io/crates/neurax-cli)
+[![neurax-tui](https://img.shields.io/crates/v/neurax-tui?style=flat-square&label=neurax-tui)](https://crates.io/crates/neurax-tui)
+[![neurax-service](https://img.shields.io/crates/v/neurax-service?style=flat-square&label=neurax-service)](https://crates.io/crates/neurax-service)
+
 ---
 
 ## Overview
@@ -210,8 +222,28 @@ cd NEURAX
 ### CLI
 
 ```bash
+# Install from crates.io
+cargo install neurax-cli
+
+# Or build from source
 cargo build -p neurax-cli --release
 ./target/release/neurax analyze models/gpt2_small.json
+```
+
+### As a Rust library
+
+```toml
+[dependencies]
+neurax-core = "0.1"   # full analytical pipeline
+neurax-ir = "0.1"     # 10-pass analytical IR
+neurax-parser = "0.1" # NEURAX JSON parser
+```
+
+```rust
+use neurax_core::Neurax;
+
+let neurax = Neurax::new();
+let report = neurax.compile(model_json)?; // <50 ms, deterministic, no GPU
 ```
 
 ### Docker

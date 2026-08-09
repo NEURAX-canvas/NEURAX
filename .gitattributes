@@ -1,0 +1,5 @@
+# Language detection overrides for GitHub linguist
+# NEURAX uses MLIR TableGen dialect definitions (.td) and MLIR (.mlir) files
+*.td linguist-language=TableGen
+*.mlir linguist-language=MLIR
+*.td linguist-vendored=false
