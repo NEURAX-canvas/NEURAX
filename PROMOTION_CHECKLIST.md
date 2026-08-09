@@ -36,6 +36,28 @@
 - [x] GitHub Pages (documentation)
 - [x] Releases (v0.6.3)
 
+### 🚀 Publication crates.io (9 Août 2026) ✅
+- [x] **9 crates publiées** : neurax-core, neurax-ir, neurax-parser, neurax-formulas, neurax-hardware-db, neurax-mlir, neurax-cli, neurax-tui, neurax-service
+- [x] Métadonnées complètes : license MIT, repository, homepage, keywords, categories, readme
+- [x] README dédié par crate (vitrine crates.io)
+- [x] Dépendances internes versionnées (résolution du cycle parser↔ir)
+- [x] Tests d'intégration déplacés dans neurax-ir (suppression dev-dep circulaire)
+- [x] Modèles JSON embarqués dans neurax-tui (self-contained pour crates.io)
+- [x] Badges crates.io dans le README GitHub
+- [x] Section `cargo install neurax-cli` dans le README
+- [x] Topics GitHub : mlir, llvm, compiler, neural-networks, machine-learning, deep-learning, rust, gpu, cost-estimation, architecture
+- [x] `.gitattributes` : fichiers `.td`/`.mlir` → détectés comme MLIR par GitHub
+- [x] Homepage GitHub → rustnew.github.io/NEURAX
+- [x] Release GitHub `crates.io-v0.1.0` annonçant la publication
+
+### Promotion crates.io (à faire)
+- [ ] Vérifier que docs.rs a buildé les 9 crates (10-30 min après publication)
+- [ ] Ajouter des exemples complets dans chaque crate (docs.rs les affiche)
+- [ ] Activer les badges "docs.rs" et "downloads" sur chaque crate
+- [ ] Publier un post r/rust : "NEURAX: analytical compiler for neural architectures, now on crates.io"
+- [ ] Répondre aux issues/PRs pour augmenter la visibilité
+- [ ] Bumper les versions régulièrement (0.1.x → 0.2.0) pour rester en haut des "recently updated"
+
 ### Fichiers de Promotion Créés Aujourd'hui
 - [x] SPONSORSHIP_ANALYSIS.md - Analyse complète
 - [x] CASE_STUDIES.md - Études de cas
