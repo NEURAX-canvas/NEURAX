@@ -1,0 +1,269 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-09T20:48:59.406315511Z",
+  "neurax_version": "0.1.0",
+  "analysis_time_ms": 5,
+  "input_file": "model.json",
+  "model": {
+    "name": "GPT-3-175B",
+    "model_type": "transformer",
+    "total_parameters": 6657871872,
+    "num_layers": 12,
+    "vocab_size": null,
+    "sequence_length": null,
+    "hidden_size": null,
+    "num_attention_heads": null,
+    "num_key_value_heads": null,
+    "intermediate_size": null
+  },
+  "metrics": {
+    "structure": {
+      "total_parameters": 6657871872,
+      "num_layers": 12,
+      "model_type": "transformer",
+      "hidden_size": 0,
+      "vocab_size": 0,
+      "params_per_layer": {
+        "layer_6": 604028928,
+        "layer_8": 604028928,
+        "layer_7": 604028928,
+        "layer_4": 604028928,
+        "layer_3": 604028928,
+        "layer_1": 604028928,
+        "embed": 617558016,
+        "layer_0": 604028928,
+        "layer_2": 604028928,
+        "layer_5": 604028928,
+        "layer_9": 604028928,
+        "ln_f": 24576
+      },
+      "layers_by_type": {}
+    },
+    "graph": {
+      "graph_depth": 12,
+      "total_operations": 12,
+      "critical_path_length": 12,
+      "tensor_resolution_ratio": 1.0,
+      "unresolved_dim_count": 0,
+      "total_tensor_count": 12,
+      "largest_tensor_bytes": 402653184
+    },
+    "compute": {
+      "total_flops": 1029251599958016.0,
+      "forward_flops": 1029251599958016.0,
+      "backward_flops": 2058503199916032.0,
+      "flops_per_token": 502564257792.0,
+      "flops_incremental_decode": 301538554675.2,
+      "arithmetic_intensity": 72887.75210020415,
+      "macs": 514625799979008.0,
+      "total_step_flops": 3190679959869849.5,
+      "flops_per_batch": 1029251599958016.0,
+      "bytes_accessed": 14121050112,
+      "roofline_position": 0.05616000000000001,
+      "flops_per_layer": {
+        "ln_f": 4831838208.0,
+        "layer_1": 102924596281344.0,
+        "layer_4": 102924596281344.0,
+        "layer_3": 102924596281344.0,
+        "layer_9": 102924596281344.0,
+        "layer_0": 102924596281344.0,
+        "layer_2": 102924596281344.0,
+        "layer_5": 102924596281344.0,
+        "layer_8": 102924596281344.0,
+        "embed": 805306368.0,
+        "layer_6": 102924596281344.0,
+        "layer_7": 102924596281344.0
+      },
+      "op_type_distribution": {
+        "layer_norm": 1,
+        "embedding": 1,
+        "mul": 10,
+        "attention": 10
+      }
+    },
+    "memory": {
+      "peak_vram_bytes": 63732783544,
+      "peak_vram_gb": 63.732783544,
+      "parameter_memory_bytes": 15731869294,
+      "parameter_memory_gb": 15.731869294,
+      "activation_memory_bytes": 805306368,
+      "activation_memory_gb": 0.805306368,
+      "gradient_memory_bytes": 15731869294,
+      "gradient_memory_gb": 15.731869294,
+      "optimizer_state_bytes": 31463738588,
+      "optimizer_state_gb": 31.463738588,
+      "max_batch_size_fit": 1537,
+      "memory_fragmentation_pct": 10.0,
+      "oom_risk": "low"
+    },
+    "parallelism": {
+      "data_parallel_efficiency": 0.5,
+      "communication_overhead": 0.0,
+      "optimal_gpu_count": 1024,
+      "pipeline_stages": 1024,
+      "tensor_parallel_degree": 0,
+      "data_parallel": 1,
+      "tensor_parallel": 0,
+      "pipeline_parallel": 1024
+    },
+    "performance": {
+      "latency_ms": 1339048727.9342935,
+      "latency_seconds": 1339048.7279342934,
+      "throughput_tokens_per_s": 0.012235551745211737,
+      "gpu_utilization": 0.14234145790527652,
+      "gpu_utilization_percent": 14.234145790527652,
+      "tensor_core_utilization": 0.8333333333333334,
+      "effective_tflops": 0.0,
+      "samples_per_s": 0.000023897562002366673,
+      "bottleneck": "compute-bound",
+      "latency_per_layer": {
+        "layer_9": 322.12254719999993,
+        "layer_4": 322.12254719999993,
+        "ln_f": 402.653184,
+        "layer_2": 322.12254719999993,
+        "layer_0": 322.12254719999993,
+        "layer_6": 322.12254719999993,
+        "layer_3": 322.12254719999993,
+        "layer_8": 322.12254719999993,
+        "layer_5": 322.12254719999993,
+        "layer_1": 322.12254719999993,
+        "layer_7": 322.12254719999993,
+        "embed": 67.10886400000001
+      }
+    },
+    "cost": {
+      "training_cost_usd": 0.0,
+      "training_time_hours": 0.0,
+      "energy_kwh": 0.0,
+      "co2_kg": 0.0,
+      "cost_per_million_tokens_usd": 0.0,
+      "gpu_hours": 0.0,
+      "provider": "unknown"
+    },
+    "hardware": {
+      "gpu_name": "H100",
+      "gpu_count": 1024,
+      "gpu_memory_gb": 80.0,
+      "gpu_tflops_fp16": 20.0,
+      "gpu_memory_bandwidth_gbs": 1000.0,
+      "interconnect": "",
+      "interconnect_bandwidth_gbs": 64.0
+    },
+    "gradient_memory_per_layer": [
+      {
+        "name": "embed",
+        "forward": 74697052,
+        "backward": 1459226337
+      },
+      {
+        "name": "layer_6",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_8",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_7",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_4",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_3",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_1",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_0",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_2",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_5",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "layer_9",
+        "forward": 73060634,
+        "backward": 1427258488
+      },
+      {
+        "name": "ln_f",
+        "forward": 2972,
+        "backward": 58070
+      }
+    ],
+    "kv_cache_scaling": [],
+    "confidence_score": 1.0,
+    "custom_layer_count": 0,
+    "diagnostic_count": 1,
+    "dynamic": {
+      "virtual_memory": {
+        "fragmentation_overhead_gb": 3.345971136060001,
+        "fragmentation_pct": 10.5,
+        "defrag_savings_gb": 3.345971136060001,
+        "virtual_savings_gb": 5.018956704090002,
+        "virtual_savings_pct": 7.875000000000003,
+        "peak_vram_with_defrag_gb": 60.38681240794,
+        "peak_vram_with_virtual_gb": 58.71382683991,
+        "recommended_strategy": "EnableCompaction",
+        "confidence": 0.65
+      },
+      "stability": {
+        "lyapunov_exponent_mean": 1.0500856062430348,
+        "chaos_index": 0.7407913375916945,
+        "high_risk_layers_count": 0,
+        "fp32_required_pct": 0.0,
+        "global_robustness_score": 0.5137034839819394,
+        "fp32_fallback_memory_overhead_gb": 0.0,
+        "confidence": 0.7
+      },
+      "behavioral": {
+        "expert_load_imbalance": 0.0,
+        "memory_contention_score": 0.1,
+        "cache_locality_score": 0.8,
+        "numerical_sensitivity": 0.5,
+        "load_balance_efficiency": 100.0,
+        "memory_bank_conflict_rate": 1.5,
+        "prediction_confidence": 0.65
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "category": "architectureinefficiency",
+      "severity": "warning",
+      "message": "Low GPU utilization (14.2%)",
+      "layer_id": null,
+      "suggestion": "Increase batch size or consider tensor parallelism"
+    }
+  ],
+  "recommendations": [
+    {
+      "category": "parallelism",
+      "priority": "medium",
+      "title": "Use Hybrid Parallelism",
+      "description": "Combine data, tensor, and pipeline parallelism for better scaling",
+      "impact": "Improve efficiency to ~90%"
+    }
+  ],
+  "warnings": []
+}

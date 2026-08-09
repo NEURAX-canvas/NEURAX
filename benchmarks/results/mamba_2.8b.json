@@ -1,0 +1,220 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-08-09T20:48:59.416988351Z",
+  "neurax_version": "0.1.0",
+  "analysis_time_ms": 0,
+  "input_file": "model.json",
+  "model": {
+    "name": "Mamba-2.8B",
+    "model_type": "ssm",
+    "total_parameters": 326686720,
+    "num_layers": 64,
+    "vocab_size": null,
+    "sequence_length": null,
+    "hidden_size": null,
+    "num_attention_heads": null,
+    "num_key_value_heads": null,
+    "intermediate_size": null
+  },
+  "metrics": {
+    "structure": {
+      "total_parameters": 326686720,
+      "num_layers": 64,
+      "model_type": "ssm",
+      "hidden_size": 0,
+      "vocab_size": 50280,
+      "params_per_layer": {
+        "layer_2": 39592960,
+        "layer_1": 39592960,
+        "ln_f": 5120,
+        "layer_0": 39592960,
+        "layer_4": 39592960,
+        "layer_3": 39592960,
+        "embed": 128716800
+      },
+      "layers_by_type": {}
+    },
+    "graph": {
+      "graph_depth": 7,
+      "total_operations": 7,
+      "critical_path_length": 7,
+      "tensor_resolution_ratio": 1.0,
+      "unresolved_dim_count": 0,
+      "total_tensor_count": 7,
+      "largest_tensor_bytes": 671088640
+    },
+    "compute": {
+      "total_flops": 51788247531520.0,
+      "forward_flops": 51788247531520.0,
+      "backward_flops": 103576495063040.0,
+      "flops_per_token": 25287230240.0,
+      "flops_incremental_decode": 0.0,
+      "arithmetic_intensity": 32511.97667212664,
+      "macs": 25894123765760.0,
+      "total_step_flops": 160543567347712.0,
+      "flops_per_batch": 51788247531520.0,
+      "bytes_accessed": 1592897536,
+      "roofline_position": 0.0,
+      "flops_per_layer": {
+        "ln_f": 107374182400.0,
+        "embed": 335544320.0,
+        "layer_3": 10336107560960.0,
+        "layer_1": 10336107560960.0,
+        "layer_2": 10336107560960.0,
+        "layer_4": 10336107560960.0,
+        "layer_0": 10336107560960.0
+      },
+      "op_type_distribution": {
+        "embedding": 1,
+        "layer_norm": 1,
+        "linear": 5
+      }
+    },
+    "memory": {
+      "peak_vram_bytes": 29891788800,
+      "peak_vram_gb": 29.8917888,
+      "parameter_memory_bytes": 5325463552,
+      "parameter_memory_gb": 5.325463552,
+      "activation_memory_bytes": 8589934592,
+      "activation_memory_gb": 8.589934592,
+      "gradient_memory_bytes": 5325463552,
+      "gradient_memory_gb": 5.325463552,
+      "optimizer_state_bytes": 10650927104,
+      "optimizer_state_gb": 10.650927104,
+      "max_batch_size_fit": 200,
+      "memory_fragmentation_pct": 10.0,
+      "oom_risk": "low"
+    },
+    "parallelism": {
+      "data_parallel_efficiency": 0.616,
+      "communication_overhead": 0.0,
+      "optimal_gpu_count": 8,
+      "pipeline_stages": 8,
+      "tensor_parallel_degree": 0,
+      "data_parallel": 1,
+      "tensor_parallel": 0,
+      "pipeline_parallel": 8
+    },
+    "performance": {
+      "latency_ms": null,
+      "latency_seconds": null,
+      "throughput_tokens_per_s": 0.0,
+      "gpu_utilization": null,
+      "gpu_utilization_percent": null,
+      "tensor_core_utilization": 0.0,
+      "effective_tflops": 0.0,
+      "samples_per_s": 0.0,
+      "bottleneck": "compute-bound",
+      "latency_per_layer": {
+        "layer_2": 861342.2967466667,
+        "layer_3": 861342.2967466667,
+        "layer_0": 861342.2967466667,
+        "ln_f": 8947.848533333334,
+        "layer_4": 861342.2967466667,
+        "embed": 27.962026666666667,
+        "layer_1": 861342.2967466667
+      }
+    },
+    "cost": {
+      "training_cost_usd": 0.0,
+      "training_time_hours": 0.0,
+      "energy_kwh": 0.0,
+      "co2_kg": 0.0,
+      "cost_per_million_tokens_usd": 0.0,
+      "gpu_hours": 0.0,
+      "provider": "unknown"
+    },
+    "hardware": {
+      "gpu_name": "A100",
+      "gpu_count": 8,
+      "gpu_memory_gb": 40.0,
+      "gpu_tflops_fp16": 20.0,
+      "gpu_memory_bandwidth_gbs": 1000.0,
+      "interconnect": "",
+      "interconnect_bandwidth_gbs": 64.0
+    },
+    "gradient_memory_per_layer": [
+      {
+        "name": "embed",
+        "forward": 3384492926,
+        "backward": 2098269029
+      },
+      {
+        "name": "layer_2",
+        "forward": 1041061408,
+        "backward": 645422211
+      },
+      {
+        "name": "layer_1",
+        "forward": 1041061408,
+        "backward": 645422211
+      },
+      {
+        "name": "layer_0",
+        "forward": 1041061408,
+        "backward": 645422211
+      },
+      {
+        "name": "layer_4",
+        "forward": 1041061408,
+        "backward": 645422211
+      },
+      {
+        "name": "layer_3",
+        "forward": 1041061408,
+        "backward": 645422211
+      },
+      {
+        "name": "ln_f",
+        "forward": 134625,
+        "backward": 83463
+      }
+    ],
+    "kv_cache_scaling": [],
+    "confidence_score": 1.0,
+    "custom_layer_count": 0,
+    "diagnostic_count": 0,
+    "dynamic": {
+      "virtual_memory": {
+        "fragmentation_overhead_gb": 1.569318912,
+        "fragmentation_pct": 10.5,
+        "defrag_savings_gb": 1.569318912,
+        "virtual_savings_gb": 2.353978368,
+        "virtual_savings_pct": 7.875,
+        "peak_vram_with_defrag_gb": 28.322469888,
+        "peak_vram_with_virtual_gb": 27.537810432,
+        "recommended_strategy": "EnableCompaction",
+        "confidence": 0.65
+      },
+      "stability": {
+        "lyapunov_exponent_mean": -0.04248858421141965,
+        "chaos_index": 0.4893794516541796,
+        "high_risk_layers_count": 0,
+        "fp32_required_pct": 0.0,
+        "global_robustness_score": 0.8688813312196773,
+        "fp32_fallback_memory_overhead_gb": 0.0,
+        "confidence": 0.7
+      },
+      "behavioral": {
+        "expert_load_imbalance": 0.0,
+        "memory_contention_score": 0.1,
+        "cache_locality_score": 0.8,
+        "numerical_sensitivity": 0.5,
+        "load_balance_efficiency": 100.0,
+        "memory_bank_conflict_rate": 1.5,
+        "prediction_confidence": 0.65
+      }
+    }
+  },
+  "diagnostics": [],
+  "recommendations": [
+    {
+      "category": "parallelism",
+      "priority": "medium",
+      "title": "Use Hybrid Parallelism",
+      "description": "Combine data, tensor, and pipeline parallelism for better scaling",
+      "impact": "Improve efficiency to ~90%"
+    }
+  ],
+  "warnings": []
+}
