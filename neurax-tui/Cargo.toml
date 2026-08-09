@@ -3,11 +3,17 @@ name = "neurax-tui"
 version = "0.1.0"
 edition = "2021"
 description = "Terminal User Interface for Neurax IR model compilation visualization"
+license = "MIT"
+repository = "https://github.com/rustnew/NEURAX"
+homepage = "https://rustnew.github.io/NEURAX/"
+readme = "README.md"
+keywords = ["tui", "terminal", "ml", "compiler", "visualization"]
+categories = ["command-line-utilities", "visualization"]
 
 [dependencies]
-neurax-core = { path = "../neurax-core" }
-neurax-ir = { path = "../neurax-ir" }
-neurax-parser = { path = "../neurax-parser" }
+neurax-core = { version = "0.1.0", path = "../neurax-core" }
+neurax-ir = { version = "0.1.0", path = "../neurax-ir" }
+neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
 
 ratatui = { workspace = true }
 crossterm = { workspace = true }

@@ -1992,7 +1992,6 @@ dependencies = [
  "evalexpr",
  "indexmap",
  "itertools 0.13.0",
- "neurax-ir",
  "proptest",
  "serde",
  "serde_json",

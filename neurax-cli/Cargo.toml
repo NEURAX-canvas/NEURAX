@@ -3,6 +3,12 @@ name = "neurax-cli"
 version = "0.1.0"
 edition = "2021"
 description = "CLI interface for NEURAX"
+license = "MIT"
+repository = "https://github.com/rustnew/NEURAX"
+homepage = "https://rustnew.github.io/NEURAX/"
+readme = "README.md"
+keywords = ["ml", "compiler", "cli", "neural", "analysis"]
+categories = ["command-line-utilities"]
 
 [[bin]]
 name = "neurax"
@@ -14,10 +20,10 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
-neurax-core = { path = "../neurax-core" }
-neurax-parser = { path = "../neurax-parser" }
-neurax-ir = { path = "../neurax-ir" }
-neurax-mlir = { path = "../neurax-mlir", optional = true }
+neurax-core = { version = "0.1.0", path = "../neurax-core" }
+neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
+neurax-ir = { version = "0.1.0", path = "../neurax-ir" }
+neurax-mlir = { version = "0.1.0", path = "../neurax-mlir", optional = true }
 
 [features]
 default = []

@@ -3,9 +3,18 @@ name = "neurax-mlir"
 version = "0.1.0"
 edition = "2021"
 description = "MLIR dialects for NEURAX compiler"
+license = "MIT"
+repository = "https://github.com/rustnew/NEURAX"
+homepage = "https://rustnew.github.io/NEURAX/"
+readme = "README.md"
+keywords = ["mlir", "llvm", "compiler", "ml", "neural"]
+categories = ["compilers"]
+
+[package.metadata.docs.rs]
+all-features = true
 
 [dependencies]
 melior = { workspace = true }
 thiserror = { workspace = true }
-neurax-parser = { path = "../neurax-parser" }
+neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
 regex = "1"

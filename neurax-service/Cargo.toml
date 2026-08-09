@@ -2,12 +2,19 @@
 name = "neurax-service"
 version = "0.1.0"
 edition = "2021"
+description = "HTTP API service for NEURAX analytical compiler"
+license = "MIT"
+repository = "https://github.com/rustnew/NEURAX"
+homepage = "https://rustnew.github.io/NEURAX/"
+readme = "README.md"
+keywords = ["api", "web", "ml", "compiler", "service"]
+categories = ["web-programming"]
 
 [dependencies]
-neurax-core = { path = "../neurax-core" }
-neurax-parser = { path = "../neurax-parser" }
-neurax-ir = { path = "../neurax-ir" }
-neurax-hardware-db = { path = "../neurax-hardware-db" }
+neurax-core = { version = "0.1.0", path = "../neurax-core" }
+neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
+neurax-ir = { version = "0.1.0", path = "../neurax-ir" }
+neurax-hardware-db = { version = "0.1.0", path = "../neurax-hardware-db" }
 actix-web = "4"
 actix-ws = "0.2"
 actix-cors = "0.7"
