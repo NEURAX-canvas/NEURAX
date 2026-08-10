@@ -1,6 +1,6 @@
 [package]
 name = "neurax-mlir"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "MLIR dialects for NEURAX compiler"
 license = "MIT"
@@ -16,5 +16,5 @@ all-features = true
 [dependencies]
 melior = { workspace = true }
 thiserror = { workspace = true }
-neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
+neurax-parser = { version = "0.1.1", path = "../neurax-parser" }
 regex = "1"

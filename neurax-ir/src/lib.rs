@@ -1,4 +1,66 @@
-//! NEURAX IR - 10 dialectes IR pour l'analyse analytique
+//! # NEURAX IR
+//!
+//! **The NEURAX 10-pass intermediate representation — the analytical compiler
+//! core.**
+//!
+//! Part of the [NEURAX](https://github.com/rustnew/NEURAX) analytical compiler
+//! for neural network architectures. Defines the IR and the pass pipeline that
+//! transforms a parsed model into a complete analytical report:
+//! architecture → graph → tensor → operator → compute → memory → parallelism →
+//! hardware → cost → report.
+//!
+//! Every pass implements the [`IrPass`](crate::traits::IrPass) trait
+//! (`build` / `compute_metrics` / `validate`), which makes the pipeline
+//! composable and testable.
+//!
+//! ## Quick example
+//!
+//! ```rust
+//! use neurax_ir::{NeuraxContext, ComputeConfig};
+//! use neurax_ir::architecture::ArchitecturePass;
+//! use neurax_ir::traits::IrPass;
+//! use neurax_parser::parse_model_config;
+//!
+//! let json = r#"{
+//!   "schema_version": "1.0",
+//!   "model": {
+//!     "name": "tiny-gpt",
+//!     "type": "transformer",
+//!     "layers": [
+//!       { "id": "attn_0", "layer_type": "attention",
+//!         "input_shape": [128, 768], "output_shape": [128, 768],
+//!         "params": { "num_heads": 12 } }
+//!     ],
+//!     "global_params": { "hidden_size": 768, "num_layers": 1 }
+//!   },
+//!   "training": { "batch_size": 32, "optimizer": "adamw", "precision": "bf16" },
+//!   "hardware": {
+//!     "gpus": [
+//!       { "name": "A100-80GB", "count": 1, "memory_gb": 80,
+//!         "tflops_fp16": 312, "tflops_fp32": 19.5,
+//!         "memory_bandwidth_gb_s": 2039, "tensor_cores": true }
+//!     ],
+//!     "interconnect": "None", "interconnect_bandwidth_gb_s": 0
+//!   }
+//! }"#;
+//!
+//! let config = parse_model_config(json).expect("valid NEURAX JSON");
+//! let ctx = NeuraxContext::new(config.clone());
+//!
+//! // Each pass implements IrPass: build -> compute_metrics -> validate
+//! let pass = ArchitecturePass;
+//! let mut arch = pass.build(&config, &ctx).expect("architecture pass");
+//! let metrics = pass.compute_metrics(&mut arch, &ctx).expect("metrics");
+//! pass.validate(&arch, &metrics).expect("validation");
+//! assert!(!arch.layers.is_empty());
+//! ```
+//!
+//! ## Run the example
+//!
+//! ```bash
+//! cargo run --example pipeline
+//! ```
+
 
 pub mod architecture;
 pub mod compute;

@@ -11,9 +11,9 @@ keywords = ["tui", "terminal", "ml", "compiler", "visualization"]
 categories = ["command-line-utilities", "visualization"]
 
 [dependencies]
-neurax-core = { version = "0.1.0", path = "../neurax-core" }
-neurax-ir = { version = "0.1.0", path = "../neurax-ir" }
-neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
+neurax-core = { version = "0.1.1", path = "../neurax-core" }
+neurax-ir = { version = "0.1.1", path = "../neurax-ir" }
+neurax-parser = { version = "0.1.1", path = "../neurax-parser" }
 
 ratatui = { workspace = true }
 crossterm = { workspace = true }

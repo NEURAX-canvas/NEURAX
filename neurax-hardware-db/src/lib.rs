@@ -1,4 +1,43 @@
-//! NEURAX Hardware Database - GPU and hardware specifications
+//! # NEURAX Hardware Database
+//!
+//! **GPU / CPU / interconnect specifications with roofline analysis** — the
+//! hardware knowledge base of the [NEURAX](https://github.com/rustnew/NEURAX)
+//! analytical compiler for neural network architectures.
+//!
+//! Ships a built-in database of 20+ GPUs (A100, H100, V100, RTX 40-series, ...),
+//! CPUs and interconnects, plus the analytical primitives to answer hardware
+//! questions at design time: *"will this fit in VRAM?"*, *"is this compute-bound
+//! or memory-bound?"*, *"how long will this take?"*.
+//!
+//! ## Quick example
+//!
+//! ```rust
+//! use neurax_hardware_db::HardwareDatabase;
+//!
+//! let db = HardwareDatabase::new();
+//! let h100 = db.get_gpu("H100-SXM").expect("H100 in database");
+//!
+//! // Roofline: FLOPs/byte at the compute-vs-memory boundary
+//! let ridge = h100.ridge_point("fp16");
+//! assert!(ridge > 0.0);
+//!
+//! // Budget check: 140 GB of bf16 weights on an 80 GB GPU?
+//! assert!(!h100.fits_in_memory(140 * 1024 * 1024 * 1024));
+//! ```
+//!
+//! ## Main types
+//!
+//! - [`HardwareDatabase`] — the built-in spec database
+//! - [`GpuSpec`] — GPU spec + roofline methods (`ridge_point`, `fits_in_memory`,
+//!   `compute_time_ms`, `memory_time_ms`, `tflops_for_precision`, ...)
+//! - [`CpuSpec`], [`InterconnectSpec`] — CPU and interconnect specs
+//!
+//! ## Run the example
+//!
+//! ```bash
+//! cargo run --example roofline
+//! ```
+
 
 mod cpu;
 mod gpu;
