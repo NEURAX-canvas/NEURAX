@@ -2,7 +2,7 @@
 
 **Goal:** 1,000+ GitHub stars in 90 days, 5,000+ in 6 months, via crates.io + global open source communities.
 
-**Status:** 9 crates published on crates.io ✅ · GitHub topics ✅ · MLIR language detection ✅ · Release ✅
+**Status:** 9 crates published on crates.io ✅ · **6 core crates republished v0.1.1 with full README + rustdoc + examples** ✅ · GitHub topics ✅ · MLIR language detection ✅ · Release ✅
 
 ---
 
