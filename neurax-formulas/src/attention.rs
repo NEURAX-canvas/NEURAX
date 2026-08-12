@@ -2,6 +2,16 @@
 //!
 //! Hot path — all functions are #[inline(always)] for zero-cost abstraction.
 
+/// Head dimension, tolerating a zero head count.
+///
+/// `neurax-parser` rejects `num_heads == 0` before analysis, but these formulas
+/// are part of a published crate and can be called directly, so treat a zero
+/// head count as a single head rather than dividing by zero.
+#[inline(always)]
+fn head_dim_of(hidden_size: usize, num_heads: usize) -> usize {
+    hidden_size / num_heads.max(1)
+}
+
 /// Compute FLOPs for self-attention layer
 ///
 /// # Arguments
@@ -21,7 +31,7 @@ pub fn attention_flops(
     num_heads: usize,
     causal: bool,
 ) -> f64 {
-    let head_dim = hidden_size / num_heads;
+    let head_dim = head_dim_of(hidden_size, num_heads);
 
     // Q, K, V projections: 3 × (B × S × H × H) matmuls
     // Each matmul: 2 × B × S × H × H
@@ -73,7 +83,7 @@ pub fn gqa_flops(
     num_kv_heads: usize,
     causal: bool,
 ) -> f64 {
-    let head_dim = hidden_size / num_heads;
+    let head_dim = head_dim_of(hidden_size, num_heads);
 
     // Q projection (full heads)
     let q_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
@@ -100,44 +110,57 @@ pub fn gqa_flops(
 /// Compute parameters for attention layer
 #[inline(always)]
 pub fn attention_params(hidden_size: usize, _num_heads: usize, bias: bool) -> u64 {
+    // Accumulate in u64 and saturate: on 32-bit targets, and for oversized
+    // dimensions generally, `usize` products wrap silently and would report a
+    // plausible-looking but badly wrong parameter count.
+    let hidden_size = hidden_size as u64;
+
     // Q, K, V projections: 3 × (H × H) weights
-    let qkv_params = 3 * hidden_size * hidden_size;
+    let qkv_params = hidden_size.saturating_mul(hidden_size).saturating_mul(3);
 
     // Output projection: H × H
-    let out_params = hidden_size * hidden_size;
+    let out_params = hidden_size.saturating_mul(hidden_size);
 
     // Biases (optional)
     let bias_params = if bias {
-        4 * hidden_size // Q, K, V, Out biases
+        hidden_size.saturating_mul(4) // Q, K, V, Out biases
     } else {
         0
     };
 
-    (qkv_params + out_params + bias_params) as u64
+    qkv_params
+        .saturating_add(out_params)
+        .saturating_add(bias_params)
 }
 
 /// Compute parameters for GQA/MQA
 #[inline(always)]
 pub fn gqa_params(hidden_size: usize, num_heads: usize, num_kv_heads: usize, bias: bool) -> u64 {
-    let head_dim = hidden_size / num_heads;
+    let head_dim = head_dim_of(hidden_size, num_heads) as u64;
+    let hidden_size = hidden_size as u64;
 
     // Q projection
-    let q_params = hidden_size * hidden_size;
+    let q_params = hidden_size.saturating_mul(hidden_size);
 
     // K, V projections (reduced)
-    let kv_dim = num_kv_heads * head_dim;
-    let kv_params = 2 * hidden_size * kv_dim;
+    let kv_dim = (num_kv_heads as u64).saturating_mul(head_dim);
+    let kv_params = hidden_size.saturating_mul(kv_dim).saturating_mul(2);
 
     // Output projection
-    let out_params = hidden_size * hidden_size;
+    let out_params = hidden_size.saturating_mul(hidden_size);
 
     let bias_params = if bias {
-        hidden_size + 2 * kv_dim + hidden_size
+        hidden_size
+            .saturating_mul(2)
+            .saturating_add(kv_dim.saturating_mul(2))
     } else {
         0
     };
 
-    (q_params + kv_params + out_params + bias_params) as u64
+    q_params
+        .saturating_add(kv_params)
+        .saturating_add(out_params)
+        .saturating_add(bias_params)
 }
 
 #[cfg(test)]

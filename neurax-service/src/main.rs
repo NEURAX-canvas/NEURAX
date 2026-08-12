@@ -2659,26 +2659,26 @@ async fn credits_get(http_req: HttpRequest, state: web::Data<AppState>) -> impl 
         now.with_month(next_month).unwrap_or(now).to_rfc3339()
     };
 
-    state
-        .credits
-        .entry(user.id.clone())
-        .or_insert_with(|| CreditInfo {
-            user_id: user.id.clone(),
-            used: 0,
-            limit,
-            plan: plan.clone(),
-            period_start: period_start.clone(),
-            period_end: period_end.clone(),
-        });
-
-    // Update limit and plan in case they changed
-    {
-        let mut entry = state.credits.get_mut(&user.id).unwrap();
-        entry.value_mut().limit = limit;
-        entry.value_mut().plan = plan.clone();
-    }
-
-    let credit_info = state.credits.get(&user.id).unwrap().value().clone();
+    // Get or create the credit tracking entry, then read it back.
+    // Hold a single mutable reference for both: taking the lock twice lets a
+    // concurrent writer evict the entry in between, and `unwrap()` on the
+    // second lookup would panic and take down the request handler.
+    let credit_info = {
+        let mut entry = state
+            .credits
+            .entry(user.id.clone())
+            .or_insert_with(|| CreditInfo {
+                user_id: user.id.clone(),
+                used: 0,
+                limit,
+                plan: plan.clone(),
+                period_start,
+                period_end,
+            });
+        entry.limit = limit;
+        entry.plan = plan.clone();
+        entry.clone()
+    };
 
     HttpResponse::Ok().json(CreditsResponse {
         credits: credit_info,
@@ -2689,7 +2689,11 @@ async fn credits_get(http_req: HttpRequest, state: web::Data<AppState>) -> impl 
 #[allow(dead_code)]
 fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
     let limit = plan_credit_limit(plan);
-    state.credits.entry(user_id.to_string()).or_insert_with(|| {
+    // Insert-and-read under one lock. Re-acquiring it to `unwrap()` a second
+    // lookup would panic if a concurrent writer evicted the entry in between,
+    // and the check-then-increment must be atomic or two requests racing at the
+    // limit boundary can both be admitted.
+    let mut entry = state.credits.entry(user_id.to_string()).or_insert_with(|| {
         let now = chrono::Utc::now();
         CreditInfo {
             user_id: user_id.to_string(),
@@ -2701,11 +2705,10 @@ fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
         }
     });
 
-    let mut entry = state.credits.get_mut(user_id).unwrap();
-    if entry.value().used >= entry.value().limit && entry.value().limit != u32::MAX {
+    if entry.used >= entry.limit && entry.limit != u32::MAX {
         return false;
     }
-    entry.value_mut().used += 1;
+    entry.used += 1;
     true
 }
 

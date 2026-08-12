@@ -470,7 +470,9 @@ impl LayerParams {
             hidden_size: raw
                 .get_usize("hidden_size")
                 .or_else(|| raw.get_usize("d_model")),
-            num_heads: raw.get_usize("num_heads"),
+            num_heads: raw
+                .get_usize("num_heads")
+                .or_else(|| raw.get_usize("num_attention_heads")),
             head_dim: raw.get_usize("head_dim"),
             intermediate_size: raw
                 .get_usize("intermediate_size")
@@ -490,7 +492,12 @@ impl LayerParams {
             in_channels: raw.get_usize("in_channels"),
             out_channels: raw.get_usize("out_channels"),
             causal: raw.get_bool("causal").unwrap_or(false),
-            num_kv_heads: raw.get_usize("num_kv_heads"),
+            // `num_key_value_heads` is the HuggingFace spelling and the one used
+            // by the reference models in examples/; accept both so GQA layers
+            // are not silently downgraded to full multi-head attention.
+            num_kv_heads: raw
+                .get_usize("num_kv_heads")
+                .or_else(|| raw.get_usize("num_key_value_heads")),
             gated: raw.get_bool("gated").unwrap_or(false),
             activation: raw.get_string("activation"),
             num_experts: raw.get_usize("num_experts"),

@@ -719,9 +719,11 @@ fn test_a38_graph_edge_count_positive() {
 fn test_a39_graph_total_operations_nonnegative() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
+    // `total_operations` is unsigned, so `>= 0` would assert nothing. A parsed
+    // model must decompose into at least one operation.
     assert!(
-        result.graph.metrics.total_operations >= 0,
-        "A39: total_operations should be >= 0"
+        result.graph.metrics.total_operations > 0,
+        "A39: total_operations should be > 0"
     );
     println!(
         "✓ A39: total_operations = {}",

@@ -169,8 +169,11 @@ fn decompose_layer_to_ops(
         }
         LayerType::Attention => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
-            let heads = layer.params.num_heads.unwrap_or(8);
-            let kv_heads = layer.params.num_kv_heads.unwrap_or(heads);
+            // `.max(1)`: the parser rejects a zero head count, but this pass is
+            // reachable from the published crate API without going through it,
+            // and a zero here would be a division by zero below.
+            let heads = layer.params.num_heads.unwrap_or(8).max(1);
+            let kv_heads = layer.params.num_kv_heads.unwrap_or(heads).max(1);
             let causal = layer.params.causal;
             let head_dim = hidden / heads;
 
