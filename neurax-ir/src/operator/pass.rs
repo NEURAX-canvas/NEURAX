@@ -51,14 +51,13 @@ impl IrPass for OperatorPass {
             .filter(|l| l.layer_type == neurax_parser::LayerType::Mlp)
             .count();
         let json_block_count = json_attention_count.max(json_mlp_count).max(1);
-        let global_num_layers = arch_ir
-            .global_params
-            .num_layers
-            .unwrap_or(arch_ir.layers.len() as u64) as usize;
-        let block_scale = if global_num_layers > json_block_count {
-            global_num_layers as f64 / json_block_count as f64
-        } else {
-            1.0_f64
+        // Same rule as `repeat_scale_for`: only an explicitly declared depth
+        // means the listed layers stand in for more than themselves.
+        let block_scale = match arch_ir.global_params.num_layers.map(|n| n as usize) {
+            Some(global_num_layers) if global_num_layers > json_block_count => {
+                global_num_layers as f64 / json_block_count as f64
+            }
+            _ => 1.0_f64,
         };
 
         for layer in &arch_ir.layers {

@@ -314,11 +314,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
 /// count come out roughly 20x below the memory pass's figure for the same model.
 pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f64 {
     let layers = &config.model.layers;
-    let global_num_layers = config
-        .model
-        .global_params
-        .num_layers
-        .unwrap_or(layers.len() as u64) as usize;
+
+    // Scaling only applies when the author states a depth the JSON does not
+    // spell out. Defaulting the depth to the number of listed layers made a
+    // fully-listed architecture look partial: a five-layer model with one
+    // attention block was read as five attention blocks, inflating it fivefold.
+    let Some(global_num_layers) = config.model.global_params.num_layers.map(|n| n as usize) else {
+        return 1.0;
+    };
     let num_dense_layers = config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
 
     let count_of = |pred: &dyn Fn(&Layer) -> bool| layers.iter().filter(|l| pred(l)).count();
