@@ -13,11 +13,19 @@
  */
 
 import { ArchitectureFamily } from '@/types/plugins';
-import { HardwareConfig } from '@/contexts/HardwareContext';
+import { HardwareConfig, MANDATORY_FIELDS } from '@/contexts/HardwareContext';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
 export type ParamType = 'int' | 'float' | 'categorical' | 'bool';
+
+/**
+ * Key a hyperparameter writes to.
+ *
+ * Built-ins name a `HardwareConfig` field; the plain-string case covers
+ * user-defined parameters, which ride in the model's `global_params`.
+ */
+export type HyperparamKey = keyof HardwareConfig | (string & {});
 
 export interface SearchRange {
   min: number;
@@ -45,8 +53,14 @@ export interface ParamConstraint {
 }
 
 export interface HyperparameterDef {
-  /** Key in HardwareConfig */
-  key: keyof HardwareConfig;
+  /**
+   * Config key this parameter writes to.
+   *
+   * Built-ins name a `HardwareConfig` field; the plain-string case covers
+   * user-defined parameters, which are forwarded into the model's
+   * `global_params` so a config can carry as many as an architecture needs.
+   */
+  key: HyperparamKey;
   /** Display label */
   label: string;
   /** Short description / tooltip */
@@ -75,6 +89,18 @@ export interface HyperparameterDef {
   /** Derivation formula as string (shown in UI) */
   derivedFormula?: string;
 
+  /**
+   * Whether the family can be compiled without this parameter.
+   *
+   * Required parameters have no defensible default for the family — a
+   * Transformer without a hidden size is not a model — and the UI blocks
+   * analysis until they are set. Optional ones fall back to `defaultValue`.
+   */
+  required?: boolean;
+
+  /** True for parameters the user added rather than the built-in catalogue. */
+  isCustom?: boolean;
+
   // Optimization priority
   priority: 'critical' | 'high' | 'medium' | 'low';
 
@@ -88,7 +114,7 @@ export interface FamilyHyperparameterDefs {
   /** Cross-parameter constraints */
   globalConstraints?: ParamConstraint[];
   /** Recommended default search space (overrides individual ranges) */
-  defaultSearchSpace?: Partial<Record<keyof HardwareConfig, SearchRange>>;
+  defaultSearchSpace?: Partial<Record<HyperparamKey, SearchRange>>;
 }
 
 // ─── Shared params (used inline in family defs) ───────────────────
@@ -215,6 +241,244 @@ const GNN_CONSTRAINTS: ParamConstraint[] = [
 ];
 
 // ─── Per-family definitions ─────────────────────────────────────────
+
+// ─── Shared parameter blocks ────────────────────────────────────────
+//
+// Optimisation, regularisation and parallelism settings apply to every family.
+// Defining them once keeps the ranges and descriptions consistent, and every
+// family below splices them in, so the picker offers the same training controls
+// regardless of the architecture being designed.
+
+/** Optimisation settings: how the weights are updated. */
+export const TRAINING_PARAMS: HyperparameterDef[] = [
+  {
+    key: 'learningRate',
+    label: 'Learning Rate',
+    description:
+      'Optimizer step size. The single most sensitive training hyperparameter: too high diverges, too low stalls. Transformers are typically trained between 1e-5 and 3e-4, scaling down as the model grows.',
+    type: 'float',
+    defaultValue: 3e-4,
+    range: { min: 1e-6, max: 1e-2, logScale: true },
+    required: true,
+    priority: 'critical',
+    group: 'training',
+  },
+  {
+    key: 'batchSize',
+    label: 'Batch Size',
+    description:
+      'Samples per optimizer step. Drives activation memory linearly and sets the gradient noise scale.',
+    type: 'int',
+    defaultValue: 8,
+    range: { min: 1, max: 4096, step: 1 },
+    required: true,
+    priority: 'critical',
+    group: 'training',
+  },
+  {
+    key: 'optimizer',
+    label: 'Optimizer',
+    description:
+      'Update rule. AdamW is the Transformer standard; it keeps two moment estimates per parameter, so optimizer state costs about 8 bytes per parameter in fp32.',
+    type: 'categorical',
+    defaultValue: 'adamw',
+    options: [
+      { value: 'adamw', label: 'AdamW (decoupled weight decay)' },
+      { value: 'adam', label: 'Adam' },
+      { value: 'sgd', label: 'SGD (+ momentum)' },
+      { value: 'adafactor', label: 'Adafactor (memory-efficient)' },
+      { value: 'lion', label: 'Lion (sign-based)' },
+    ],
+    priority: 'high',
+    group: 'training',
+  },
+  {
+    key: 'numEpochs',
+    label: 'Epochs',
+    description:
+      'Passes over the dataset. Combined with dataset size it determines the step budget, and therefore the training time, cost and carbon totals.',
+    type: 'float',
+    defaultValue: 1,
+    range: { min: 0.01, max: 1000, step: 0.01 },
+    priority: 'high',
+    group: 'training',
+  },
+  {
+    key: 'maxSteps',
+    label: 'Max Steps',
+    description:
+      'Explicit optimizer-step budget. Leave at 0 to derive it from epochs and dataset size.',
+    type: 'int',
+    defaultValue: 0,
+    range: { min: 0, max: 10_000_000, step: 1 },
+    priority: 'medium',
+    group: 'training',
+  },
+  {
+    key: 'warmupSteps',
+    label: 'Warmup Steps',
+    description:
+      'Steps spent ramping the learning rate from near zero. Transformers are unstable without warmup; 1-5% of total steps is typical.',
+    type: 'int',
+    defaultValue: 2000,
+    range: { min: 0, max: 100_000, step: 100 },
+    priority: 'high',
+    group: 'training',
+  },
+  {
+    key: 'lrScheduler',
+    label: 'LR Schedule',
+    description: 'How the learning rate decays after warmup.',
+    type: 'categorical',
+    defaultValue: 'cosine',
+    options: [
+      { value: 'cosine', label: 'Cosine decay' },
+      { value: 'linear', label: 'Linear decay' },
+      { value: 'constant', label: 'Constant' },
+      { value: 'inverse_sqrt', label: 'Inverse square root' },
+    ],
+    priority: 'medium',
+    group: 'training',
+  },
+];
+
+/** Regularisation: what keeps the model from overfitting. */
+export const REGULARIZATION_PARAMS: HyperparameterDef[] = [
+  {
+    key: 'dropout',
+    label: 'Dropout',
+    description:
+      'Probability of zeroing a unit during training. Large pretraining runs often set this to 0 and rely on data scale instead.',
+    type: 'float',
+    defaultValue: 0.0,
+    range: { min: 0, max: 0.5, step: 0.05 },
+    priority: 'medium',
+    group: 'regularization',
+  },
+  {
+    key: 'attnDrop',
+    label: 'Attention Dropout',
+    description: 'Dropout applied to the attention probabilities specifically.',
+    type: 'float',
+    defaultValue: 0.0,
+    range: { min: 0, max: 0.5, step: 0.05 },
+    priority: 'low',
+    group: 'regularization',
+  },
+  {
+    key: 'weightDecay',
+    label: 'Weight Decay',
+    description:
+      'L2-style penalty applied by the optimizer. 0.1 is the common choice for large language models.',
+    type: 'float',
+    defaultValue: 0.1,
+    range: { min: 0, max: 1, step: 0.01 },
+    priority: 'medium',
+    group: 'regularization',
+  },
+  {
+    key: 'earlyStoppingPatience',
+    label: 'Early Stopping Patience',
+    description:
+      'Epochs to wait for validation improvement before stopping. 0 disables early stopping.',
+    type: 'int',
+    defaultValue: 0,
+    range: { min: 0, max: 100, step: 1 },
+    priority: 'low',
+    group: 'regularization',
+  },
+];
+
+/** Parallelism and memory strategy for large-scale training. */
+export const PARALLELISM_PARAMS: HyperparameterDef[] = [
+  {
+    key: 'tensorParallel',
+    label: 'Tensor Parallel (TP)',
+    description:
+      'Shards individual weight matrices across GPUs. Cuts per-GPU parameter and activation memory, at the cost of an all-reduce inside every layer, so it is normally kept within one node.',
+    type: 'int',
+    defaultValue: 1,
+    range: { min: 1, max: 64, step: 1 },
+    priority: 'high',
+    group: 'hardware',
+  },
+  {
+    key: 'pipelineParallel',
+    label: 'Pipeline Parallel (PP)',
+    description:
+      'Splits the layer stack into stages on different GPUs. Cheap on bandwidth but introduces pipeline bubbles unless micro-batches are numerous.',
+    type: 'int',
+    defaultValue: 1,
+    range: { min: 1, max: 64, step: 1 },
+    priority: 'high',
+    group: 'hardware',
+  },
+  {
+    key: 'expertParallel',
+    label: 'Expert Parallel (EP)',
+    description: 'Distributes Mixture-of-Experts experts across GPUs.',
+    type: 'int',
+    defaultValue: 1,
+    range: { min: 1, max: 64, step: 1 },
+    priority: 'medium',
+    group: 'hardware',
+  },
+  {
+    key: 'microBatchSize',
+    label: 'Micro Batch Size',
+    description:
+      'Per-device batch processed before gradients accumulate. Global batch = micro batch x accumulation x data-parallel degree.',
+    type: 'int',
+    defaultValue: 1,
+    range: { min: 1, max: 1024, step: 1 },
+    priority: 'medium',
+    group: 'hardware',
+  },
+  {
+    key: 'gradAccumSteps',
+    label: 'Gradient Accumulation',
+    description:
+      'Micro-batches accumulated per optimizer step. Buys a large effective batch on limited memory, at proportionally more time per step.',
+    type: 'int',
+    defaultValue: 1,
+    range: { min: 1, max: 1024, step: 1 },
+    priority: 'medium',
+    group: 'hardware',
+  },
+  {
+    key: 'gradientCheckpointing',
+    label: 'Activation Checkpointing',
+    description:
+      'Recomputes activations during the backward pass instead of storing them. Cuts activation memory to roughly sqrt(L) layers for about 30% more compute.',
+    type: 'bool',
+    defaultValue: false,
+    priority: 'high',
+    group: 'memory',
+  },
+  {
+    key: 'zeroStage',
+    label: 'ZeRO Stage',
+    description:
+      'Partitions optimizer state (1), gradients (2), then parameters (3) across data-parallel ranks.',
+    type: 'categorical',
+    defaultValue: 0,
+    options: [
+      { value: 0, label: 'Disabled' },
+      { value: 1, label: 'Stage 1 - optimizer state' },
+      { value: 2, label: 'Stage 2 - + gradients' },
+      { value: 3, label: 'Stage 3 - + parameters' },
+    ],
+    priority: 'high',
+    group: 'memory',
+  },
+];
+
+/** Applied to every family, so training controls are always available. */
+export const UNIVERSAL_PARAMS: HyperparameterDef[] = [
+  ...TRAINING_PARAMS,
+  ...REGULARIZATION_PARAMS,
+  ...PARALLELISM_PARAMS,
+];
 
 export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparameterDefs> = {
   transformer: {
@@ -365,6 +629,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'architecture',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 256, max: 4096, step: 128 },
@@ -481,6 +746,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'architecture',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 256, max: 4096, step: 128 },
@@ -597,6 +863,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'architecture',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       numLayers: { min: 10, max: 200, step: 10 },
@@ -700,6 +967,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'capacity',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       numDenoisingSteps: { min: 20, max: 1000, logScale: true },
@@ -803,6 +1071,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'regularization',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 256, max: 4096, step: 128 },
@@ -900,6 +1169,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'regularization',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       nodeFeatDim: { min: 16, max: 256, step: 16 },
@@ -970,6 +1240,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'regularization',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenSize: { min: 64, max: 2048, step: 64 },
@@ -1051,6 +1322,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'high',
         group: 'memory',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 32, max: 1024, step: 32 },
@@ -1122,6 +1394,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'low',
         group: 'regularization',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 64, max: 1024, step: 64 },
@@ -1193,6 +1466,7 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
         priority: 'medium',
         group: 'memory',
       },
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 64, max: 1024, step: 64 },
@@ -1209,7 +1483,8 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
       {
         key: 'hiddenDim',
         label: 'Hidden Dimension',
-        description: 'Core model dimension',
+        description:
+          'Width of the residual stream. Drives parameter count quadratically through the projection matrices, so it is the strongest single lever on model size.',
         type: 'int',
         defaultValue: 768,
         range: { min: 64, max: 16384, step: 64, gridPoints: 6 },
@@ -1219,33 +1494,17 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
       {
         key: 'numLayers',
         label: 'Number of Layers',
-        description: 'Depth of the network',
+        description:
+          'Depth of the block stack. Parameters and FLOPs scale linearly with it, while deeper stacks are harder to keep numerically stable.',
         type: 'int',
         defaultValue: 6,
         range: { min: 1, max: 128, step: 1, gridPoints: 5 },
         priority: 'high',
         group: 'capacity',
       },
-      {
-        key: 'batchSize',
-        label: 'Batch Size',
-        description: 'Batch size',
-        type: 'int',
-        defaultValue: 32,
-        range: { min: 1, max: 512, logScale: true, gridPoints: 4 },
-        priority: 'medium',
-        group: 'memory',
-      },
-      {
-        key: 'learningRate',
-        label: 'Learning Rate',
-        description: 'Learning rate',
-        type: 'float',
-        defaultValue: 0.001,
-        range: { min: 1e-6, max: 0.1, logScale: true, gridPoints: 5 },
-        priority: 'high',
-        group: 'training',
-      },
+      // batchSize and learningRate come from UNIVERSAL_PARAMS, which documents
+      // them properly; redefining them here only shadowed the better entries.
+          ...UNIVERSAL_PARAMS,
     ],
     defaultSearchSpace: {
       hiddenDim: { min: 128, max: 2048, step: 128 },
@@ -1260,7 +1519,39 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
 export function getParamsForFamily(family: ArchitectureFamily): HyperparameterDef[] {
   const defs = FAMILY_HYPERPARAM_DEFS[family];
   if (!defs) return [];
-  return defs.params.filter((p) => !p.isDerived);
+
+  // `required` is derived from MANDATORY_FIELDS rather than restated on each
+  // definition, so the panel's badges and the validation that gates analysis
+  // can never disagree about which parameters a family actually needs.
+  const mandatory = new Set<string>([
+    ...(MANDATORY_FIELDS.common ?? []),
+    ...(MANDATORY_FIELDS[family] ?? []),
+  ] as string[]);
+
+  // Families splice in the universal training block, and some also define a
+  // parameter of their own with the same key (MoE tunes its own dropout range).
+  // Keep the first occurrence — the family-specific one, which is listed before
+  // the universal block — so the panel never renders a key twice.
+  const seen = new Set<string>();
+  return defs.params
+    .filter((p) => !p.isDerived)
+    .filter((p) => {
+      const key = p.key as string;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((p) => (mandatory.has(p.key as string) ? { ...p, required: true } : p));
+}
+
+/** Parameters a family cannot be compiled without. */
+export function getRequiredParamsForFamily(family: ArchitectureFamily): HyperparameterDef[] {
+  return getParamsForFamily(family).filter((p) => p.required);
+}
+
+/** Parameters that fall back to a documented default when left unset. */
+export function getOptionalParamsForFamily(family: ArchitectureFamily): HyperparameterDef[] {
+  return getParamsForFamily(family).filter((p) => !p.required);
 }
 
 /** Get family constraints */
@@ -1271,7 +1562,7 @@ export function getConstraintsForFamily(family: ArchitectureFamily): ParamConstr
 /** Get default search space for a family */
 export function getDefaultSearchSpace(
   family: ArchitectureFamily,
-): Partial<Record<keyof HardwareConfig, SearchRange>> {
+): Partial<Record<HyperparamKey, SearchRange>> {
   return FAMILY_HYPERPARAM_DEFS[family]?.defaultSearchSpace ?? {};
 }
 

@@ -224,7 +224,7 @@ fn decompose_layer_to_ops(
             let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
             let activation = layer.params.activation.as_deref().unwrap_or("gelu");
 
-            let flops = if layer.params.gated {
+            let flops = if crate::architecture::is_gated_mlp(&layer.params) {
                 mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation)
             } else {
                 mlp::mlp_flops(batch, seq, hidden, intermediate, activation)

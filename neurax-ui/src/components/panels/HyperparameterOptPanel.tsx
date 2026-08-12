@@ -41,6 +41,7 @@ import { ArchitectureFamily } from '@/types/plugins';
 import { HardwareConfig, useHardware } from '@/contexts/HardwareContext';
 import {
   HyperparameterDef,
+  HyperparamKey,
   SearchRange,
   getParamsForFamily,
   getConstraintsForFamily,
@@ -129,7 +130,7 @@ export function HyperparameterOptPanel({ family, isOpen, onClose }: Hyperparamet
 
   // Custom search space overrides
   const [searchOverrides, setSearchOverrides] = useState<
-    Partial<Record<keyof HardwareConfig, { min: number; max: number }>>
+    Partial<Record<HyperparamKey, { min: number; max: number }>>
   >({});
 
   // Optimization state
@@ -846,9 +847,9 @@ function ResultsView({
 
 function buildSearchSpace(
   params: HyperparameterDef[],
-  overrides: Partial<Record<keyof HardwareConfig, { min: number; max: number }>>,
-): Partial<Record<keyof HardwareConfig, SearchRange>> {
-  const space: Partial<Record<keyof HardwareConfig, SearchRange>> = {};
+  overrides: Partial<Record<HyperparamKey, { min: number; max: number }>>,
+): Partial<Record<HyperparamKey, SearchRange>> {
+  const space: Partial<Record<HyperparamKey, SearchRange>> = {};
 
   for (const param of params) {
     const override = overrides[param.key];

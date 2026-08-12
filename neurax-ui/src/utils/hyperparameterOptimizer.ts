@@ -20,6 +20,7 @@ import {
   getParamsForFamily,
   validateConfig,
   autoFixConfig,
+  HyperparamKey,
 } from './hyperparameterDefs';
 
 // ─── Types ───────────────────────────────────────────────────────────
@@ -151,7 +152,7 @@ function randomValue(param: HyperparameterDef): number | string | boolean {
 export function generateGridCandidates(
   family: ArchitectureFamily,
   params: HyperparameterDef[],
-  searchSpace?: Partial<Record<keyof HardwareConfig, SearchRange>>,
+  searchSpace?: Partial<Record<HyperparamKey, SearchRange>>,
   maxCombinations = 100,
 ): Partial<HardwareConfig>[] {
   const activeParams = params.filter(
@@ -246,7 +247,7 @@ export function generateRandomCandidates(
   family: ArchitectureFamily,
   params: HyperparameterDef[],
   count = 50,
-  _searchSpace?: Partial<Record<keyof HardwareConfig, SearchRange>>,
+  _searchSpace?: Partial<Record<HyperparamKey, SearchRange>>,
 ): Partial<HardwareConfig>[] {
   const candidates: Partial<HardwareConfig>[] = [];
   const seen = new Set<string>();
@@ -778,7 +779,7 @@ export function runOptimization(
   objective: OptimizationObjective,
   options?: {
     params?: HyperparameterDef[];
-    searchSpace?: Partial<Record<keyof HardwareConfig, SearchRange>>;
+    searchSpace?: Partial<Record<HyperparamKey, SearchRange>>;
     target?: OptimizationTarget;
     maxCandidates?: number;
     randomCount?: number;
@@ -880,7 +881,9 @@ function bayesianRefine(
 
       for (let k = 0; k < numPerturb && k < shuffled.length; k++) {
         const param = shuffled[k];
-        const current = base[param.key] as number;
+        // `key` may name a user-defined parameter, which lives outside the
+        // typed HardwareConfig fields.
+        const current = (base as Record<string, unknown>)[param.key] as number;
         if (param.type === 'int' || param.type === 'float') {
           const range = param.range!;
           const delta = (range.max - range.min) * 0.1 * (Math.random() - 0.5);

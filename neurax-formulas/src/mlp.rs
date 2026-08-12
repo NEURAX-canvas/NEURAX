@@ -28,14 +28,11 @@ pub fn mlp_flops(
     let linear2_flops =
         2.0 * batch as f64 * seq_len as f64 * intermediate_size as f64 * hidden_size as f64;
 
-    // Activation FLOPs (approximate)
-    let act_flops = match activation {
-        "gelu" => 10.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
-        "silu" | "swish" => 4.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
-        "relu" => 1.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
-        "none" | "linear" => 0.0,
-        _ => 5.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
-    };
+    // Activation FLOPs, from the shared cost model in `crate::activation`.
+    let act_flops = crate::activation::activation_flops_per_element(activation)
+        * batch as f64
+        * seq_len as f64
+        * intermediate_size as f64;
 
     linear1_flops + linear2_flops + act_flops
 }
@@ -63,11 +60,11 @@ pub fn gated_mlp_flops(
     let down_flops =
         2.0 * batch as f64 * seq_len as f64 * intermediate_size as f64 * hidden_size as f64;
 
-    // Activation (applied to gate)
-    let act_flops = match activation {
-        "silu" | "swish" => 4.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
-        _ => 5.0 * batch as f64 * seq_len as f64 * intermediate_size as f64,
-    };
+    // Activation, applied to the gate branch.
+    let act_flops = crate::activation::activation_flops_per_element(activation)
+        * batch as f64
+        * seq_len as f64
+        * intermediate_size as f64;
 
     // Element-wise multiplication
     let mul_flops = batch as f64 * seq_len as f64 * intermediate_size as f64;
@@ -78,26 +75,32 @@ pub fn gated_mlp_flops(
 /// Compute parameters for standard MLP
 #[inline(always)]
 pub fn mlp_params(hidden_size: usize, intermediate_size: usize, bias: bool) -> u64 {
-    let weight_params = hidden_size * intermediate_size + intermediate_size * hidden_size;
+    // Accumulate in u64 and saturate: `usize` products wrap silently for
+    // oversized dimensions and would report a plausible but wrong count.
+    let hidden_size = hidden_size as u64;
+    let intermediate_size = intermediate_size as u64;
+    let weight_params = hidden_size.saturating_mul(intermediate_size).saturating_mul(2);
     let bias_params = if bias {
-        intermediate_size + hidden_size
+        intermediate_size.saturating_add(hidden_size)
     } else {
         0
     };
-    (weight_params + bias_params) as u64
+    weight_params.saturating_add(bias_params)
 }
 
 /// Compute parameters for gated MLP (SwiGLU style)
 #[inline(always)]
 pub fn gated_mlp_params(hidden_size: usize, intermediate_size: usize, bias: bool) -> u64 {
-    // gate_proj + up_proj + down_proj
-    let weight_params = 3 * hidden_size * intermediate_size;
+    // gate_proj + up_proj + down_proj — three matrices, hence 1.5x a plain MLP.
+    let hidden_size = hidden_size as u64;
+    let intermediate_size = intermediate_size as u64;
+    let weight_params = hidden_size.saturating_mul(intermediate_size).saturating_mul(3);
     let bias_params = if bias {
-        3 * intermediate_size // or could be different per projection
+        intermediate_size.saturating_mul(3)
     } else {
         0
     };
-    (weight_params + bias_params) as u64
+    weight_params.saturating_add(bias_params)
 }
 
 #[cfg(test)]

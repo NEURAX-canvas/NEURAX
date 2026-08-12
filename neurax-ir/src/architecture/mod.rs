@@ -35,7 +35,7 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         LayerType::Mlp => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            if layer.params.gated {
+            if is_gated_mlp(&layer.params) {
                 mlp::gated_mlp_params(hidden, intermediate, layer.params.bias)
             } else {
                 mlp::mlp_params(hidden, intermediate, layer.params.bias)
@@ -375,4 +375,19 @@ pub fn scaled_total_parameters(config: &neurax_parser::ModelConfig) -> u64 {
             (raw as f64 * scale).round() as u64
         })
         .sum()
+}
+
+/// Whether a feed-forward layer uses a gated (three-matrix) structure.
+///
+/// Gating can be stated two ways and both must agree: an explicit `gated: true`
+/// flag, or an activation that is inherently gated. A config asking for SwiGLU
+/// is describing a gate and an up projection whether or not it also sets the
+/// flag, and treating it as a plain two-matrix MLP undercounts that layer's
+/// parameters and FLOPs by a third.
+pub fn is_gated_mlp(params: &neurax_parser::LayerParams) -> bool {
+    params.gated
+        || params
+            .activation
+            .as_deref()
+            .is_some_and(neurax_formulas::activation::is_gated_activation)
 }
