@@ -13,7 +13,7 @@ from suggestions import _rehydrate_catalogue
 from arch_planner import plan_architecture, plan_strategy
 from topology_validator import validate_arch_spec, ArchSpec
 from requirements import extract_budget
-from budget_check import measure_and_check, suggest_precision
+from budget_check import measure_and_check, narrow_precision_to_fit
 from layout_engine import assign_positions
 from materializer import materialize
 
@@ -181,31 +181,34 @@ async def _run_agent(
                     logger.info(f"✅ Spec meets the budget on attempt {attempt}")
                     break
 
-                previous_errors = budget_report.planner_feedback()
-
-                # Narrowing the dtype changes storage width without touching the
-                # architecture, so try it before asking for a smaller model.
-                size_check = next(
-                    (c for c in budget_report.checks
-                     if c.label == "Model size" and not c.fits),
-                    None,
+                # Storage width is the one lever that costs nothing to pull: it
+                # changes how weights are stored without touching the design the
+                # client described. Apply it here and re-measure, rather than
+                # asking the planner to and spending an attempt finding out
+                # whether it did.
+                previous_precision = (
+                    (spec.hw_config or {}).get("precision")
+                    or (hw_config or {}).get("precision")
+                    or "fp16"
                 )
-                if size_check is not None:
-                    current_precision = (
-                        (spec.hw_config or {}).get("precision")
-                        or (hw_config or {}).get("precision")
-                        or "fp16"
-                    )
-                    overshoot = size_check.measured / size_check.limit
-                    narrower = suggest_precision(current_precision, overshoot)
-                    if narrower:
-                        previous_errors.append(
-                            f"Storage width is the cheapest lever here: moving from "
-                            f"{current_precision} to {narrower} divides model size by "
-                            f"{overshoot:.1f}x or more without changing the architecture. "
-                            f"Set hw_config.precision to '{narrower}'."
+                narrowed, narrowed_report = await narrow_precision_to_fit(
+                    spec, budget, hw_config, budget_report
+                )
+                if narrowed:
+                    budget_report = narrowed_report
+                    logger.info(f"✅ Budget met by narrowing {previous_precision} -> {narrowed}")
+                    # A precision change is a design decision the client should
+                    # see, not something to slip in silently.
+                    await q.put(_event("assistant", {
+                        "content": (
+                            f"Storing weights in {narrowed} instead of {previous_precision} "
+                            f"brings the design inside your budget without changing the "
+                            f"architecture.\n\n{budget_report.summary()}"
                         )
+                    }))
+                    break
 
+                previous_errors = budget_report.planner_feedback()
                 if attempt < MAX_ATTEMPTS:
                     await q.put(_event("assistant", {"content": "Over budget — resizing the design..."}))
 

@@ -359,3 +359,52 @@ def suggest_precision(current: str, overshoot_factor: float) -> Optional[str]:
         if current_bytes / candidate_bytes >= overshoot_factor:
             return candidate
     return None
+
+
+async def narrow_precision_to_fit(
+    spec: Any,
+    budget: DeploymentBudget,
+    hw_config: dict[str, Any] | None = None,
+    report: Optional[BudgetReport] = None,
+) -> tuple[Optional[str], Optional[BudgetReport]]:
+    """Try narrower storage widths until the design fits, or run out of them.
+
+    Storage width is the one lever that costs nothing to pull: it changes how
+    weights are stored without touching the architecture the client described,
+    and fp32 to int8 divides model size by four. Applying it here — measuring
+    each step rather than predicting it — settles the question without spending
+    a planning attempt on a model that may or may not follow the instruction.
+
+    Returns the precision that worked and its measurement, or ``(None, None)``
+    when no available width is enough and the architecture itself must shrink.
+    """
+    if report is not None and report.fits:
+        return None, None
+
+    current = (
+        (getattr(spec, "hw_config", None) or {}).get("precision")
+        or (hw_config or {}).get("precision")
+        or "fp16"
+    )
+    current_bytes = _PRECISION_BYTES.get(current.lower())
+    if current_bytes is None:
+        return None, None
+
+    original = dict(getattr(spec, "hw_config", None) or {})
+
+    for candidate in _PRECISION_LADDER:
+        if _PRECISION_BYTES[candidate] >= current_bytes:
+            continue
+
+        spec.hw_config = {**original, "precision": candidate}
+        candidate_report = await measure_and_check(spec, budget, hw_config)
+
+        if candidate_report.error:
+            break
+        if candidate_report.fits:
+            logger.info("narrowed precision %s -> %s to meet the budget", current, candidate)
+            return candidate, candidate_report
+
+    # Nothing worked; leave the design as the planner wrote it.
+    spec.hw_config = original
+    return None, None
