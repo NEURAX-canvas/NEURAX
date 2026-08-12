@@ -288,8 +288,19 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         }
         // Custom layer - use param_count if provided, else estimate from shapes
         LayerType::Custom => {
-            // Try to estimate from custom equations or use a default
-            layer.params.param_count.unwrap_or(0)
+            // An explicit count wins; otherwise evaluate a `params` equation if
+            // the author supplied one. A custom block that yields no parameters
+            // is legitimate (a normalisation or routing step), but it must not
+            // be the silent outcome of an equation nobody evaluated.
+            layer.params.param_count.unwrap_or_else(|| {
+                layer
+                    .custom_equations
+                    .as_ref()
+                    .and_then(|eqs| eqs.extra.get("params").or_else(|| eqs.extra.get("parameters")))
+                    .and_then(|equation| evaluate_custom_equation(equation, layer))
+                    .map(|value| value.max(0.0) as u64)
+                    .unwrap_or(0)
+            })
         }
     }
 }
@@ -390,4 +401,55 @@ pub fn is_gated_mlp(params: &neurax_parser::LayerParams) -> bool {
             .activation
             .as_deref()
             .is_some_and(neurax_formulas::activation::is_gated_activation)
+}
+
+/// Evaluate a user-supplied equation for a custom layer.
+///
+/// Custom blocks are how a researcher describes an operator NEURAX has no
+/// built-in formula for. The equation is evaluated in the sandboxed evaluator
+/// from `neurax-formulas`, with the layer's own dimensions bound to the
+/// documented variable names (`B`, `S`, `H`, `D`, `I`, `V`).
+///
+/// Returns `None` when there is no equation or it cannot be evaluated, so the
+/// caller can fall back rather than treating a broken formula as zero work.
+pub fn evaluate_custom_equation(equation: &str, layer: &Layer) -> Option<f64> {
+    evaluate_custom_equation_with(equation, layer, 1, 1)
+}
+
+/// As [`evaluate_custom_equation`], with the batch and sequence length the
+/// analysis is running at.
+pub fn evaluate_custom_equation_with(
+    equation: &str,
+    layer: &Layer,
+    batch: usize,
+    seq_len: usize,
+) -> Option<f64> {
+    let hidden = layer.params.hidden_size.unwrap_or(512);
+    let heads = layer.params.num_heads.unwrap_or(8).max(1);
+    let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
+    let vocab = layer.params.vocab_size.unwrap_or(0);
+
+    let mut evaluator = neurax_formulas::custom::CustomEquationEvaluator::new();
+    evaluator.set_variables(&[
+        ("B", batch as f64),
+        ("S", seq_len as f64),
+        ("H", hidden as f64),
+        ("D", (hidden / heads) as f64),
+        ("I", intermediate as f64),
+        ("V", vocab as f64),
+        ("N", heads as f64),
+    ]);
+
+    match evaluator.evaluate(equation) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(
+                "custom equation for layer '{}' could not be evaluated: {} ({})",
+                layer.id,
+                equation,
+                error
+            );
+            None
+        }
+    }
 }

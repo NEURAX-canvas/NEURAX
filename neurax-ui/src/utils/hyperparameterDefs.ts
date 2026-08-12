@@ -570,12 +570,12 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
       {
         key: 'kvHeads',
         label: 'KV Heads (GQA)',
-        description: 'Number of key/value heads for grouped-query attention',
+        description:
+          'Key/value heads shared across query heads. Equal to the head count gives standard multi-head attention; fewer gives grouped-query attention, shrinking the KV cache proportionally — LLaMA-2 70B uses 8 for 64 heads, Mistral 8 for 32. It is an architectural choice, not a derived quantity, so it must divide the head count.',
         type: 'int',
         defaultValue: 0,
-        isDerived: true,
-        derivedFormula: 'numHeads (MHA) or numHeads/4 (GQA)',
-        priority: 'low',
+        range: { min: 1, max: 128, step: 1 },
+        priority: 'high',
         group: 'architecture',
       },
       {

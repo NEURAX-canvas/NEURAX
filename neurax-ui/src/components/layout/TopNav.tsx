@@ -12,6 +12,7 @@ import {
   FolderOpen,
   CloudUpload,
   Sliders,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { ArchitectureSelector } from '@/components/architecture/ArchitectureSelector.tsx';
@@ -52,6 +53,7 @@ interface TopNavProps {
   connections?: Connection[];
   // Hyperparameter optimization
   onOptimize?: () => void;
+  onHyperparameters?: () => void;
   // Project management
   projects?: Project[];
   currentProjectId?: string | null;
@@ -78,6 +80,7 @@ export function TopNav({
   nodes = [],
   connections = [],
   onOptimize,
+  onHyperparameters,
   projects = [],
   currentProjectId,
   onSaveProject,
@@ -246,6 +249,15 @@ export function TopNav({
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
+            onClick={onHyperparameters}
+          >
+            <SlidersHorizontal className="w-4 h-4 mr-1.5" />
+            Hyperparameters
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
             onClick={onOptimize}
           >
             <Sliders className="w-4 h-4 mr-1.5" />
@@ -367,6 +379,9 @@ export function TopNav({
                 disabled={!canClearCanvas}
               >
                 <Trash2 className="w-4 h-4 mr-2" /> Clear Canvas
+              </Button>
+              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onHyperparameters?.(); setMobileMenuOpen(false); }}>
+                <SlidersHorizontal className="w-4 h-4 mr-2" /> Set Hyperparameters
               </Button>
               <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onOptimize?.(); setMobileMenuOpen(false); }}>
                 <Sliders className="w-4 h-4 mr-2" /> Optimize Hyperparameters

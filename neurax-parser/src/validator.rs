@@ -211,6 +211,90 @@ fn validate_attention_heads(layer: &crate::model_config::Layer) -> Result<(), Pa
     Ok(())
 }
 
+/// Reject a custom layer whose equations are structurally broken.
+///
+/// Custom blocks are how a researcher describes an operator NEURAX has no
+/// built-in formula for, so this check is deliberately narrow: it rejects
+/// malformed expressions, which used to surface far downstream as an opaque
+/// "total FLOPs is zero" with nothing pointing at the layer at fault, but it
+/// accepts variables it does not recognise. Enumerating every symbol an
+/// architecture might need is exactly the limit custom blocks exist to escape.
+fn validate_custom_equations(layer: &crate::model_config::Layer) -> Result<(), ParserError> {
+    use evalexpr::{ContextWithMutableVariables, HashMapContext, Value};
+
+    let Some(equations) = layer.custom_equations.as_ref() else {
+        return Ok(());
+    };
+
+    // The documented variables, bound to 1 for a trial evaluation.
+    let mut context = HashMapContext::new();
+    for name in [
+        "B",           // batch
+        "S",           // sequence length
+        "H",           // hidden size
+        "D",           // head dimension
+        "I",           // intermediate size
+        "V",           // vocabulary size
+        "N",           // nodes (graphs) / heads (attention)
+        "E",           // edges
+        "D_head",      // head dimension, spelled out
+        "D_edge",      // edge feature dimension
+        "dtype_bytes", // storage width
+    ] {
+        let _ = context.set_value(name.into(), Value::Float(1.0));
+    }
+
+    let named = [
+        (equations.flops_forward.as_deref(), "flops_forward"),
+        (equations.memory_activation.as_deref(), "memory_activation"),
+        (equations.gradient.as_deref(), "gradient"),
+    ];
+    let extra = equations
+        .extra
+        .iter()
+        .map(|(name, equation)| (Some(equation.as_str()), name.as_str()));
+
+    for (equation, name) in named.into_iter().chain(extra) {
+        let Some(equation) = equation else { continue };
+        let field = format!("layers.{}.custom_equations.{}", layer.id, name);
+
+        if equation.trim().is_empty() {
+            return Err(ParserError::InvalidValue {
+                field,
+                reason: "equation is empty".to_string(),
+            });
+        }
+
+        match evalexpr::eval_with_context(equation, &context) {
+            Ok(Value::Float(_)) | Ok(Value::Int(_)) => {}
+            Ok(other) => {
+                return Err(ParserError::InvalidValue {
+                    field,
+                    reason: format!("`{}` must evaluate to a number, got {:?}", equation, other),
+                });
+            }
+            Err(evalexpr::EvalexprError::VariableIdentifierNotFound(symbol)) => {
+                // An architecture-specific symbol. The equation is well formed;
+                // the operator pass binds what it can and reports a diagnostic
+                // if it still cannot evaluate it.
+                tracing::debug!(
+                    "custom equation for layer '{}' uses the unrecognised symbol '{}'",
+                    layer.id,
+                    symbol
+                );
+            }
+            Err(reason) => {
+                return Err(ParserError::InvalidValue {
+                    field,
+                    reason: format!("`{}` could not be evaluated: {}", equation, reason),
+                });
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Validate layer parameters (kernel_size, stride, channels, etc.)
 fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
     validate_global_dimensions(config)?;
@@ -229,6 +313,7 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
             )?;
         }
         validate_attention_heads(layer)?;
+        validate_custom_equations(layer)?;
 
         match layer.layer_type {
             LayerType::Conv => {
