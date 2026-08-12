@@ -24,9 +24,6 @@ const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 // ─── Notionists Avatar Family ────────────────────────────────────
 import { NOTIONISTS_AVATARS } from '@/components/profile/NotionistsAvatarPicker.tsx';
 
-// Extraire uniquement les emojis des Notionists
-const AVATAR_EMOJIS = NOTIONISTS_AVATARS.map(avatar => avatar.emoji);
-
 const EMOJI_KEY = 'neurax_account_emoji';
 
 const PROVIDERS: { value: ApiProvider; label: string; icon: string }[] = [
