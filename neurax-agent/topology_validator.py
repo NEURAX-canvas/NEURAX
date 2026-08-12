@@ -79,6 +79,12 @@ class ArchSpec:
     nodes: list[ArchNode]
     edges: list[ArchEdge]
     rationale: str = ""
+    #: Platform-level settings the design needs (precision, batch size, target
+    #: GPU, sequence length, ...). Kept beside the graph because they change the
+    #: model's cost as much as the blocks do — precision alone moves size 4x.
+    hw_config: dict[str, Any] = field(default_factory=dict)
+    #: Training hyperparameters (optimizer, warmup, schedule, parallelism, ...).
+    hyperparams: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ArchSpec":
@@ -102,6 +108,8 @@ class ArchSpec:
             nodes=nodes,
             edges=edges,
             rationale=str(data.get("rationale", "")),
+            hw_config=data.get("hw_config") if isinstance(data.get("hw_config"), dict) else {},
+            hyperparams=data.get("hyperparams") if isinstance(data.get("hyperparams"), dict) else {},
         )
 
 

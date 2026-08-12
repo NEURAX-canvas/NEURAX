@@ -13,7 +13,7 @@ from suggestions import _rehydrate_catalogue
 from arch_planner import plan_architecture, plan_strategy
 from topology_validator import validate_arch_spec, ArchSpec
 from requirements import extract_budget
-from budget_check import measure_and_check
+from budget_check import measure_and_check, suggest_precision
 from layout_engine import assign_positions
 from materializer import materialize
 
@@ -182,6 +182,30 @@ async def _run_agent(
                     break
 
                 previous_errors = budget_report.planner_feedback()
+
+                # Narrowing the dtype changes storage width without touching the
+                # architecture, so try it before asking for a smaller model.
+                size_check = next(
+                    (c for c in budget_report.checks
+                     if c.label == "Model size" and not c.fits),
+                    None,
+                )
+                if size_check is not None:
+                    current_precision = (
+                        (spec.hw_config or {}).get("precision")
+                        or (hw_config or {}).get("precision")
+                        or "fp16"
+                    )
+                    overshoot = size_check.measured / size_check.limit
+                    narrower = suggest_precision(current_precision, overshoot)
+                    if narrower:
+                        previous_errors.append(
+                            f"Storage width is the cheapest lever here: moving from "
+                            f"{current_precision} to {narrower} divides model size by "
+                            f"{overshoot:.1f}x or more without changing the architecture. "
+                            f"Set hw_config.precision to '{narrower}'."
+                        )
+
                 if attempt < MAX_ATTEMPTS:
                     await q.put(_event("assistant", {"content": "Over budget — resizing the design..."}))
 

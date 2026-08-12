@@ -147,6 +147,24 @@ class _ArchSpecOut(BaseModel):
     family: str = Field(description="Selected architecture family")
     nodes: list[_ArchNode] = Field(description="All nodes in the architecture, in topological order")
     edges: list[_ArchEdge] = Field(description="All directed connections (from_id → to_id)")
+    hw_config: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Platform settings this design needs. Keys: hardware (GPU name), precision "
+            "(fp32|fp16|bf16|int8), batchSize, seqLen, vocabSize, hiddenDim, numLayers, "
+            "gpuCount. Precision matters as much as the blocks: int8 stores a quarter of "
+            "what fp32 does, so state it when the request implies a size or device limit."
+        ),
+    )
+    hyperparams: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Training hyperparameters. Keys: learning_rate, weight_decay, warmup_steps, "
+            "lr_schedule, optimizer, dropout, gradient_accumulation_steps, "
+            "gradient_checkpointing, zero_stage, tensor_parallel, pipeline_parallel. "
+            "Leave empty to accept the defaults derived from the architecture."
+        ),
+    )
     rationale: str = Field(
         default="",
         description="1-2 sentence explanation of the design choices made"
@@ -500,4 +518,6 @@ Generate the complete architecture specification now."""
         nodes=nodes,
         edges=edges,
         rationale=out.rationale or "",
+        hw_config=dict(out.hw_config or {}),
+        hyperparams=dict(out.hyperparams or {}),
     )

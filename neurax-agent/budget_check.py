@@ -128,7 +128,10 @@ def spec_to_topology(
     hw_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Translate a planned ArchSpec into the compiler's model config."""
-    hw = hw_config or {}
+    # The design's own settings win over the panel's: the agent chose them for
+    # this model, so they are what must be measured. Measuring the panel's
+    # precision while the agent asked for int8 would check a different model.
+    hw = {**(hw_config or {}), **(getattr(spec, "hw_config", None) or {})}
     precision = hw.get("precision") or "fp16"
 
     layers = []
@@ -230,3 +233,31 @@ async def measure_and_check(
         checks=checks,
         metrics=metrics,
     )
+
+
+#: Storage widths, narrowest last — the order the loop tries them in.
+_PRECISION_LADDER = ["fp32", "bf16", "fp16", "int8"]
+
+#: Bytes per parameter for each storage width.
+_PRECISION_BYTES = {"fp32": 4, "float32": 4, "bf16": 2, "bfloat16": 2,
+                    "fp16": 2, "float16": 2, "fp8": 1, "int8": 1}
+
+
+def suggest_precision(current: str, overshoot_factor: float) -> Optional[str]:
+    """Narrower dtype that could absorb an overshoot, if one exists.
+
+    Precision is the cheapest lever available: it changes storage width without
+    touching the architecture, and fp32 to int8 is a factor of four. It is only
+    worth proposing when it can plausibly close the gap on its own.
+    """
+    current_bytes = _PRECISION_BYTES.get((current or "").lower())
+    if current_bytes is None:
+        return None
+
+    for candidate in _PRECISION_LADDER:
+        candidate_bytes = _PRECISION_BYTES[candidate]
+        if candidate_bytes >= current_bytes:
+            continue
+        if current_bytes / candidate_bytes >= overshoot_factor:
+            return candidate
+    return None
