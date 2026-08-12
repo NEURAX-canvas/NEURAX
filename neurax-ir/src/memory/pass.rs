@@ -30,102 +30,8 @@ impl IrPass for MemoryPass {
         let (_compute_ir, tensor_ir, arch_ir) = input;
         let mut memory_ir = MemoryIR::default();
 
-        // Calculate total_parameters with same scaling logic as ArchitecturePass
-        let global_num_layers =
-            ctx.config
-                .model
-                .global_params
-                .num_layers
-                .unwrap_or(ctx.config.model.layers.len() as u64) as usize;
-        let num_dense_layers =
-            ctx.config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
-
-        let json_moe_count = ctx
-            .config
-            .model
-            .layers
-            .iter()
-            .filter(|l| l.layer_type == neurax_parser::LayerType::MoE)
-            .count();
-        let json_attention_count = ctx
-            .config
-            .model
-            .layers
-            .iter()
-            .filter(|l| l.layer_type == neurax_parser::LayerType::Attention)
-            .count();
-        let json_mamba_count = ctx
-            .config
-            .model
-            .layers
-            .iter()
-            .filter(|l| {
-                matches!(
-                    l.layer_type,
-                    neurax_parser::LayerType::MambaBlock
-                        | neurax_parser::LayerType::S4Block
-                        | neurax_parser::LayerType::H3Block
-                        | neurax_parser::LayerType::StateSpace
-                )
-            })
-            .count();
-
-        let total_parameters: u64 = ctx
-            .config
-            .model
-            .layers
-            .iter()
-            .map(|l| {
-                let raw_params =
-                    crate::architecture::calculate_layer_params(&neurax_parser::Layer {
-                        id: l.id.clone(),
-                        layer_type: l.layer_type,
-                        input_shape: l.input_shape.clone(),
-                        output_shape: l.output_shape.clone(),
-                        params: l.params.clone(),
-                        custom_equations: l.custom_equations.clone(),
-                    });
-
-                let is_repeatable = matches!(
-                    l.layer_type,
-                    neurax_parser::LayerType::Attention
-                        | neurax_parser::LayerType::Mlp
-                        | neurax_parser::LayerType::Normalization
-                        | neurax_parser::LayerType::MoE
-                        | neurax_parser::LayerType::MambaBlock
-                        | neurax_parser::LayerType::S4Block
-                        | neurax_parser::LayerType::H3Block
-                        | neurax_parser::LayerType::StateSpace
-                        | neurax_parser::LayerType::RwkvBlock
-                        | neurax_parser::LayerType::RetentionBlock
-                );
-
-                let scale = if num_dense_layers > 0 && json_moe_count > 0 {
-                    if l.layer_type == neurax_parser::LayerType::MoE {
-                        let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
-                        num_moe_layers as f64 / json_moe_count.max(1) as f64
-                    } else {
-                        let dense_blocks =
-                            json_attention_count.saturating_sub(json_moe_count).max(1);
-                        num_dense_layers as f64 / dense_blocks as f64
-                    }
-                } else {
-                    // Use mamba_count for SSM models, attention_count for transformers
-                    let json_block_count = json_attention_count.max(json_mamba_count).max(1);
-                    if global_num_layers > json_block_count {
-                        global_num_layers as f64 / json_block_count as f64
-                    } else {
-                        1.0
-                    }
-                };
-
-                if is_repeatable {
-                    (raw_params as f64 * scale).round() as u64
-                } else {
-                    raw_params
-                }
-            })
-            .sum();
+        // Same scaling as the architecture pass, shared so the two cannot drift.
+        let total_parameters: u64 = crate::architecture::scaled_total_parameters(&ctx.config);
 
         memory_ir.total_parameters = total_parameters;
 
@@ -323,13 +229,7 @@ impl IrPass for MemoryPass {
             + effective_optim_mem;
 
         // GPU VRAM capacity
-        let gpu_vram_bytes = ctx
-            .config
-            .hardware
-            .gpus
-            .first()
-            .map(|g| g.memory_gb as u64 * 1024 * 1024 * 1024)
-            .unwrap_or(40 * 1024 * 1024 * 1024);
+        let gpu_vram_bytes = ctx.primary_gpu_vram_bytes();
 
         // OOM risk
         let oom_risk = OomRisk::from_ratio(peak_vram_bytes, gpu_vram_bytes);
@@ -344,13 +244,7 @@ impl IrPass for MemoryPass {
         );
 
         // Memory bandwidth requirement
-        let memory_bandwidth_req = ctx
-            .config
-            .hardware
-            .gpus
-            .first()
-            .map(|g| g.memory_bandwidth_gbs)
-            .unwrap_or(1000.0);
+        let memory_bandwidth_req = ctx.primary_gpu_bandwidth_gbs();
 
         let metrics = MemoryMetrics {
             parameter_memory_bytes: effective_param_mem,
@@ -478,13 +372,7 @@ fn calculate_max_batch_size(
 fn estimate_memory_time(ctx: &NeuraxContext, _bytes_moved: u64) -> f64 {
     // GB/s = bytes / time
     // Estimate based on GPU specs
-    let gpu_bw = ctx
-        .config
-        .hardware
-        .gpus
-        .first()
-        .map(|g| g.memory_bandwidth_gbs)
-        .unwrap_or(1000.0);
+    let gpu_bw = ctx.primary_gpu_bandwidth_gbs();
 
     // Assume we use ~70% of peak bandwidth
     gpu_bw * 0.7
@@ -494,10 +382,5 @@ fn estimate_memory_time(ctx: &NeuraxContext, _bytes_moved: u64) -> f64 {
 #[allow(dead_code)]
 fn calculate_memory_bandwidth(ctx: &NeuraxContext, _peak_vram_bytes: u64) -> f64 {
     // Estimate memory bandwidth requirement based on GPU specs
-    ctx.config
-        .hardware
-        .gpus
-        .first()
-        .map(|g| g.memory_bandwidth_gbs)
-        .unwrap_or(1000.0)
+    ctx.primary_gpu_bandwidth_gbs()
 }

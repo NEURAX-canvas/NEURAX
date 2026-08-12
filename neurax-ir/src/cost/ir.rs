@@ -6,6 +6,21 @@ pub struct CostIR {
     pub pricing_model: PricingModel,
     pub metrics: CostMetrics,
     pub metrics_done: bool,
+    /// Measured per-step latency carried over from the hardware pass.
+    ///
+    /// The cost pass runs after the hardware pass and needs its latency to turn
+    /// a step count into wall-clock time. It used to substitute a hard-coded
+    /// 100 ms placeholder, which made every training-time and cost figure
+    /// independent of the actual model and GPU.
+    pub step_latency_ms: f64,
+    /// Number of training steps actually used for costing.
+    ///
+    /// Either `training.max_steps` when the caller sets it, or derived from
+    /// epochs and dataset size. Exposed so reports can show which figure the
+    /// cost is based on.
+    pub effective_steps: u64,
+    /// True when `effective_steps` was derived rather than given explicitly.
+    pub steps_were_derived: bool,
 }
 
 impl Default for CostIR {
@@ -14,6 +29,9 @@ impl Default for CostIR {
             pricing_model: PricingModel::default(),
             metrics: CostMetrics::default(),
             metrics_done: false,
+            step_latency_ms: 0.0,
+            effective_steps: 0,
+            steps_were_derived: false,
         }
     }
 }

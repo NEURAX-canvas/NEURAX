@@ -30,12 +30,7 @@ impl IrPass for ParallelismPass {
 
         // Analyze available strategies
         let num_gpus = ctx.config.hardware.total_gpu_count();
-        let gpu_vram = ctx
-            .config
-            .hardware
-            .primary_gpu()
-            .map(|g| g.memory_gb * 1024 * 1024 * 1024)
-            .unwrap_or(40 * 1024 * 1024 * 1024);
+        let gpu_vram = ctx.primary_gpu_vram_bytes();
 
         // Data parallel
         let dp_efficiency = calculate_dp_efficiency(ctx, memory_ir.metrics.parameter_memory_bytes);
@@ -105,12 +100,7 @@ impl IrPass for ParallelismPass {
         ctx: &NeuraxContext,
     ) -> Result<Self::Metrics, Self::PassError> {
         let num_gpus = ctx.config.hardware.total_gpu_count();
-        let _gpu_vram = ctx
-            .config
-            .hardware
-            .primary_gpu()
-            .map(|g| g.memory_gb * 1024 * 1024 * 1024)
-            .unwrap_or(40_000_000_000);
+        let _gpu_vram = ctx.primary_gpu_vram_bytes();
 
         // Get memory metrics from context (stored during build)
         let param_bytes = ctx.get_metric("parameter_memory_bytes").unwrap_or(0.0) as u64;
@@ -268,12 +258,7 @@ fn select_optimal_strategy(
     memory_ir: &MemoryIR,
     ctx: &NeuraxContext,
 ) -> ParallelStrategy {
-    let gpu_vram = ctx
-        .config
-        .hardware
-        .primary_gpu()
-        .map(|g| g.memory_gb * 1024 * 1024 * 1024)
-        .unwrap_or(40_000_000_000);
+    let gpu_vram = ctx.primary_gpu_vram_bytes();
 
     // If model fits in single GPU, use data parallel
     if memory_ir.metrics.peak_vram_bytes <= gpu_vram {

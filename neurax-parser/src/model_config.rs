@@ -801,6 +801,9 @@ pub struct TrainingConfig {
     pub zero_stage: u8,
     pub max_steps: usize,
     pub warmup_steps: usize,
+    /// Passes over the dataset; combined with `DataConfig::dataset_size` to
+    /// derive the training step count when `max_steps` is not given.
+    pub num_epochs: Option<f64>,
     pub parallelism: ParallelismConfig,
 }
 
@@ -816,6 +819,7 @@ impl Default for TrainingConfig {
             zero_stage: 0,
             max_steps: 0,
             warmup_steps: 0,
+            num_epochs: None,
             parallelism: ParallelismConfig::default(),
         }
     }
@@ -833,6 +837,7 @@ impl TrainingConfig {
             zero_stage: raw.zero_stage,
             max_steps: raw.max_steps,
             warmup_steps: raw.warmup_steps,
+            num_epochs: raw.num_epochs,
             parallelism: ParallelismConfig::from_raw(raw.parallelism),
         }
     }
@@ -891,13 +896,18 @@ impl HardwareConfig {
 pub struct GpuConfig {
     pub name: String,
     pub count: u32,
-    pub memory_gb: u64,
-    pub tflops_fp16: f64,
-    pub tflops_fp32: f64,
-    pub tflops_fp8: f64,
-    pub memory_bandwidth_gbs: f64,
-    pub tensor_cores: bool,
-    pub nvlink: bool,
+    // The spec fields stay optional on purpose: `None` means "the caller named a
+    // GPU but did not restate its specs", which lets the hardware pass use the
+    // real values from the hardware database. Filling them with invented
+    // constants here made a config that says `"name": "H100"` override the
+    // database's 989 TFLOPS with a fabricated 100.
+    pub memory_gb: Option<u64>,
+    pub tflops_fp16: Option<f64>,
+    pub tflops_fp32: Option<f64>,
+    pub tflops_fp8: Option<f64>,
+    pub memory_bandwidth_gbs: Option<f64>,
+    pub tensor_cores: Option<bool>,
+    pub nvlink: Option<bool>,
 }
 
 impl GpuConfig {
@@ -905,13 +915,13 @@ impl GpuConfig {
         Self {
             name: raw.name,
             count: raw.count,
-            memory_gb: raw.memory_gb.unwrap_or(40),
-            tflops_fp16: raw.tflops_fp16.unwrap_or(100.0),
-            tflops_fp32: raw.tflops_fp32.unwrap_or(20.0),
-            tflops_fp8: raw.tflops_fp8.unwrap_or(200.0),
-            memory_bandwidth_gbs: raw.memory_bandwidth_gb_s.unwrap_or(1000.0),
-            tensor_cores: raw.tensor_cores.unwrap_or(true),
-            nvlink: raw.nvlink.unwrap_or(false),
+            memory_gb: raw.memory_gb,
+            tflops_fp16: raw.tflops_fp16,
+            tflops_fp32: raw.tflops_fp32,
+            tflops_fp8: raw.tflops_fp8,
+            memory_bandwidth_gbs: raw.memory_bandwidth_gb_s,
+            tensor_cores: raw.tensor_cores,
+            nvlink: raw.nvlink,
         }
     }
 }
@@ -926,6 +936,8 @@ pub struct DataConfig {
     pub image_channels: Option<usize>,
     pub image_height: Option<usize>,
     pub image_width: Option<usize>,
+    /// Training-set size in tokens (or samples). Drives the derived step count.
+    pub dataset_size: Option<f64>,
 }
 
 impl DataConfig {
@@ -938,6 +950,7 @@ impl DataConfig {
             image_channels: raw.image_channels,
             image_height: raw.image_height,
             image_width: raw.image_width,
+            dataset_size: raw.dataset_size,
         }
     }
 }

@@ -49,6 +49,44 @@ pub use interconnect::*;
 
 use ahash::AHashMap as HashMap;
 
+/// Resolve a common GPU spelling to the exact key used in the database.
+///
+/// Accelerators ship in several board variants (`H100-SXM`, `H100-PCIe`) but
+/// configs, papers and users almost always write the bare family name. Without
+/// this mapping `get_gpu("H100")` missed, the pass fell back to a generic
+/// 20-TFLOPS profile, and every latency, throughput and cost figure derived
+/// from it was wrong by more than an order of magnitude.
+///
+/// Bare names resolve to the SXM board, which is the datacenter part these
+/// configs mean in practice. The mapping is explicit rather than a prefix scan
+/// so that resolution stays deterministic.
+fn canonical_gpu_name(name: &str) -> Option<&'static str> {
+    let normalized = name.trim().to_ascii_lowercase().replace(['_', ' '], "-");
+    Some(match normalized.as_str() {
+        "h100" | "h100-80gb" | "h100-sxm5" => "H100-SXM",
+        "h100-pcie5" => "H100-PCIe",
+        "a100" | "a100-80gb" | "a100-40gb" | "a100-sxm4" => "A100-SXM",
+        "a100-pcie4" => "A100-PCIe",
+        "h200" | "h200-sxm" => "H200",
+        "gh200" | "gh200-superchip" => "GH200",
+        "v100" | "v100-sxm2" | "v100-pcie" => "V100",
+        "rtx-4090" | "4090" | "geforce-rtx-4090" => "RTX4090",
+        "rtx-4080" | "4080" | "geforce-rtx-4080" => "RTX4080",
+        "rtx-3090" | "3090" | "geforce-rtx-3090" => "RTX3090",
+        "rtx-3080" | "3080" | "geforce-rtx-3080" => "RTX3080",
+        "l40s" => "L40S",
+        "l40" => "L40",
+        "a30" => "A30",
+        "a10g" | "a10" => "A10G",
+        "a6000" | "rtx-a6000" => "A6000",
+        "a5000" | "rtx-a5000" => "RTXA5000",
+        "rtx-6000-ada" | "rtx6000-ada" => "RTX6000Ada",
+        "t4" | "tesla-t4" => "T4",
+        "k80" | "tesla-k80" => "K80",
+        _ => return None,
+    })
+}
+
 /// Global hardware database
 pub struct HardwareDatabase {
     gpus: HashMap<String, GpuSpec>,
@@ -640,7 +678,10 @@ impl HardwareDatabase {
 
     /// Get GPU specification by name
     pub fn get_gpu(&self, name: &str) -> Option<&GpuSpec> {
-        self.gpus.get(name)
+        if let Some(spec) = self.gpus.get(name) {
+            return Some(spec);
+        }
+        self.gpus.get(canonical_gpu_name(name)?)
     }
 
     /// Get GPU spec or a generic fallback
@@ -670,5 +711,49 @@ impl HardwareDatabase {
 impl Default for HardwareDatabase {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod gpu_name_resolution_tests {
+    use super::*;
+
+    /// Configs and papers write the bare family name; the database keys the
+    /// board variants. A miss here silently degrades every hardware-derived
+    /// metric to a generic 20-TFLOPS profile.
+    #[test]
+    fn bare_family_names_resolve_to_a_real_board() {
+        let db = HardwareDatabase::new();
+        for (query, expected) in [
+            ("H100", "H100-SXM"),
+            ("A100", "A100-SXM"),
+            ("V100", "V100"),
+            ("h100", "H100-SXM"),
+            ("A100-80GB", "A100-SXM"),
+            ("4090", "RTX4090"),
+        ] {
+            let spec = db
+                .get_gpu(query)
+                .unwrap_or_else(|| panic!("{query} should resolve"));
+            assert_eq!(spec.name, expected, "{query} resolved to the wrong board");
+        }
+    }
+
+    #[test]
+    fn resolved_h100_carries_real_specs_not_the_generic_fallback() {
+        let db = HardwareDatabase::new();
+        let h100 = db.get_gpu("H100").expect("H100 should resolve");
+        assert!(
+            h100.tflops_bf16 > 100.0,
+            "H100 BF16 should be far above the 50 TFLOPS generic fallback, got {}",
+            h100.tflops_bf16
+        );
+        assert_eq!(h100.tdp_watts, 700, "H100-SXM TDP should be 700 W");
+    }
+
+    #[test]
+    fn unknown_names_still_miss() {
+        let db = HardwareDatabase::new();
+        assert!(db.get_gpu("NotAGpu9000").is_none());
     }
 }

@@ -120,6 +120,36 @@ pub struct NeuraxContext {
 }
 
 impl NeuraxContext {
+    /// VRAM of the primary GPU, in bytes.
+    ///
+    /// Resolution order: the value stated in the config, then the hardware
+    /// database entry for the named GPU, then a conservative default. Naming a
+    /// GPU without restating its specs must yield that GPU's real numbers, not
+    /// a placeholder.
+    pub fn primary_gpu_vram_bytes(&self) -> u64 {
+        const GIB: u64 = 1024 * 1024 * 1024;
+        let gpu = self.config.hardware.gpus.first();
+        gpu.and_then(|g| g.memory_gb)
+            .or_else(|| {
+                gpu.and_then(|g| self.gpu_db.get_gpu(&g.name))
+                    .map(|spec| spec.memory_gb)
+            })
+            .unwrap_or(40)
+            .saturating_mul(GIB)
+    }
+
+    /// Memory bandwidth of the primary GPU, in GB/s. Same resolution order as
+    /// [`Self::primary_gpu_vram_bytes`].
+    pub fn primary_gpu_bandwidth_gbs(&self) -> f64 {
+        let gpu = self.config.hardware.gpus.first();
+        gpu.and_then(|g| g.memory_bandwidth_gbs)
+            .or_else(|| {
+                gpu.and_then(|g| self.gpu_db.get_gpu(&g.name))
+                    .map(|spec| spec.memory_bandwidth_gbs)
+            })
+            .unwrap_or(1000.0)
+    }
+
     pub fn new(config: ModelConfig) -> Self {
         Self {
             config: Arc::new(config),

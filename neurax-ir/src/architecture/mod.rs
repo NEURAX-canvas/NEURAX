@@ -293,3 +293,86 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         }
     }
 }
+
+/// Number of times a listed layer stands in for real layers of the model.
+///
+/// Configs commonly describe a deep model by listing one representative block
+/// per kind and setting `global_params.num_layers` to the real depth. Both the
+/// architecture and memory passes need the same multiplier; keeping it here
+/// stops the two from disagreeing, which previously let the headline parameter
+/// count come out roughly 20x below the memory pass's figure for the same model.
+pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f64 {
+    let layers = &config.model.layers;
+    let global_num_layers = config
+        .model
+        .global_params
+        .num_layers
+        .unwrap_or(layers.len() as u64) as usize;
+    let num_dense_layers = config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
+
+    let count_of = |pred: &dyn Fn(&Layer) -> bool| layers.iter().filter(|l| pred(l)).count();
+    let json_moe_count = count_of(&|l: &Layer| l.layer_type == LayerType::MoE);
+    let json_attention_count = count_of(&|l: &Layer| l.layer_type == LayerType::Attention);
+    let json_ssm_count = count_of(&|l: &Layer| {
+        matches!(
+            l.layer_type,
+            LayerType::MambaBlock
+                | LayerType::S4Block
+                | LayerType::H3Block
+                | LayerType::StateSpace
+        )
+    });
+
+    // Only blocks that repeat through the depth of the model scale up; the
+    // embedding, the final norm and the head appear exactly once.
+    let is_repeatable = matches!(
+        layer.layer_type,
+        LayerType::Attention
+            | LayerType::Mlp
+            | LayerType::Normalization
+            | LayerType::MoE
+            | LayerType::MambaBlock
+            | LayerType::S4Block
+            | LayerType::H3Block
+            | LayerType::StateSpace
+            | LayerType::RwkvBlock
+            | LayerType::RetentionBlock
+    );
+    if !is_repeatable {
+        return 1.0;
+    }
+
+    // MoE models such as DeepSeek-V3 split their depth between dense and expert
+    // blocks, so each kind scales against its own share.
+    if num_dense_layers > 0 && json_moe_count > 0 {
+        return if layer.layer_type == LayerType::MoE {
+            let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
+            num_moe_layers as f64 / json_moe_count.max(1) as f64
+        } else {
+            let dense_blocks = json_attention_count.saturating_sub(json_moe_count).max(1);
+            num_dense_layers as f64 / dense_blocks as f64
+        };
+    }
+
+    let json_block_count = json_attention_count.max(json_ssm_count).max(1);
+    if global_num_layers > json_block_count {
+        global_num_layers as f64 / json_block_count as f64
+    } else {
+        1.0
+    }
+}
+
+/// Total parameters of the model the config describes, scaling the listed
+/// blocks up to `global_params.num_layers`.
+pub fn scaled_total_parameters(config: &neurax_parser::ModelConfig) -> u64 {
+    config
+        .model
+        .layers
+        .iter()
+        .map(|layer| {
+            let raw = calculate_layer_params(layer);
+            let scale = repeat_scale_for(config, layer);
+            (raw as f64 * scale).round() as u64
+        })
+        .sum()
+}

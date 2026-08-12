@@ -1251,21 +1251,12 @@ params: params as Record<string, ParameterValue>,
       const ir = compileToNeuraxIR(nodes, connections, {
         modelName: 'NeuraxModel',
         family: selectedArchitecture,
-        hardware: hwConfig.hardware,
-        precision: hwConfig.precision,
-        batchSize: hwConfig.batchSize,
         groups,
-        // Training
-        learningRate: hwConfig.learningRate,
-        numEpochs: hwConfig.numEpochs,
-        seqLen: hwConfig.seqLen,
-        // Hardware
-        gpuCount: hwConfig.gpuCount,
-        gpuMemoryGb: hwConfig.gpuMemoryGb,
-        // Data
-        datasetSize: hwConfig.datasetSize,
-        vocabSize: hwConfig.vocabSize,
-        numClasses: hwConfig.numClasses,
+        // Spread the whole hyperparameter set: listing fields by hand silently
+        // dropped every family-specific one (dropout, kvHeads, ropeTheta,
+        // numExperts, dState, ...), so the compiler analysed a model the user
+        // had not configured.
+        ...hwConfig,
       });
 
       const compilerWarnings: string[] = (ir as any)?._warnings ?? [];
@@ -1486,18 +1477,9 @@ params: params as Record<string, ParameterValue>,
       const ir = compileToNeuraxIR(nodes, connections, {
         modelName: 'NeuraxModel',
         family: selectedArchitecture,
-        hardware: hwConfig.hardware,
-        precision: hwConfig.precision,
-        batchSize: hwConfig.batchSize,
         groups,
-        learningRate: hwConfig.learningRate,
-        numEpochs: hwConfig.numEpochs,
-        seqLen: hwConfig.seqLen,
-        gpuCount: hwConfig.gpuCount,
-        gpuMemoryGb: hwConfig.gpuMemoryGb,
-        datasetSize: hwConfig.datasetSize,
-        vocabSize: hwConfig.vocabSize,
-        numClasses: hwConfig.numClasses,
+        // See handleRunAnalysis: spread so no hyperparameter is dropped.
+        ...hwConfig,
       });
 
       const cw: string[] = (ir as any)?._warnings ?? [];
