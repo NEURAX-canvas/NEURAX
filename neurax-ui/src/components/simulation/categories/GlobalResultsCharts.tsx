@@ -2,7 +2,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Label,
 } from 'recharts';
-import { BarChart3, PieChart as PieChartIcon, Cpu, Zap, DollarSign, Layers } from 'lucide-react';
+import { BarChart3, PieChart as PieChartIcon, Cpu, Zap, DollarSign, Layers, Info } from 'lucide-react';
 import { AnalysisResult } from '@/types/architecture.ts';
 import {
   SIMULATION_COLORS,
@@ -46,7 +46,7 @@ function ModelSizeDonut({ analysis }: { analysis: AnalysisResult }) {
   const ops = topOps(analysis, 4);
   if (ops.length === 0) {
     return (
-      <ChartCard title="2.1 — Model Size (Parameters)">
+      <ChartCard title="Model Size (Parameters)">
         <EmptyChartState icon={PieChartIcon} title="No parameter data" description="Run analysis to see parameter distribution." />
       </ChartCard>
     );
@@ -58,7 +58,7 @@ function ModelSizeDonut({ analysis }: { analysis: AnalysisResult }) {
   }));
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
-    <ChartCard title="2.1 — Model Size (Parameters)">
+    <ChartCard title="Model Size (Parameters)">
       <ChartContainer minH={200}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
@@ -104,7 +104,7 @@ function FlopsByOp({ analysis }: { analysis: AnalysisResult }) {
   const ops = topOps(analysis, 6);
   if (ops.length === 0) {
     return (
-      <ChartCard title="2.2 — FLOPs by Op Type">
+      <ChartCard title="FLOPs by Op Type">
         <EmptyChartState icon={BarChart3} title="No FLOPs data" description="Run analysis to see FLOPs distribution." />
       </ChartCard>
     );
@@ -116,7 +116,7 @@ function FlopsByOp({ analysis }: { analysis: AnalysisResult }) {
     color: PIE_COLORS[i % PIE_COLORS.length],
   }));
   return (
-    <ChartCard title="2.2 — FLOPs by Op Type">
+    <ChartCard title="FLOPs by Op Type">
       <ChartContainer minH={200}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} layout="vertical" margin={CHART_MARGINS.barHorizontal}>
@@ -141,14 +141,14 @@ function LatencyBreakdown({ analysis }: { analysis: AnalysisResult }) {
   const phases = analysis.compilation?.phase_timeline;
   if (!phases || phases.length === 0) {
     return (
-      <ChartCard title="2.3 — Latency Breakdown">
+      <ChartCard title="Latency Breakdown">
         <EmptyChartState icon={BarChart3} title="No phase timeline" description="Enable profiling during compilation." />
       </ChartCard>
     );
   }
   const data = phases.map((p) => ({ name: p.name, ms: p.duration_ms }));
   return (
-    <ChartCard title="2.3 — Latency Breakdown">
+    <ChartCard title="Latency Breakdown">
       <ChartContainer minH={200}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={CHART_MARGINS.bar}>
@@ -167,7 +167,7 @@ function LatencyBreakdown({ analysis }: { analysis: AnalysisResult }) {
 /* ─── 2.4 Key Stats Strip ─── */
 function KeyStatsStrip({ analysis }: { analysis: AnalysisResult }) {
   return (
-    <ChartCard title="2.4 — Key Stats">
+    <ChartCard title="Key Stats">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard icon={<Cpu className="w-3 h-3" />} label="Parameters" value={formatCompactNumber(analysis.totalParams)} sublabel={`${analysis.numLayers} layers`} />
         <StatCard icon={<Zap className="w-3 h-3" />} label="FLOPs" value={formatCompactNumber(analysis.totalFlops)} sublabel={`${formatCompactNumber(analysis.totalOperations)} ops`} />
@@ -188,7 +188,7 @@ function KeyStatsStrip({ analysis }: { analysis: AnalysisResult }) {
 function ConfidenceScore({ analysis }: { analysis: AnalysisResult }) {
   const score = Math.round((analysis.confidenceScore ?? 0) * 100);
   return (
-    <ChartCard title="2.5 — Confidence Score">
+    <ChartCard title="Confidence Score">
       <div className="flex items-center justify-center h-full">
         <DonutRing value={score} centerLabel={`${score}`} centerSublabel="/100" />
       </div>
@@ -198,15 +198,31 @@ function ConfidenceScore({ analysis }: { analysis: AnalysisResult }) {
 
 /* ─── 2.6 Hardware Fit Score ─── */
 function HardwareFitScore({ analysis }: { analysis: AnalysisResult }) {
-  const vramRatio = analysis.gpuMemoryGb && analysis.gpuMemoryGb > 0
-    ? analysis.peakVramBytes / (analysis.gpuMemoryGb * 1024 ** 3)
-    : 0.7;
+  // Both halves of this score must come from the analysis. Substituting
+  // constants for missing VRAM or utilisation produced a confident-looking
+  // score that described nothing.
+  const hasVram = (analysis.gpuMemoryGb ?? 0) > 0 && analysis.peakVramBytes > 0;
+  const hasUtilisation = analysis.gpuUtilization != null;
+
+  if (!hasVram || !hasUtilisation) {
+    return (
+      <ChartCard title="Hardware Fit Score">
+        <EmptyChartState
+          icon={Info}
+          title="Not enough hardware data"
+          description="Set a target GPU and run an analysis to score the fit."
+        />
+      </ChartCard>
+    );
+  }
+
+  const vramRatio = analysis.peakVramBytes / (analysis.gpuMemoryGb! * 1024 ** 3);
   const fitScore = Math.round(Math.max(0, Math.min(100, (1 - vramRatio + 0.3) * 100)));
-  const utilScore = Math.round((analysis.gpuUtilization ?? 0.45) * 100);
+  const utilScore = Math.round(analysis.gpuUtilization! * 100);
   const overall = Math.round((fitScore + utilScore) / 2);
 
   return (
-    <ChartCard title="2.6 — Hardware Fit Score">
+    <ChartCard title="Hardware Fit Score">
       <div className="flex flex-col items-center justify-center h-full gap-2">
         <DonutRing value={overall} centerLabel={`${overall}`} centerSublabel="/100" size={100} />
         <div className="flex gap-4 mt-1">
@@ -232,7 +248,7 @@ function CostSummary({ analysis }: { analysis: AnalysisResult }) {
   ];
 
   return (
-    <ChartCard title="2.7 — Cost Summary (Estimated)">
+    <ChartCard title="Cost Summary (Estimated)">
       <div className="flex flex-col gap-2 h-full justify-center">
         <div className="flex h-6 w-full rounded-full overflow-hidden bg-secondary border border-border">
           {items.map((item, idx) => (
@@ -267,7 +283,7 @@ function DialectDistribution({ analysis }: { analysis: AnalysisResult }) {
   const ops = topOps(analysis);
   if (ops.length === 0) {
     return (
-      <ChartCard title="2.8 — Dialect Distribution">
+      <ChartCard title="Dialect Distribution">
         <EmptyChartState icon={PieChartIcon} title="No ops data" description="Run analysis to see dialect distribution." />
       </ChartCard>
     );
@@ -286,7 +302,7 @@ function DialectDistribution({ analysis }: { analysis: AnalysisResult }) {
     .sort(([, a], [, b]) => b - a)
     .map(([name, value], i) => ({ name, value, color: PIE_COLORS[i % PIE_COLORS.length] }));
   return (
-    <ChartCard title="2.8 — Dialect Distribution">
+    <ChartCard title="Dialect Distribution">
       <ChartContainer minH={200}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

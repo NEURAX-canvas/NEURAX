@@ -104,7 +104,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* ── 4.1 Memory Heatmap ── */}
           <ChartCard
-            title="4.1 — Memory Heatmap (Timeline)"
+            title="Memory Heatmap (Timeline)"
             badge={
               hasRawHeatmap
                 ? { text: 'live', variant: 'live' }
@@ -155,7 +155,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
 
           {/* ── 4.2 VRAM Liveness ── */}
           <ChartCard
-            title="4.2 — VRAM Liveness"
+            title="VRAM Liveness"
             badge={hasRawLiveness ? { text: 'live', variant: 'live' } : undefined}
           >
             {hasRawLiveness ? (
@@ -194,7 +194,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
           </ChartCard>
 
           {/* ── 4.3 Peak VRAM Breakdown ── */}
-          <ChartCard title="4.3 — Peak VRAM Breakdown">
+          <ChartCard title="Peak VRAM Breakdown">
             <div className="h-56 relative flex items-center justify-center">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -234,7 +234,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
           </ChartCard>
 
           {/* ── 4.4 Memory Fragmentation & OOM Risk ── */}
-          <ChartCard title="4.4 — Memory Fragmentation & OOM Risk">
+          <ChartCard title="Memory Fragmentation & OOM Risk">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <div className="text-[10px] text-muted-foreground uppercase">Fragmentation</div>
@@ -294,7 +294,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
 
           {/* ── 4.5 Gradient Memory ── */}
           <ChartCard
-            title="4.5 — Gradient Memory (Training)"
+            title="Gradient Memory (Training)"
             badge={hasRawGradient ? { text: 'live', variant: 'live' } : undefined}
           >
             {hasRawGradient ? (
@@ -322,7 +322,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
 
           {/* ── 4.6 KV Cache Growth ── */}
           <ChartCard
-            title="4.6 — KV Cache Growth (LLM)"
+            title="KV Cache Growth (LLM)"
             badge={hasRawKv ? { text: 'live', variant: 'live' } : undefined}
             className="lg:col-span-2"
           >

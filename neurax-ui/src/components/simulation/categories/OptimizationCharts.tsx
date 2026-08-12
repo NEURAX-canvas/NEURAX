@@ -64,9 +64,12 @@ export function OptimizationCharts({
     );
   }
 
+  // Achieved throughput is measured from the analysis's own latency. Without it
+  // there is nothing to report, so leave it null rather than inventing a figure
+  // from an assumed utilisation.
   const achievedTflops = analysis.latencyMs
     ? (analysis.totalFlops / 1e12) / (analysis.latencyMs / 1000)
-    : Math.max(0.1, (analysis.gpuTflops || 1) * (analysis.gpuUtilization ?? 0.45));
+    : null;
   const rooflineRows = buildRooflineRows(analysis);
   const layerRows = buildDerivedLayerMetrics(analysis, perLayer)
     .sort((a, b) => b.flops - a.flops)
@@ -110,7 +113,7 @@ export function OptimizationCharts({
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* 6.1 Roofline Model */}
-          <ChartCard title="6.1 — Roofline Model" className="xl:col-span-2">
+          <ChartCard title="Roofline Model" className="xl:col-span-2">
             <ChartContainer minH={320}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={rooflineRows} margin={CHART_MARGINS.composed}>
@@ -157,21 +160,23 @@ export function OptimizationCharts({
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
                   <Line type="monotone" dataKey="memoryRoof" name="Memory roof" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="computeRoof" name="Compute roof" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
-                  <ReferenceDot
-                    x={Math.max(analysis.arithmeticIntensity, 0.1)}
-                    y={achievedTflops}
-                    r={6}
-                    fill="hsl(var(--chart-1))"
-                    stroke="white"
-                    label={{ value: 'Current model', position: 'top', fill: 'hsl(var(--chart-1))', fontSize: 11 }}
-                  />
+                  {achievedTflops !== null && (
+                    <ReferenceDot
+                      x={Math.max(analysis.arithmeticIntensity, 0.1)}
+                      y={achievedTflops}
+                      r={6}
+                      fill="hsl(var(--chart-1))"
+                      stroke="white"
+                      label={{ value: 'Current model', position: 'top', fill: 'hsl(var(--chart-1))', fontSize: 11 }}
+                    />
+                  )}
                 </ComposedChart>
               </ResponsiveContainer>
             </ChartContainer>
           </ChartCard>
 
           {/* 6.2 Bottleneck Pareto */}
-          <ChartCard title="6.2 — Bottleneck Pareto (80/20)">
+          <ChartCard title="Bottleneck Pareto (80/20)">
             <ChartContainer minH={288}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={layerRows} margin={{ ...CHART_MARGINS.composed, bottom: 36 }}>
@@ -206,7 +211,7 @@ export function OptimizationCharts({
           </ChartCard>
 
           {/* 6.3 Compute vs Memory Bound */}
-          <ChartCard title="6.3 — Compute vs Memory Bound">
+          <ChartCard title="Compute vs Memory Bound">
             <ChartContainer minH={288}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -236,7 +241,7 @@ export function OptimizationCharts({
           </ChartCard>
 
           {/* 6.4 Optimization Opportunities */}
-          <ChartCard title="6.4 — Optimization Opportunities">
+          <ChartCard title="Optimization Opportunities">
             <div className="space-y-3">
               {opportunities.map((entry) => (
                 <div key={entry.title}>
@@ -265,7 +270,7 @@ export function OptimizationCharts({
           </ChartCard>
 
           {/* 6.5 Layer Fusion Candidates */}
-          <ChartCard title="6.5 — Layer Fusion Candidates">
+          <ChartCard title="Layer Fusion Candidates">
             <div className="space-y-3">
               {fusionCandidates.map((candidate) => (
                 <div key={candidate.label} className="rounded-lg bg-secondary/20 px-3 py-2">

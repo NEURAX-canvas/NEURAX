@@ -30,7 +30,7 @@ function ProgressBar({ analysis }: { analysis: AnalysisResult }) {
   const currentPhase = compilation?.current_phase ?? (confidenceScore > 0 ? 'Complete' : 'Pending');
 
   return (
-    <ChartCard title="1.1 — Global Progress" badge={compilation?.current_phase ? { text: 'live', variant: 'live' } : undefined}>
+    <ChartCard title="Global Progress" badge={compilation?.current_phase ? { text: 'live', variant: 'live' } : undefined}>
       <div className="space-y-2">
         <div className="text-[11px] text-muted-foreground">
           Phase: <span className="text-foreground font-medium">{currentPhase}</span>
@@ -59,7 +59,7 @@ function TimelinePhases({ analysis }: { analysis: AnalysisResult }) {
 
   if (!phases) {
     return (
-      <ChartCard title="1.2 — Timeline des Phases" badge={{ text: 'estimated', variant: 'derived' }}>
+      <ChartCard title="Phase Timeline" badge={{ text: 'estimated', variant: 'derived' }}>
         <EmptyChartState
           icon={Activity}
           title="No compilation data yet"
@@ -72,7 +72,7 @@ function TimelinePhases({ analysis }: { analysis: AnalysisResult }) {
   const totalDuration = phases.reduce((acc, p) => acc + p.duration_ms, 0);
 
   return (
-    <ChartCard title="1.2 — Timeline des Phases" badge={{ text: 'live', variant: 'live' }}>
+    <ChartCard title="Phase Timeline" badge={{ text: 'live', variant: 'live' }}>
       <div className="flex h-10 w-full rounded-md overflow-hidden bg-secondary/50 border border-border/50">
         {phases.map((phase, idx) => {
           const width = totalDuration > 0 ? (phase.duration_ms / totalDuration) * 100 : 10;
@@ -124,7 +124,7 @@ function LiveDiagnosticsFeed({ analysis }: { analysis: AnalysisResult }) {
   const { diagnostics } = analysis;
 
   return (
-    <ChartCard title="1.3 — Live Diagnostics Feed" className="max-h-[320px] overflow-hidden flex flex-col">
+    <ChartCard title="Live Diagnostics Feed" className="max-h-[320px] overflow-hidden flex flex-col">
       <div className="flex-1 overflow-auto pr-1 space-y-2 scrollbar-thin">
         {diagnostics && diagnostics.length > 0 ? (
           diagnostics.map((diag, idx) => {
@@ -179,7 +179,7 @@ function PartialMetrics({ analysis }: { analysis: AnalysisResult }) {
 
   if (!data) {
     return (
-      <ChartCard title="1.4 — Partial Metrics" badge={{ text: 'no data', variant: 'info' }}>
+      <ChartCard title="Partial Metrics" badge={{ text: 'no data', variant: 'info' }}>
         <EmptyChartState
           icon={Activity}
           title="No live metrics"
@@ -190,7 +190,7 @@ function PartialMetrics({ analysis }: { analysis: AnalysisResult }) {
   }
 
   return (
-    <ChartCard title="1.4 — Partial Metrics" badge={{ text: 'live', variant: 'live' }}>
+    <ChartCard title="Partial Metrics" badge={{ text: 'live', variant: 'live' }}>
       <ChartContainer minH={192}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={CHART_MARGINS.area}>
@@ -225,7 +225,7 @@ function ConfidenceScore({ analysis }: { analysis: AnalysisResult }) {
   const isReliable = score > 0.8;
 
   return (
-    <ChartCard title="1.5 — Confidence Score Live">
+    <ChartCard title="Confidence Score Live">
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <DonutRing
           value={Math.round(score * 100)}
@@ -266,7 +266,7 @@ function ThroughputChart({ analysis }: { analysis: AnalysisResult }) {
 
   if (!data) {
     return (
-      <ChartCard title="1.6 — Throughput Instantané" badge={{ text: 'no data', variant: 'info' }}>
+      <ChartCard title="Instantaneous Throughput" badge={{ text: 'no data', variant: 'info' }}>
         <EmptyChartState
           icon={Activity}
           title="No throughput data"
@@ -277,7 +277,7 @@ function ThroughputChart({ analysis }: { analysis: AnalysisResult }) {
   }
 
   return (
-    <ChartCard title="1.6 — Throughput Instantané" badge={{ text: 'live', variant: 'live' }}>
+    <ChartCard title="Instantaneous Throughput" badge={{ text: 'live', variant: 'live' }}>
       <ChartContainer minH={192}>
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={CHART_MARGINS.line}>

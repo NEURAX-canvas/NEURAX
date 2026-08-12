@@ -4,17 +4,45 @@ import { AnalysisResult, CanvasNode, Connection, PerLayerBreakdownRow, Warning }
 const BYTES_IN_MB = 1024 ** 2;
 const BYTES_IN_GB = 1024 ** 3;
 
+/**
+ * Categorical palette for the analysis charts.
+ *
+ * Validated with the palette checker in both light and dark mode: every step
+ * sits inside the lightness band, clears the chroma floor (so none reads as
+ * gray), holds at least 3:1 against the chart surface, and keeps adjacent pairs
+ * separable under protanopia, deuteranopia and tritanopia.
+ *
+ * The previous values failed three of those checks — cyan was too light, slate
+ * read as gray, and five of the nine fell below 3:1 contrast.
+ *
+ * `CATEGORICAL_ORDER` is the assignment order for series. Use it in sequence and
+ * never cycle it: a tenth series folds into "Other" or becomes a small multiple,
+ * because a generated tenth hue cannot be checked for separation.
+ */
 export const SIMULATION_COLORS = {
-  blue: '#0ea5e9',
-  green: '#10b981',
-  amber: '#f59e0b',
-  red: '#ef4444',
-  violet: '#8b5cf6',
-  cyan: '#22d3ee',
-  slate: '#64748b',
-  indigo: '#6366f1',
-  teal: '#14b8a6',
-};
+  blue: '#0284c7',
+  amber: '#d97706',
+  violet: '#7c3aed',
+  green: '#059669',
+  red: '#dc2626',
+  cyan: '#0891b2',
+  pink: '#db2777',
+  indigo: '#4f46e5',
+  teal: '#0d9488',
+} as const;
+
+/** Fixed assignment order — adjacent pairs are the ones the checker validated. */
+export const CATEGORICAL_ORDER = [
+  SIMULATION_COLORS.blue,
+  SIMULATION_COLORS.amber,
+  SIMULATION_COLORS.violet,
+  SIMULATION_COLORS.green,
+  SIMULATION_COLORS.red,
+  SIMULATION_COLORS.cyan,
+  SIMULATION_COLORS.pink,
+  SIMULATION_COLORS.indigo,
+  SIMULATION_COLORS.teal,
+] as const;
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
