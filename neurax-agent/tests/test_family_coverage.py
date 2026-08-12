@@ -1,0 +1,147 @@
+"""Every architecture family must actually compile.
+
+The compiler rejects an unknown `layer_type` with a 400, so a block the agent
+can place but the compiler cannot read fails the entire analysis — the budget
+then goes unverified and the client receives a design nobody measured. These
+tests build one representative model per family out of that family's own
+catalogue blocks and require it to compile.
+"""
+import sys, os, json, asyncio
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import pytest
+from topology_validator import ArchSpec
+from budget_check import measure_and_check, spec_to_topology, LAYER_TYPE_MAP
+from requirements import DeploymentBudget
+
+HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CATALOGUE = json.load(open(os.path.join(HERE, "catalogue.json")))
+
+HW = {"hardware": "T4", "gpuCount": 1, "precision": "fp16", "batchSize": 1, "seqLen": 128}
+
+
+def _spec(family, nodes, edges=None):
+    edges = edges or [{"from": nodes[i]["id"], "to": nodes[i + 1]["id"]}
+                      for i in range(len(nodes) - 1)]
+    return ArchSpec.from_dict({"family": family, "nodes": nodes, "edges": edges,
+                               "hw_config": HW})
+
+
+# One representative design per family, built from that family's own blocks.
+REFERENCE_MODELS = {
+    "transformer": [
+        {"id": "emb", "type": "embedding", "params": {"vocab_size": 32000, "hidden_size": 256}},
+        {"id": "attn", "type": "mha", "params": {"hidden_size": 256, "num_heads": 8}},
+        {"id": "ffn", "type": "ffn", "params": {"hidden_size": 256, "intermediate_size": 1024}},
+        {"id": "norm", "type": "rmsnorm", "params": {"hidden_size": 256}},
+        {"id": "head", "type": "lm_head", "params": {"in_features": 256, "out_features": 32000}},
+    ],
+    "cnn": [
+        {"id": "c1", "type": "conv2d", "params": {"in_channels": 3, "out_channels": 64, "kernel_size": 7}},
+        {"id": "bn", "type": "batchnorm", "params": {"hidden_size": 64}},
+        {"id": "act", "type": "relu", "params": {}},
+        {"id": "pool", "type": "max_pool", "params": {"kernel_size": 2}},
+        {"id": "fc", "type": "dense", "params": {"in_features": 64, "out_features": 1000}},
+    ],
+    "moe": [
+        {"id": "emb", "type": "embedding", "params": {"vocab_size": 32000, "hidden_size": 256}},
+        {"id": "gate", "type": "gate", "params": {"hidden_size": 256}},
+        {"id": "moe", "type": "moe_block",
+         "params": {"hidden_size": 256, "intermediate_size": 1024, "num_experts": 8, "top_k": 2}},
+        {"id": "head", "type": "lm_head", "params": {"in_features": 256, "out_features": 32000}},
+    ],
+    "ssm": [
+        {"id": "emb", "type": "embedding", "params": {"vocab_size": 32000, "hidden_size": 256}},
+        {"id": "mamba", "type": "mamba_block",
+         "params": {"hidden_size": 256, "state_dim": 16, "expansion_factor": 2}},
+        {"id": "norm", "type": "rmsnorm", "params": {"hidden_size": 256}},
+        {"id": "head", "type": "lm_head", "params": {"in_features": 256, "out_features": 32000}},
+    ],
+    "rnn": [
+        {"id": "emb", "type": "embedding", "params": {"vocab_size": 20000, "hidden_size": 256}},
+        {"id": "lstm", "type": "lstm", "params": {"hidden_size": 256, "rnn_hidden_size": 256}},
+        {"id": "head", "type": "classification_head", "params": {"in_features": 256, "out_features": 5}},
+    ],
+    "gnn": [
+        {"id": "g1", "type": "gcn_conv", "params": {"hidden_size": 128},
+         "custom_equations": {"flops_forward": "2 * B * S * H * H", "params": "H * H"}},
+        {"id": "norm", "type": "graphnorm", "params": {"hidden_size": 128}},
+        {"id": "pool", "type": "global_mean_pool", "params": {}},
+        {"id": "head", "type": "classification_head", "params": {"in_features": 128, "out_features": 10}},
+    ],
+    "gan": [
+        {"id": "z", "type": "dense", "params": {"in_features": 100, "out_features": 4096}},
+        {"id": "up", "type": "conv_transpose2d", "params": {"in_channels": 256, "out_channels": 128, "kernel_size": 4}},
+        {"id": "bn", "type": "batchnorm", "params": {"hidden_size": 128}},
+        {"id": "act", "type": "tanh", "params": {}},
+    ],
+    "diffusion": [
+        {"id": "t", "type": "timestep_embedding", "params": {"hidden_size": 256}},
+        {"id": "unet", "type": "unet_block", "params": {"in_channels": 64, "out_channels": 128}},
+        {"id": "attn", "type": "mha", "params": {"hidden_size": 256, "num_heads": 8}},
+        {"id": "out", "type": "conv2d", "params": {"in_channels": 128, "out_channels": 3, "kernel_size": 3}},
+    ],
+    "snn": [
+        {"id": "enc", "type": "rate_encoder", "params": {"hidden_size": 128}},
+        {"id": "lif", "type": "lif_neuron", "params": {"hidden_size": 128}},
+        {"id": "syn", "type": "synaptic_layer", "params": {"hidden_size": 128},
+         "custom_equations": {"params": "H * H"}},
+        {"id": "head", "type": "classification_head", "params": {"in_features": 128, "out_features": 10}},
+    ],
+    "multimodal": [
+        {"id": "img", "type": "conv2d", "params": {"in_channels": 3, "out_channels": 64, "kernel_size": 8, "stride": 8}},
+        {"id": "txt", "type": "embedding", "params": {"vocab_size": 8000, "hidden_size": 256}},
+        {"id": "fuse", "type": "mha", "params": {"hidden_size": 256, "num_heads": 8}},
+        {"id": "head", "type": "classification_head", "params": {"in_features": 256, "out_features": 100}},
+    ],
+    "experimental": [
+        {"id": "novel", "type": "custom", "params": {"hidden_size": 256},
+         "custom_equations": {"flops_forward": "4 * B * S * H * H", "params": "2 * H * H"}},
+        {"id": "out", "type": "dense", "params": {"in_features": 256, "out_features": 10}},
+    ],
+}
+
+
+def test_every_catalogue_block_maps_to_a_compiler_type():
+    """A block the agent can place must be one the compiler can read."""
+    accepted = _accepted_layer_types()
+    unmapped = []
+    for family, entry in CATALOGUE.items():
+        for block in entry.get("blocks", []):
+            kind = block.get("type", "")
+            if LAYER_TYPE_MAP.get(kind, kind) not in accepted:
+                unmapped.append(f"{family}:{kind}")
+    assert unmapped == [], f"blocks with no compiler equivalent: {unmapped}"
+
+
+def _accepted_layer_types():
+    import re
+    source = open(os.path.join(HERE, "..", "neurax-parser", "src", "model_config.rs")).read()
+    start = source.index("impl LayerType")
+    end = source.index("pub fn as_str", start)
+    accepted = set()
+    for match in re.finditer(
+        r'^\s*((?:"[a-z0-9_]+"\s*\|\s*)*"[a-z0-9_]+")\s*=>', source[start:end], re.M
+    ):
+        accepted.update(re.findall(r'"([a-z0-9_]+)"', match.group(1)))
+    return accepted
+
+
+@pytest.mark.parametrize("family", sorted(REFERENCE_MODELS))
+def test_a_reference_model_compiles_for_every_family(family):
+    spec = _spec(family, REFERENCE_MODELS[family])
+    report = asyncio.run(measure_and_check(spec, DeploymentBudget(), HW))
+    if report.error and "Connect" in str(report.error):
+        pytest.skip("compiler unavailable")
+    assert not report.error, f"{family} failed to compile: {report.error}"
+    assert report.metrics.get("total_parameters", 0) > 0, \
+        f"{family} compiled but reported no parameters"
+
+
+@pytest.mark.parametrize("family", sorted(REFERENCE_MODELS))
+def test_reference_models_use_only_their_own_family_blocks(family):
+    """Guards the fixtures themselves against drifting from the catalogue."""
+    catalogue_blocks = {b["type"] for b in CATALOGUE[family].get("blocks", [])}
+    used = {n["type"] for n in REFERENCE_MODELS[family]}
+    foreign = used - catalogue_blocks
+    assert foreign == set(), f"{family} fixture uses blocks outside its catalogue: {foreign}"

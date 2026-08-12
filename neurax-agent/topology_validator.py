@@ -65,6 +65,11 @@ class ArchNode:
     id: str
     type: str
     params: dict[str, Any] = field(default_factory=dict)
+    #: Cost equations for a block the compiler has no built-in formula for.
+    #: Graph convolutions, spiking neurons and genuinely novel operators all
+    #: compile as custom layers, and a custom layer without equations counts as
+    #: zero parameters — which the compiler rejects as an empty model.
+    custom_equations: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -93,6 +98,11 @@ class ArchSpec:
                 id=str(n.get("id", "")),
                 type=str(n.get("type", "")),
                 params=n.get("params") if isinstance(n.get("params"), dict) else {},
+                custom_equations=(
+                    n.get("custom_equations")
+                    if isinstance(n.get("custom_equations"), dict)
+                    else {}
+                ),
             )
             for n in (data.get("nodes") or [])
         ]

@@ -134,6 +134,17 @@ class _ArchNode(BaseModel):
         default_factory=dict,
         description="Block hyperparameters (use defaultParams from catalogue as baseline)"
     )
+    custom_equations: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Cost equations, required for blocks the compiler has no built-in formula "
+            "for (graph convolutions, spiking neurons, novel operators). Keys: "
+            "flops_forward and params, as expressions over B (batch), S (sequence), "
+            "H (hidden), D (head dim), I (intermediate), V (vocab), N (heads) — "
+            "e.g. {\"flops_forward\": \"2 * B * S * H * H\", \"params\": \"H * H\"}. "
+            "A custom block without them counts as zero parameters."
+        ),
+    )
 
 
 class _ArchEdge(BaseModel):
@@ -505,6 +516,9 @@ Generate the complete architecture specification now."""
             id=n.id,
             type=n.type,
             params=n.params if isinstance(n.params, dict) else {},
+            custom_equations=(
+                n.custom_equations if isinstance(n.custom_equations, dict) else {}
+            ),
         )
         for n in out.nodes
     ]

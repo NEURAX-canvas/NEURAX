@@ -25,33 +25,123 @@ logger = logging.getLogger(__name__)
 
 NEURAX_SERVICE_URL = os.environ.get("NEURAX_SERVICE_URL", "http://127.0.0.1:9098")
 
-# Canvas block names the compiler knows under a different name.
+# Canvas block names translated to the layer kinds the compiler understands.
+#
+# The compiler rejects an unknown `layer_type` outright, so a block missing from
+# this table does not merely go uncounted — it fails the whole analysis with a
+# 400. Every block the catalogue offers therefore needs an entry.
+#
+# Three kinds of mapping appear here:
+#   * a true equivalent, where the compiler models the same operator;
+#   * `custom`, for operators the compiler has no built-in formula for (graph
+#     convolutions, spiking neurons) — the established path in this codebase,
+#     and the one its own GNN tests use, since a custom layer can carry its cost
+#     as an equation;
+#   * `custom` again for parameter-free element-wise steps (activations,
+#     dropout, reshapes), which contribute no weights and whose cost is folded
+#     into the layer they follow.
 LAYER_TYPE_MAP = {
+    # ── Sequence / attention ──────────────────────────────────────────────
     "token_embedding": "embedding",
     "embedding": "embedding",
     "pos_embed": "positional_embed",
     "positional_encoding": "positional_embed",
+    "rope": "positional_embed",
+    "alibi": "positional_embed",
     "mha_attention": "attention",
     "mha": "attention",
     "attention": "attention",
+    "gqa": "attention",
     "flash_attention": "attention",
+    "self_attention": "attention",
     "cross_attention": "cross_attention",
+    "bahdanau_attention": "attention",
     "ffn_standard": "mlp",
     "ffn_gated": "mlp",
     "ffn": "mlp",
     "mlp": "mlp",
+    "swiglu": "mlp",
+    "lm_head": "dense",
+    "classification_head": "dense",
+    "linear": "dense",
+    "dense": "dense",
+    "output": "dense",
+    "input": "embedding",
+
+    # ── Normalisation (carries scale/shift parameters) ────────────────────
     "layer_norm": "normalization",
     "layernorm": "normalization",
     "rmsnorm": "normalization",
-    "linear": "dense",
-    "dense": "dense",
-    "lm_head": "dense",
+    "batchnorm": "normalization",
+    "groupnorm": "normalization",
+    "instancenorm": "normalization",
+    "graphnorm": "normalization",
+    "pixelnorm": "pixel_norm",
+    "spectral_norm": "spectral_norm",
+
+    # ── Convolution / pooling ─────────────────────────────────────────────
     "conv2d": "conv",
     "conv1d": "conv",
+    "depthwise_conv2d": "conv",
+    "conv_transpose2d": "conv",
     "max_pool": "pooling",
     "avg_pool": "pooling",
-    "input": "embedding",
-    "output": "dense",
+    "global_pool": "pooling",
+    "global_mean_pool": "pooling",
+    "global_max_pool": "pooling",
+    "global_add_pool": "pooling",
+    "downsample": "pooling",
+    "upsample": "pooling",
+    "residual_block": "residual_block",
+    "se_block": "custom",
+
+    # ── Mixture of experts ────────────────────────────────────────────────
+    "moe_block": "moe",
+    "expert": "moe",
+    "gate": "custom",
+    "router_softmax": "custom",
+    "expert_combine": "custom",
+
+    # ── State space ───────────────────────────────────────────────────────
+    "mamba_block": "mamba_block",
+    "s4_block": "s4_block",
+
+    # ── Recurrent ─────────────────────────────────────────────────────────
+    "lstm": "lstm",
+    "gru": "gru",
+    "bilstm": "bilstm",
+    "bigru": "bigru",
+
+    # ── Generative ────────────────────────────────────────────────────────
+    "timestep_embedding": "timestep_embedding",
+    "unet_block": "unet_block",
+    "noise_scheduler": "custom",
+
+    # ── Graph and spiking: no built-in formula, carried as custom ─────────
+    "gcn_conv": "custom",
+    "gat_conv": "custom",
+    "sage_conv": "custom",
+    "edge_conv": "custom",
+    "lif_neuron": "custom",
+    "leaky_neuron": "custom",
+    "synaptic_layer": "custom",
+    "rate_encoder": "custom",
+    "latency_encoder": "custom",
+
+    # ── Parameter-free element-wise steps ─────────────────────────────────
+    "relu": "custom",
+    "gelu": "custom",
+    "silu": "custom",
+    "tanh": "custom",
+    "sigmoid": "custom",
+    "leaky_relu": "custom",
+    "dropout": "custom",
+    "flatten": "custom",
+    "add": "residual",
+    "residual": "residual",
+    "concat": "custom",
+    "merge": "custom",
+    "custom": "custom",
 }
 
 
@@ -137,13 +227,15 @@ def spec_to_topology(
     layers = []
     for node in spec.nodes:
         raw_type = str(getattr(node, "type", "")).lower()
-        layers.append(
-            {
-                "id": getattr(node, "id", f"layer_{len(layers)}"),
-                "layer_type": LAYER_TYPE_MAP.get(raw_type, raw_type),
-                "params": dict(getattr(node, "params", {}) or {}),
-            }
-        )
+        layer = {
+            "id": getattr(node, "id", f"layer_{len(layers)}"),
+            "layer_type": LAYER_TYPE_MAP.get(raw_type, raw_type),
+            "params": dict(getattr(node, "params", {}) or {}),
+        }
+        equations = dict(getattr(node, "custom_equations", {}) or {})
+        if equations:
+            layer["custom_equations"] = equations
+        layers.append(layer)
 
     global_params: dict[str, Any] = {}
     for key, source in (
@@ -196,7 +288,13 @@ async def measure_and_check(
             )
             response.raise_for_status()
             payload = response.json()
-    except Exception as exc:  # network, 4xx from a malformed design, ...
+    except httpx.HTTPStatusError as exc:
+        # The compiler explains *why* it rejected a design in the body; without
+        # it the caller sees a bare "400" and cannot act on it.
+        detail = exc.response.text.strip() or str(exc)
+        logger.warning("compiler rejected the design: %s", detail)
+        return BudgetReport(fits=True, error=detail)
+    except Exception as exc:  # network, timeout, ...
         logger.warning("budget check could not reach the compiler: %s", exc)
         return BudgetReport(fits=True, error=str(exc))
 

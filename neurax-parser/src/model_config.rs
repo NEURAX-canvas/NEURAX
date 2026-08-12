@@ -72,6 +72,8 @@ pub enum ModelType {
     Gan,        // Generative Adversarial Networks
     Hybrid,     // Multi-architecture models (ViT, DiT, etc.)
     Multimodal, // Vision+language models (CLIP, LLaVA-style, mobile VLMs)
+    Snn,        // Spiking neural networks
+    Experimental, // Novel designs built from custom blocks
 }
 
 impl ModelType {
@@ -88,6 +90,8 @@ impl ModelType {
             "gan" | "generative_adversarial" | "adversarial" => Ok(Self::Gan),
             "hybrid" | "multi_architecture" => Ok(Self::Hybrid),
             "multimodal" | "multi_modal" | "vision_language" | "vlm" => Ok(Self::Multimodal),
+            "snn" | "spiking" | "spiking_neural_network" => Ok(Self::Snn),
+            "experimental" | "custom_architecture" | "novel" => Ok(Self::Experimental),
             _ => Err(ParserError::InvalidModelType(s.to_string())),
         }
     }
@@ -104,6 +108,8 @@ impl ModelType {
             Self::Gan => "gan",
             Self::Hybrid => "hybrid",
             Self::Multimodal => "multimodal",
+            Self::Snn => "snn",
+            Self::Experimental => "experimental",
         }
     }
 }
