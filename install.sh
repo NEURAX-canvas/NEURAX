@@ -34,8 +34,9 @@ if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     BOLD=$(printf '\033[1m'); DIM=$(printf '\033[2m')
     RED=$(printf '\033[31m'); GREEN=$(printf '\033[32m')
     YELLOW=$(printf '\033[33m'); RESET=$(printf '\033[0m')
+    GOLD=$(printf '\033[38;5;178m')
 else
-    BOLD=''; DIM=''; RED=''; GREEN=''; YELLOW=''; RESET=''
+    BOLD=''; DIM=''; RED=''; GREEN=''; YELLOW=''; RESET=''; GOLD=''
 fi
 
 say()  { printf '%s\n' "$*"; }
@@ -439,6 +440,38 @@ uninstall() {
     exit 0
 }
 
+# ─── Banner ─────────────────────────────────────────────────────────
+
+# What NEURAX says for itself once it is installed.
+#
+# The line is not decoration. NEURAX computes parameters, FLOPs, VRAM,
+# latency, cost, energy and carbon from the architecture alone — before a
+# single GPU-hour is spent, and without a GPU to spend it on. That is the whole
+# proposition, and it fits on one line.
+banner() {
+    say ""
+    if [ -n "${BOLD}" ]; then
+        printf '%s' "${GOLD}"
+        say '   ███╗   ██╗███████╗██╗   ██╗██████╗  █████╗ ██╗  ██╗'
+        say '   ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔══██╗╚██╗██╔╝'
+        say '   ██╔██╗ ██║█████╗  ██║   ██║██████╔╝███████║ ╚███╔╝ '
+        say '   ██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██╔══██║ ██╔██╗ '
+        say '   ██║ ╚████║███████╗╚██████╔╝██║  ██║██║  ██║██╔╝ ██╗'
+        say '   ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝'
+        printf '%s' "${RESET}"
+        say ""
+        printf '        %sEvery number before the first epoch.%s\n' "${BOLD}" "${RESET}"
+    else
+        # Piped into a log or a terminal without colour: the words, plainly.
+        say "NEURAX ${RELEASE_TAG}"
+        say "Every number before the first epoch."
+    fi
+    say ""
+    printf '   %sInstalled.%s  Analytical compiler for neural architectures.\n' \
+        "${GREEN}" "${RESET}"
+    say ""
+}
+
 # ─── Main ───────────────────────────────────────────────────────────
 
 detect_platform
@@ -450,9 +483,8 @@ case "${PLATFORM}" in
     macos) install_macos ;;
 esac
 
-say ""
-printf '%sNEURAX is installed.%s\n' "${GREEN}" "${RESET}"
-say ""
+banner
+
 say "  neurax          open the application"
 say "  neurax --help   if you also have the CLI compiler installed"
 say ""
