@@ -92,7 +92,7 @@ export function TopNav({
   const canClearCanvas = nodes.length > 0 || connections.length > 0;
 
   return (
-    <header className="h-12 bg-card border-b border-border flex items-center justify-between px-2 sm:px-4">
+    <header className="h-12 bg-card border-b border-border flex items-center justify-between gap-2 px-2 sm:px-4">
       {/* Left - Logo & Name */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <NeuraxLogo size={20} variant="mark" showText={false} />
@@ -103,8 +103,11 @@ export function TopNav({
         <AuthControl />
       </div>
 
-      {/* Center - Architecture Selector & Actions (desktop) */}
-      <div className="hidden md:flex items-center gap-4">
+      {/* Center - Architecture Selector & Actions (desktop).
+          `min-w-0` lets this group shrink below its content width, and the
+          overflow scrolls, so a narrow window loses scrolling convenience
+          rather than losing access to the buttons. */}
+      <div className="hidden md:flex items-center gap-4 min-w-0 flex-1 overflow-x-auto scrollbar-thin">
         <ArchitectureSelector
           value={selectedArchitecture}
           onChange={onArchitectureChange}
@@ -278,8 +281,9 @@ export function TopNav({
 
       </div>
 
-      {/* Right - Run Analysis & Actions */}
-      <div className="flex items-center gap-1 sm:gap-2">
+      {/* Right - Run Analysis & Actions. Never shrinks: this is what the page
+          exists to let you do. */}
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         <ThemeToggle />
 
         <Button

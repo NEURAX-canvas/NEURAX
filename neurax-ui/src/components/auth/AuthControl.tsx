@@ -29,6 +29,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
 import { NotionistsAvatarPicker, AVATAR_OPTIONS, resolveAvatar } from '@/components/profile/NotionistsAvatarPicker.tsx';
+import { Identicon } from '@/components/profile/Identicon.tsx';
 
 
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
@@ -87,7 +88,11 @@ export function AuthControl({
     return `${window.location.origin}/app`;
   }, []);
 
-  const avatarEmoji = useMemo(() => localStorage.getItem('neurax_account_emoji'), []);
+  // The stored value is an avatar id, not an emoji. Rendering it as text put
+  // the literal "ax-01" inside a 32px circle, where it wrapped onto two lines
+  // and collided with the badge beside it.
+  const storedAvatar = useMemo(() => localStorage.getItem('neurax_account_emoji'), []);
+  const avatarEmoji = null;
   const avatarSrc = useMemo(() => {
     if (avatarEmoji) return null;
     if (SUPABASE_DISABLED && demoUser) {
@@ -172,16 +177,22 @@ export function AuthControl({
 
     demoSignIn(email.trim(), username.trim() || undefined);
 
-    // Check if API key already configured
+    // Always land in the studio. An API key is only needed for the AI agent —
+    // the compiler itself runs without one — so diverting to account settings
+    // blocked a visitor on a requirement unrelated to what they came to do.
+    closeDialog();
     if (hasApiKey) {
-      toast({ title: 'Welcome back!', description: `Signed in as ${username.trim() || email.trim().split('@')[0]}` });
-      closeDialog();
-      navigate('/app');
+      toast({
+        title: 'Welcome back!',
+        description: `Signed in as ${username.trim() || email.trim().split('@')[0]}`,
+      });
     } else {
-      toast({ title: 'API key needed', description: 'Configure your API key in Account settings to use Neurax Agent.' });
-      closeDialog();
-      navigate('/account');
+      toast({
+        title: 'Ready to analyse',
+        description: 'Add an API key in Account settings when you want the AI agent to design for you.',
+      });
     }
+    navigate('/app');
   };
 
   // ── Supabase auth (prod mode) ──────────────────────────────
@@ -219,7 +230,7 @@ export function AuthControl({
       if (error) throw error;
       toast({ title: 'Signed in' });
       closeDialog();
-      navigate(hasApiKey ? '/app' : '/account');
+      navigate('/app');
     } catch (e: any) {
       toast({ title: 'Sign in failed', description: String(e?.message ?? e), variant: 'destructive' });
     } finally {
@@ -313,10 +324,10 @@ export function AuthControl({
             aria-label="Open account"
             disabled={busy}
           >
-            {avatarEmoji ? (
-              <span className="h-full w-full flex items-center justify-center text-lg">{avatarEmoji}</span>
+            {avatarSrc ? (
+              <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
             ) : (
-              <img src={avatarSrc ?? ''} alt="avatar" className="h-full w-full object-cover" />
+              <Identicon seed={resolveAvatar(storedAvatar).seed} size={32} />
             )}
           </button>
           <span className="hidden sm:inline text-xs text-white/60 font-medium max-w-[100px] truncate">

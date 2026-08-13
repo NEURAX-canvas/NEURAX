@@ -114,7 +114,7 @@ export default function Landing() {
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <nav className="mx-auto max-w-5xl px-6 h-14 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5" aria-label="NEURAX home">
-            <NeuraxLogo className="h-6 w-6" />
+            <NeuraxLogo variant="mark" size={24} />
             <span className="text-[15px] font-semibold tracking-[-0.02em]">NEURAX</span>
           </Link>
 
@@ -163,13 +163,11 @@ export default function Landing() {
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-3">
-            <Link
-              to="/app"
-              className="inline-flex items-center gap-2 h-11 px-6 rounded-lg bg-primary text-primary-foreground text-[15px] font-medium hover:opacity-90 transition-opacity"
-            >
-              Analyse an architecture
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            <AuthControl
+              triggerLabel="Analyse an architecture"
+              triggerVariant="default"
+              triggerClassName="h-11 px-6 rounded-lg text-[15px] font-medium"
+            />
             <a
               href="#how"
               className="inline-flex items-center h-11 px-6 rounded-lg border border-border text-[15px] font-medium hover:bg-secondary/50 transition-colors"
@@ -179,7 +177,7 @@ export default function Landing() {
           </div>
 
           <p className="mt-5 text-[13px] text-muted-foreground">
-            Free and open source · MIT · No GPU required
+            Free and open source · MIT · Demo mode, no account required
           </p>
         </div>
 
@@ -315,17 +313,15 @@ export default function Landing() {
             Resolve the guess.
           </h2>
           <p className="mt-5 text-[16px] leading-relaxed text-muted-foreground">
-            Open the studio, place a few blocks, and read what the design costs. Nothing to install,
-            no account needed to try it.
+            Place a few blocks and read what the design costs. Nothing to install, and demo mode
+            gets you in without creating an account.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Link
-              to="/app"
-              className="inline-flex items-center gap-2 h-11 px-6 rounded-lg bg-primary text-primary-foreground text-[15px] font-medium hover:opacity-90 transition-opacity"
-            >
-              Open the studio
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            <AuthControl
+              triggerLabel="Open the studio"
+              triggerVariant="default"
+              triggerClassName="h-11 px-6 rounded-lg text-[15px] font-medium"
+            />
             <a
               href={GITHUB_URL}
               target="_blank"
@@ -343,7 +339,7 @@ export default function Landing() {
       <footer className="border-t border-border/60">
         <div className="mx-auto max-w-5xl px-6 py-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
-            <NeuraxLogo className="h-5 w-5" />
+            <NeuraxLogo variant="mark" size={20} />
             <span className="text-[13px] text-muted-foreground">
               NEURAX — analytical compiler for neural architectures
             </span>
