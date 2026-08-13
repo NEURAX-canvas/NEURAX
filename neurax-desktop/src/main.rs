@@ -14,8 +14,24 @@ mod commands;
 mod server;
 
 use commands::ApiBase;
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tracing_subscriber::EnvFilter;
+
+/// Whether the application draws its own title bar rather than using the
+/// system's.
+///
+/// macOS and Windows always decorate a window: the traffic lights and the
+/// minimise/maximise/close buttons are part of the platform, and replacing
+/// them would make NEURAX the one application on the machine whose window
+/// behaves differently.
+///
+/// Linux does not guarantee it. Under the desktop this was tested on, the
+/// window came back with `_NET_FRAME_EXTENTS = 0, 0, 0, 0` — no frame at all —
+/// while `_NET_WM_ALLOWED_ACTIONS` still listed minimise, maximise and close.
+/// The window could be controlled; there was simply nothing to click. So on
+/// Linux the buttons are drawn by the application, which is what every
+/// webview-based desktop application ends up doing there.
+const OWN_TITLE_BAR: bool = cfg!(target_os = "linux");
 
 /// Script evaluated before any page code runs.
 ///
@@ -26,8 +42,10 @@ use tracing_subscriber::EnvFilter;
 /// and may offer the file dialogs.
 fn bootstrap_script(api_base: &str) -> String {
     format!(
-        "window.__NEURAX_DESKTOP__ = Object.freeze({{ apiBase: {} }});",
-        serde_json::to_string(api_base).expect("a URL string always serialises")
+        "window.__NEURAX_DESKTOP__ = Object.freeze({{ apiBase: {}, platform: {}, ownTitleBar: {} }});",
+        serde_json::to_string(api_base).expect("a URL string always serialises"),
+        serde_json::to_string(std::env::consts::OS).expect("a platform name always serialises"),
+        OWN_TITLE_BAR,
     )
 }
 
@@ -73,7 +91,19 @@ fn main() {
                 // The studio's toolbar needs room; below this the canvas and the
                 // analysis panel start overlapping rather than reflowing.
                 .min_inner_size(1100.0, 700.0)
+                // Window controls. These are the platform's own — the title bar
+                // sits where every other application on the system puts it, with
+                // the buttons in the order and position the user already knows.
+                // Stated explicitly rather than left to the defaults, so that a
+                // window without them would have to be a deliberate change.
+                // See OWN_TITLE_BAR: the system's chrome where the platform
+                // reliably provides it, ours where it does not.
+                .decorations(!OWN_TITLE_BAR)
                 .resizable(true)
+                .minimizable(true)
+                .maximizable(true)
+                .closable(true)
+                .center()
                 .initialization_script(&bootstrap_script(&api_base))
                 .build()?;
             Ok(())
@@ -96,7 +126,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::bootstrap_script;
+    use super::{bootstrap_script, OWN_TITLE_BAR};
 
     #[test]
     fn bootstrap_script_embeds_the_api_base() {
@@ -107,10 +137,48 @@ mod tests {
 
     /// The base URL is interpolated into JavaScript source, so it goes through
     /// a JSON encoder rather than string formatting.
+    ///
+    /// Checked by round-tripping rather than by looking for escape sequences:
+    /// what matters is not that a backslash appears somewhere, but that the
+    /// literal in the emitted script parses back to exactly the input — which
+    /// is precisely the property that stops a value from ending the string
+    /// early and running as code.
     #[test]
     fn bootstrap_script_escapes_its_input() {
-        let script = bootstrap_script("http://x\";alert(1);//");
-        assert!(!script.contains("\";alert(1)"));
-        assert!(script.contains("\\\""));
+        let hostile = "http://x\";alert(1);//";
+        let script = bootstrap_script(hostile);
+
+        // Read exactly one JSON value starting at the field, rather than
+        // slicing between quotes. The slicing version passed until a second
+        // field was added and the closing quote it looked for stopped
+        // belonging to this value.
+        let after = script
+            .split_once("apiBase:")
+            .expect("the bridge carries an apiBase")
+            .1
+            .trim_start();
+
+        let decoded: String = serde_json::Deserializer::from_str(after)
+            .into_iter::<String>()
+            .next()
+            .expect("a value follows the field")
+            .expect("that value is a JSON string");
+
+        assert_eq!(
+            decoded, hostile,
+            "the value did not survive encoding intact"
+        );
+    }
+
+    /// The platform and the title-bar decision travel with the API base, so the
+    /// frontend can size its own window chrome without asking.
+    #[test]
+    fn bootstrap_script_declares_the_window_chrome() {
+        let script = bootstrap_script("http://127.0.0.1:1");
+        assert!(script.contains("platform:"), "{script}");
+        assert!(
+            script.contains(&format!("ownTitleBar: {OWN_TITLE_BAR}")),
+            "{script}"
+        );
     }
 }

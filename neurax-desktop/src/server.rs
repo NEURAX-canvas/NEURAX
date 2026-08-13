@@ -21,6 +21,28 @@ use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
 use std::path::PathBuf;
 
+/// Browser origins the embedded API accepts.
+///
+/// A release build serves the UI from the bundle, so the only origin that ever
+/// appears is `tauri://localhost`. A debug build is different: Tauri loads
+/// `devUrl` instead, which means the page comes from the Vite dev server and
+/// presents `http://localhost:8081` as its origin.
+///
+/// This cost an afternoon to find. The app opened, the window rendered, the
+/// studio drew — and every request failed with "Load failed", because CORS was
+/// refusing an origin the desktop build had no reason to expect. The API
+/// logged nothing, since a rejected response is still a served request as far
+/// as the browser's error is concerned. Allowing the dev origins in debug
+/// builds only is what makes `cargo tauri dev` work at all; a release build
+/// still accepts nothing but the bundle's own origin.
+fn allowed_origins() -> Vec<String> {
+    let mut origins: Vec<String> = DESKTOP_ORIGINS.iter().map(|s| s.to_string()).collect();
+    if cfg!(debug_assertions) {
+        origins.extend(neurax_service::default_web_origins());
+    }
+    origins
+}
+
 /// A running in-process API.
 pub struct EmbeddedApi {
     /// The address the OS actually assigned.
@@ -75,7 +97,7 @@ pub fn start() -> io::Result<EmbeddedApi> {
     let path = persistence::projects_path();
     let projects_path = persistence::attach(&state, &path).then_some(path);
 
-    let origins: Vec<String> = DESKTOP_ORIGINS.iter().map(|s| s.to_string()).collect();
+    let origins = allowed_origins();
     let served = state.clone();
 
     std::thread::Builder::new()

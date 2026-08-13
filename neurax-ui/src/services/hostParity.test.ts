@@ -30,6 +30,8 @@ const ALLOWED_HOST_CHECKS: Record<string, string> = {
   'services/neuraxApi.ts': 'resolves the API base address',
   'components/panels/ExportPanel.tsx': 'native save dialog instead of a browser download',
   'App.tsx': 'skips the landing page once a desktop profile exists',
+  'components/desktop/TitleBar.tsx':
+    'window chrome, not application interface — drawn only where the platform draws none',
 };
 
 function sourceFiles(dir: string): string[] {
@@ -67,7 +69,14 @@ describe('web and desktop stay one interface', () => {
   it('has no desktop-only component files', () => {
     const desktopOnly = files
       .map((file) => relative(SRC, file).replace(/\\/g, '/'))
-      .filter((file) => /(^|\/)(desktop|tauri)[A-Z-]/.test(file) && !file.startsWith('services/'));
+      .filter(
+        (file) =>
+          /(^|\/)(desktop|tauri)[A-Z-]/.test(file) &&
+          !file.startsWith('services/') &&
+          // The window frame is allowed to be desktop-only; it is not part of
+          // the application's interface.
+          file !== 'components/desktop/TitleBar.tsx',
+      );
 
     expect(
       desktopOnly,

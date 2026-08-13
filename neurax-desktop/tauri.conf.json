@@ -5,9 +5,9 @@
   "identifier": "dev.neurax.desktop",
   "build": {
     "frontendDist": "../neurax-ui/dist",
+    "beforeBuildCommand": "npm --prefix ../neurax-ui run build:desktop",
     "devUrl": "http://localhost:8081",
-    "beforeDevCommand": "npm --prefix ../neurax-ui run dev",
-    "beforeBuildCommand": "npm --prefix ../neurax-ui run build:desktop"
+    "beforeDevCommand": "npm --prefix ../neurax-ui run dev"
   },
   "app": {
     "withGlobalTauri": false,
@@ -28,11 +28,14 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Analytical compiler for neural network architectures",
-    "longDescription": "NEURAX analyses a neural network architecture before it is trained: parameters, FLOPs, memory, latency, cost, energy and carbon, across a database of accelerators. The desktop build runs the whole compiler on your machine — no account, no upload, no network.",
+    "longDescription": "NEURAX analyses a neural network architecture before it is trained: parameters, FLOPs, memory, latency, cost, energy and carbon, across a database of accelerators. The desktop build runs the whole compiler on your machine \u2014 no account, no upload, no network.",
     "copyright": "MIT",
     "linux": {
       "deb": {
-        "depends": ["libwebkit2gtk-4.1-0", "libgtk-3-0"]
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ]
       }
     }
   }

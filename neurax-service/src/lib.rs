@@ -3627,7 +3627,13 @@ fn build_cors(allowed_origins: &[String]) -> Cors {
 macro_rules! neurax_app {
     ($origins:expr, $state:expr) => {
         App::new()
-            .wrap(middleware::Logger::default())
+            // Origin is logged because CORS failures are otherwise invisible
+            // here: a rejected request still reaches a handler, and the only
+            // trace is an error inside the browser. Knowing which origin
+            // asked is the whole diagnosis.
+            .wrap(middleware::Logger::new(
+                "%a \"%r\" %s %b origin=%{Origin}i %T",
+            ))
             .wrap(middleware::Compress::default())
             .wrap(build_cors(&$origins))
             .app_data(

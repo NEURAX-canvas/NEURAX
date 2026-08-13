@@ -10,10 +10,26 @@ import { ThemeProvider } from "@/contexts/ThemeContext.tsx";
 import { HardwareProvider } from "@/contexts/HardwareContext.tsx";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute.tsx";
 import { isDesktop } from "@/services/desktopRuntime.ts";
-import Landing from "./pages/Landing.tsx";
-import Index from "./pages/Index.tsx";
-import Account from "./pages/Account.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import { DesktopChrome } from "@/components/desktop/TitleBar.tsx";
+import { Suspense, lazy } from "react";
+
+/**
+ * Routes are loaded on demand.
+ *
+ * Every page used to be in the first chunk, so opening the studio also parsed
+ * the landing page and the account page before anything could be drawn. They
+ * are three separate screens and a session only ever starts on one of them.
+ */
+const Landing = lazy(() => import("./pages/Landing.tsx"));
+const Index = lazy(() => import("./pages/Index.tsx"));
+const Account = lazy(() => import("./pages/Account.tsx"));
+const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+
+/** Shown while a route's chunk loads — from local disk in the desktop app,
+ *  which is fast enough that this is usually a single frame. */
+function RouteFallback() {
+  return <div className="min-h-screen bg-background" aria-busy="true" />;
+}
 
 const queryClient = new QueryClient();
 
@@ -44,7 +60,12 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
+              {/* Window chrome, where the platform draws none. Sits outside
+                  the router because it frames the whole application rather
+                  than belonging to any route. */}
+              <DesktopChrome />
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   <Route path="/" element={<HomeRoute />} />
                   <Route path="/app" element={<ProtectedRoute><Index /></ProtectedRoute>} />
@@ -52,6 +73,7 @@ const App = () => (
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>
+                </Suspense>
               </BrowserRouter>
             </TooltipProvider>
             </HardwareProvider>

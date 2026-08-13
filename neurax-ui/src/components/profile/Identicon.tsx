@@ -129,3 +129,36 @@ export function Identicon({
     </svg>
   );
 }
+
+/**
+ * The same identicon as a `data:` URI, for the places that need an image URL
+ * rather than a React element — `<img src>`, and the `avatar_url` stored in
+ * account metadata.
+ *
+ * These used to point at `api.dicebear.com`. That meant an avatar was a
+ * third-party request that could not work offline, that the desktop build's
+ * content policy blocks outright, and that put the user's email address in a
+ * URL sent to someone else's server. A data URI has none of those properties.
+ */
+export function identiconDataUri(seed: string, size = 80): string {
+  const cells = identiconCells(seed);
+  const color = identiconColor(seed);
+
+  const squares = cells
+    .map((filled, index) =>
+      filled
+        ? `<rect x="${index % GRID}" y="${Math.floor(index / GRID)}" width="1" height="1" fill="${color}"/>`
+        : '',
+    )
+    .join('');
+
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" ` +
+    `viewBox="0 0 ${GRID} ${GRID}" shape-rendering="crispEdges">` +
+    `<rect width="${GRID}" height="${GRID}" fill="#8b8b8b" opacity="0.14"/>` +
+    `${squares}</svg>`;
+
+  // `encodeURIComponent` rather than base64: it keeps the URI readable in dev
+  // tools and avoids a `btoa` call that throws on non-Latin-1 seeds.
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}

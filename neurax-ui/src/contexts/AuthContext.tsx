@@ -53,11 +53,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // On mount: check for existing demo user or Supabase session
   useEffect(() => {
     if (SUPABASE_DISABLED) {
-      const stored = getStoredDemoUser();
-      if (stored) {
-        setDemoUser(stored);
-        setSession(buildDemoSession(stored));
-      }
+      // No authentication backend means there is nobody to authenticate
+      // against — this is the desktop application, or a local frontend with no
+      // Supabase project. Making the user invent an account before they can
+      // open the studio would be ceremony protecting nothing, so a local
+      // profile is created on first launch and the app opens ready to work.
+      // It is an ordinary profile: the name and avatar are editable in Account
+      // exactly as they are on the web.
+      const user = getStoredDemoUser() ?? createDemoUser('local@neurax', 'Explorer');
+      setDemoUser(user);
+      setSession(buildDemoSession(user));
       return;
     }
 

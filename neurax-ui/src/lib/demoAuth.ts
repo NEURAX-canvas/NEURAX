@@ -3,6 +3,8 @@
  * Only active when VITE_SUPABASE_DISABLED=true
  */
 
+import { identiconDataUri } from '@/components/profile/Identicon.tsx';
+
 const DEMO_USER_KEY = 'neurax_demo_user';
 
 export interface DemoUser {
@@ -25,7 +27,7 @@ export function randomAvatarSeed(): string {
 }
 
 export function demoAvatarUrl(seed: string): string {
-  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed)}`;
+  return identiconDataUri(seed);
 }
 
 export function getStoredDemoUser(): DemoUser | null {

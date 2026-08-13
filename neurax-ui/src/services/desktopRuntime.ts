@@ -18,6 +18,13 @@
 interface DesktopBridge {
   /** Base URL of the in-process API, e.g. `http://127.0.0.1:41234`. */
   readonly apiBase: string;
+  /** `linux`, `macos` or `windows`. */
+  readonly platform?: string;
+  /**
+   * Whether the application must draw its own window controls, because the
+   * platform's window manager draws none.
+   */
+  readonly ownTitleBar?: boolean;
 }
 
 declare global {
@@ -136,4 +143,27 @@ export async function openTextFile(extensions: string[]): Promise<OpenedFile | n
     // simply never settles — matching the desktop's "nothing happened".
     input.click();
   });
+}
+
+/** What the window frame looks like on this host. */
+export interface DesktopChrome {
+  /** True when the application draws its own title bar and window buttons. */
+  ownTitleBar: boolean;
+  /** `linux`, `macos`, `windows`, or `web` in a browser. */
+  platform: string;
+}
+
+/**
+ * Whether this host expects the application to supply window controls.
+ *
+ * In a browser the answer is always no — the browser is the frame. On the
+ * desktop it is the host's call, decided in Rust where the platform is known;
+ * see `OWN_TITLE_BAR` in `neurax-desktop/src/main.rs`.
+ */
+export function desktopChrome(): DesktopChrome {
+  const injected = bridge();
+  return {
+    ownTitleBar: injected?.ownTitleBar === true,
+    platform: injected?.platform ?? 'web',
+  };
 }

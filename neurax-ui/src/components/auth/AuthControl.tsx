@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext.tsx';
 import { useApiKey, PROVIDER_DEFAULTS, type ApiProvider, type ApiKeyConfig } from '@/contexts/ApiKeyContext.tsx';
 import { usePlan } from '@/contexts/PlanContext.tsx';
 import { supabase } from '@/lib/supabaseClient.ts';
+import { identiconDataUri } from '@/components/profile/Identicon.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
 import {
@@ -100,7 +101,7 @@ export function AuthControl({
     }
     const m = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
     const metaUrl = typeof m.avatar_url === 'string' ? m.avatar_url : null;
-    const fallback = `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(session?.user?.email ?? 'user')}`;
+    const fallback = identiconDataUri(session?.user?.email ?? 'user');
     return metaUrl ?? fallback;
   }, [session, demoUser, demoAvatarUrl, avatarEmoji]);
 
@@ -209,7 +210,7 @@ export function AuthControl({
           emailRedirectTo: redirectTo,
           data: {
             username: username || email.split('@')[0],
-            avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email)}`,
+            avatar_url: identiconDataUri(email),
           },
         },
       });
