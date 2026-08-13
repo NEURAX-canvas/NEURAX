@@ -9,7 +9,7 @@ pub mod ir;
 pub mod pass;
 
 pub use ir::{
-    HallucinationRisk, InferenceParams, InferenceReport, RiskLevel, RiskOverview, RouterStability,
-    SamplingVolatility, StabilityIndex, StabilityLevel,
+    HallucinationRisk, InferenceParams, InferenceReport, KvCacheCost, ModelProfile, RiskLevel,
+    RiskOverview, RouterStability, SamplingVolatility, StabilityIndex, StabilityLevel,
 };
 pub use pass::InferencePass;

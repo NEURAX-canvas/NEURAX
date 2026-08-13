@@ -3,7 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 /// Paramètres d'inférence fournis par le frontend.
+///
+/// `serde(default)` au niveau de la structure : un appelant qui ne précise que
+/// les champs qu'il souhaite changer reçoit les valeurs par défaut pour le
+/// reste, au lieu d'un 400 sans explication.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct InferenceParams {
     // Sampling Strategy
     pub temperature: f64,
@@ -52,6 +57,53 @@ impl Default for InferenceParams {
             adversarial_prompt: false,
             high_temperature_mode: false,
             low_temperature_mode: false,
+        }
+    }
+}
+
+/// What the analysis knows about the model being simulated.
+///
+/// Sampling settings alone cannot answer several of the questions this report
+/// claims to: how far a prompt pushes the model past the context it was built
+/// for, how much KV cache a request costs, or how a mixture-of-experts router
+/// spreads load across the experts the design actually declares. Before this
+/// existed the pass assumed a 32,768-token window for every model and invented
+/// an expert count, so the answers described no model in particular.
+///
+/// Every field is optional: a caller may simulate sampling behaviour alone, and
+/// the widgets that need a model fall back to being reported as unavailable
+/// rather than to a fabricated default.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelProfile {
+    pub total_parameters: Option<u64>,
+    pub num_layers: Option<u64>,
+    pub hidden_size: Option<u64>,
+    pub num_heads: Option<u64>,
+    pub num_kv_heads: Option<u64>,
+    /// Context the model was built for, in tokens.
+    pub trained_context: Option<u64>,
+    pub num_experts: Option<u64>,
+    pub top_k: Option<u64>,
+    /// State dimension, for state-space models.
+    pub state_dim: Option<u64>,
+    /// Bytes per stored value, from the model's precision.
+    pub dtype_bytes: Option<u64>,
+}
+
+impl ModelProfile {
+    /// True when nothing about the model was supplied.
+    pub fn is_empty(&self) -> bool {
+        self.total_parameters.is_none()
+            && self.num_layers.is_none()
+            && self.hidden_size.is_none()
+            && self.trained_context.is_none()
+    }
+
+    /// Head dimension, when both the width and the head count are known.
+    pub fn head_dim(&self) -> Option<u64> {
+        match (self.hidden_size, self.num_heads) {
+            (Some(hidden), Some(heads)) if heads > 0 => Some(hidden / heads),
+            _ => None,
         }
     }
 }
@@ -105,6 +157,22 @@ pub struct RouterStability {
     pub distribution: Vec<f64>,
 }
 
+/// Cost of the key/value cache for the simulated request.
+///
+/// KV cache is what actually limits concurrency when serving: it grows with the
+/// context, and grouped-query attention is the main lever against it. Reporting
+/// it needs the model's layer count, KV head count and head dimension, none of
+/// which sampling parameters carry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KvCacheCost {
+    /// Bytes held per token of context.
+    pub bytes_per_token: u64,
+    /// Bytes for the full prompt plus generated output.
+    pub bytes_total: u64,
+    /// How much smaller grouped-query attention makes it than full multi-head.
+    pub gqa_savings_factor: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RiskOverview {
     pub coherence: RiskLevel,
@@ -136,4 +204,11 @@ pub struct InferenceReport {
     pub router_stability: Option<RouterStability>,
     /// Widget 10 — Inference Risk Overview
     pub risk_overview: RiskOverview,
+    /// Widget 11 — KV cache cost. `None` when the model was not supplied.
+    #[serde(default)]
+    pub kv_cache: Option<KvCacheCost>,
+    /// Echo of the model the report was computed for, so a reader can tell
+    /// whether a figure describes their design or sampling behaviour alone.
+    #[serde(default)]
+    pub model_profile: Option<ModelProfile>,
 }

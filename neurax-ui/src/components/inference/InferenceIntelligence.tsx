@@ -4,12 +4,21 @@ import { BehaviorDashboard } from './BehaviorDashboard.tsx';
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { InferenceParams, InferenceReport, simulateInference } from '@/services/neuraxApi.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
+import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
+import type { CanvasNode, Connection } from '@/types/architecture.ts';
 
 interface InferenceIntelligenceProps {
   architectureType: ArchitectureFamily;
+  /** Blocks on the canvas, so the simulation runs on the real design. */
+  nodes?: CanvasNode[];
+  connections?: Connection[];
 }
 
-export function InferenceIntelligence({ architectureType }: InferenceIntelligenceProps) {
+export function InferenceIntelligence({
+  architectureType,
+  nodes = [],
+  connections = [],
+}: InferenceIntelligenceProps) {
   const { config: design } = useHardware();
   const [params, setParams] = useState<InferenceParams>(() =>
     buildDefaultInferenceParams(architectureType, design),
@@ -23,14 +32,24 @@ export function InferenceIntelligence({ architectureType }: InferenceIntelligenc
     setLoading(true);
     setError(null);
     try {
-      const res = await simulateInference({ params: p });
+      // Send the design when there is one, so the report describes this model
+      // rather than an assumed default.
+      const topology =
+        nodes.length > 0
+          ? (compileToNeuraxIR(nodes, connections, {
+              modelName: 'NeuraxModel',
+              family: architectureType,
+              ...design,
+            }) as unknown as Record<string, unknown>)
+          : undefined;
+      const res = await simulateInference({ params: p, ...(topology && { topology }) });
       setReport(res.report);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Simulation failed');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [nodes, connections, architectureType, design]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

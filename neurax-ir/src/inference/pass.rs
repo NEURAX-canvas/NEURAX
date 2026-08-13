@@ -5,15 +5,27 @@
 //! externe n'est requis.
 
 use super::ir::{
-    HallucinationRisk, InferenceParams, InferenceReport, RiskLevel, RiskOverview, RouterStability,
-    SamplingVolatility, StabilityIndex, StabilityLevel,
+    HallucinationRisk, InferenceParams, InferenceReport, KvCacheCost, ModelProfile, RiskLevel, RiskOverview, RouterStability, SamplingVolatility, StabilityIndex, StabilityLevel,
 };
 
 pub struct InferencePass;
 
 impl InferencePass {
     /// Point d'entrée principal : calcule l'intégralité du rapport d'inférence.
+    /// Simulate sampling behaviour alone, with no model supplied.
     pub fn run(params: &InferenceParams) -> InferenceReport {
+        Self::run_with_model(params, None)
+    }
+
+    /// Simulate for a specific model.
+    ///
+    /// Context degradation, hallucination risk, router load and KV cache all
+    /// depend on the model, not only on how it is sampled. Passing `None` keeps
+    /// the previous behaviour for callers that have no model to give.
+    pub fn run_with_model(
+        params: &InferenceParams,
+        model: Option<&ModelProfile>,
+    ) -> InferenceReport {
         let stability = Self::compute_stability(params);
         let entropy = Self::compute_entropy_evolution(params);
         let noise_schedule = if params
@@ -25,13 +37,13 @@ impl InferencePass {
         } else {
             None
         };
-        let hallucination = Self::compute_hallucination_risk(params);
+        let hallucination = Self::compute_hallucination_risk(params, model);
         let attention = Self::compute_attention_focus(params);
         let state_stability = Self::compute_state_stability(params);
-        let context_deg = Self::compute_context_degradation(params);
+        let context_deg = Self::compute_context_degradation(params, model);
         let volatility = Self::compute_sampling_volatility(params);
         let router = if params.architecture_family.to_lowercase() == "moe" {
-            Some(Self::compute_router_stability(params))
+            Some(Self::compute_router_stability(params, model))
         } else {
             None
         };
@@ -48,7 +60,47 @@ impl InferencePass {
             sampling_volatility: volatility,
             router_stability: router,
             risk_overview: risks,
+            kv_cache: model.and_then(|m| Self::compute_kv_cache(params, m)),
+            model_profile: model.filter(|m| !m.is_empty()).cloned(),
         }
+    }
+
+    // ── Widget 11 : KV cache cost ────────────────────────────────────────────
+
+    /// Bytes the key/value cache holds for this request.
+    ///
+    /// Per token, per layer, a transformer stores one key and one value vector
+    /// of `kv_heads x head_dim` elements — hence the factor of two. Returns
+    /// `None` unless the model supplies everything the formula needs, rather
+    /// than guessing at a layer count.
+    fn compute_kv_cache(p: &InferenceParams, model: &ModelProfile) -> Option<KvCacheCost> {
+        let layers = model.num_layers?;
+        let head_dim = model.head_dim()?;
+        let heads = model.num_heads?;
+        let kv_heads = model.num_kv_heads.unwrap_or(heads).max(1);
+        let dtype_bytes = model.dtype_bytes.unwrap_or(2);
+
+        let bytes_per_token = 2u64
+            .saturating_mul(layers)
+            .saturating_mul(kv_heads)
+            .saturating_mul(head_dim)
+            .saturating_mul(dtype_bytes);
+
+        let context = (p.prompt_length as u64).saturating_add(p.max_output_tokens as u64);
+        let bytes_total = bytes_per_token.saturating_mul(context);
+
+        // Multi-head attention would cache one key/value pair per query head.
+        let gqa_savings_factor = if kv_heads > 0 {
+            heads as f64 / kv_heads as f64
+        } else {
+            1.0
+        };
+
+        Some(KvCacheCost {
+            bytes_per_token,
+            bytes_total,
+            gqa_savings_factor,
+        })
     }
 
     // ── Widget 1 : Generation Stability Index ────────────────────────────────
@@ -119,17 +171,35 @@ impl InferencePass {
 
     // ── Widget 4 : Hallucination Risk ────────────────────────────────────────
 
-    fn compute_hallucination_risk(p: &InferenceParams) -> HallucinationRisk {
+    fn compute_hallucination_risk(
+        p: &InferenceParams,
+        model: Option<&ModelProfile>,
+    ) -> HallucinationRisk {
         let temp_factor = p.temperature / 2.0;
         let beam_factor = 1.0 / p.beam_width as f64;
         let diversity_factor = p.top_p;
         let rep_mitigation = (p.repetition_penalty - 1.0) * 0.3;
         let adversarial_factor = if p.adversarial_prompt { 0.30 } else { 0.0 };
 
+        // Capacity is a real term here: small models confabulate more at the
+        // same sampling settings. Scaled on a log axis because the difference
+        // between 1B and 7B matters far more than between 70B and 700B, and
+        // centred so that a ~7B model contributes nothing either way.
+        let capacity_factor = model
+            .and_then(|m| m.total_parameters)
+            .filter(|p| *p > 0)
+            .map(|params| {
+                let billions = params as f64 / 1e9;
+                let centred = (billions.max(0.01).log10() - 0.85) / 2.0;
+                (-centred).clamp(-0.15, 0.20)
+            })
+            .unwrap_or(0.0);
+
         let raw_risk = (temp_factor * 0.40
             + beam_factor * 0.20
             + diversity_factor * 0.20
             + adversarial_factor
+            + capacity_factor
             - rep_mitigation)
             .clamp(0.0, 1.0);
 
@@ -208,8 +278,16 @@ impl InferencePass {
 
     // ── Widget 7 : Context Degradation ───────────────────────────────────────
 
-    fn compute_context_degradation(p: &InferenceParams) -> f64 {
-        let total_capacity = 32_768u32;
+    /// Percentage of the effective context window still available.
+    ///
+    /// The window is the model's own. This assumed 32,768 tokens for every
+    /// model, so a 2k-context model looked comfortable at a 4k prompt while a
+    /// 128k one looked strained.
+    fn compute_context_degradation(p: &InferenceParams, model: Option<&ModelProfile>) -> f64 {
+        let total_capacity = model
+            .and_then(|m| m.trained_context)
+            .filter(|c| *c > 0)
+            .unwrap_or(32_768) as u32;
         let used = p.prompt_length.saturating_add(p.max_output_tokens);
         let sliding_bonus = if p.sliding_window { 0.15 } else { 0.0 };
         let kv_bonus = if p.kv_cache_reuse { 0.10 } else { 0.0 };
@@ -241,7 +319,10 @@ impl InferencePass {
 
     // ── Widget 9 : Router Stability (MoE) ────────────────────────────────────
 
-    fn compute_router_stability(p: &InferenceParams) -> RouterStability {
+    fn compute_router_stability(
+        p: &InferenceParams,
+        model: Option<&ModelProfile>,
+    ) -> RouterStability {
         let (base_stability, distribution_shape) =
             match p.moe_router_mode.as_deref().unwrap_or("top-k") {
                 "top-k" => (0.92f64, "top_k"),
@@ -253,17 +334,36 @@ impl InferencePass {
         let temp_penalty = (p.temperature - 0.7).max(0.0) * 0.05;
         let final_stability = (base_stability - temp_penalty).clamp(0.0, 1.0);
 
-        let n_experts = 8usize;
+        // Expert count and routing width come from the design. Assuming eight
+        // experts routed top-2 described someone else's model: a 64-expert
+        // top-1 router spreads load very differently.
+        let n_experts = model
+            .and_then(|m| m.num_experts)
+            .filter(|n| *n > 0)
+            .unwrap_or(8)
+            .min(256) as usize;
+        let top_k = model
+            .and_then(|m| m.top_k)
+            .filter(|k| *k > 0)
+            .unwrap_or(2)
+            .min(n_experts as u64) as usize;
+
         let distribution: Vec<f64> = match distribution_shape {
-            "top_k" => (0..n_experts)
-                .map(|i| {
-                    if i < 2 {
-                        0.25
-                    } else {
-                        0.50 / (n_experts - 2) as f64
-                    }
-                })
-                .collect(),
+            // The routed experts carry most of the traffic; the rest share what
+            // is left over from tokens routed elsewhere.
+            "top_k" => {
+                let routed_share = 0.5f64;
+                let remaining = (n_experts - top_k).max(1);
+                (0..n_experts)
+                    .map(|i| {
+                        if i < top_k {
+                            routed_share / top_k as f64
+                        } else {
+                            (1.0 - routed_share) / remaining as f64
+                        }
+                    })
+                    .collect()
+            }
             "balanced" => vec![1.0 / n_experts as f64; n_experts],
             _ => (0..n_experts)
                 .map(|i| {
