@@ -27,6 +27,7 @@ import {
   type ComplianceConfig,
   type ComplianceRegulation,
 } from '@/services/neuraxApi.ts';
+import { useHardware } from '@/contexts/HardwareContext.tsx';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 
 // ── Type aliases so sub-view components keep their signatures ──
@@ -80,10 +81,10 @@ function BreakingDot(props: any) {
 interface TimeMachineWorkspaceProps {
   nodes: CanvasNode[];
   connections: Connection[];
-  analysis?: unknown;
 }
 
 export function TimeMachineWorkspace({ nodes, connections }: TimeMachineWorkspaceProps) {
+  const { config: hwConfig } = useHardware();
   const [growthRate, setGrowthRate] = useState(100);
   const [budgetMax, setBudgetMax] = useState(500000);
   const [horizon, setHorizon] = useState(5);
@@ -101,7 +102,14 @@ export function TimeMachineWorkspace({ nodes, connections }: TimeMachineWorkspac
       setIsLoading(true);
       setProjError(null);
       try {
-        const ir = compileToNeuraxIR(nodes, connections, { modelName: 'NeuraxModel' });
+        // Spread the configuration: compiling with only a name left the
+        // projection blind to precision, batch size, sequence length and the
+        // target GPU, so multi-year cost and carbon described a model nobody
+        // had configured.
+        const ir = compileToNeuraxIR(nodes, connections, {
+          modelName: 'NeuraxModel',
+          ...hwConfig,
+        });
         const { projection: proj } = await runTimeMachine({
           topology: ir as unknown as Record<string, unknown>,
           params: {
@@ -119,7 +127,7 @@ export function TimeMachineWorkspace({ nodes, connections }: TimeMachineWorkspac
       }
     }, 600);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [nodes, connections, growthRate, horizon, budgetMax, hardware]);
+  }, [nodes, connections, growthRate, horizon, budgetMax, hardware, hwConfig]);
 
   const timeline = projection?.timeline ?? [];
   const recommendations = projection?.recommendations ?? [];

@@ -10,6 +10,14 @@ pub struct HardwareIR {
     pub per_layer_timings: Vec<LayerTiming>,
     pub metrics: HardwareMetrics,
     pub metrics_done: bool,
+    /// Parameter bytes carried over from the memory pass.
+    ///
+    /// This is what a data-parallel all-reduce actually exchanges each step.
+    /// The communication estimate previously reconstructed a byte count from
+    /// per-layer memory *time*, which measures total HBM traffic — for a 5B
+    /// model that is tens of terabytes rather than the ~10 GB of gradients,
+    /// and it inflated the step latency by four orders of magnitude.
+    pub parameter_bytes: u64,
 }
 
 impl Default for HardwareIR {
@@ -19,6 +27,7 @@ impl Default for HardwareIR {
             roofline: RooflineModel::default(),
             per_layer_timings: Vec::new(),
             metrics: HardwareMetrics::default(),
+            parameter_bytes: 0,
             metrics_done: false,
         }
     }

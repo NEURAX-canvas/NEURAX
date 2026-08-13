@@ -12,10 +12,49 @@ export interface HardwareConfig {
   // ─── Training ───────────────────────────────────────────────
   learningRate: number;
   numEpochs: number;
+  /** Optimizer algorithm; AdamW is the Transformer default. */
+  optimizer?: string;
+  /** L2-style regularization applied by the optimizer. */
+  weightDecay?: number;
+  /** Steps spent ramping the learning rate up from ~0. */
+  warmupSteps?: number;
+  /** Learning-rate schedule after warmup. */
+  lrScheduler?: string;
+  /** Explicit step budget; when unset it is derived from epochs × dataset. */
+  maxSteps?: number;
+  /** Recompute activations in the backward pass to trade compute for memory. */
+  gradientCheckpointing?: boolean;
+  /** DeepSpeed ZeRO partitioning stage (0 = off). */
+  zeroStage?: number;
+  /** Stop after this many epochs without validation improvement. */
+  earlyStoppingPatience?: number;
+
+  // ─── Parallelism (large-scale training) ─────────────────────
+  /** Shards individual tensors across GPUs. */
+  tensorParallel?: number;
+  /** Splits the layer stack into pipeline stages. */
+  pipelineParallel?: number;
+  /** Distributes MoE experts across GPUs. */
+  expertParallel?: number;
+  /** Per-device batch before gradient accumulation. */
+  microBatchSize?: number;
+  /** Micro-batches accumulated before an optimizer step. */
+  gradAccumSteps?: number;
+
   /** GPU count for hardware section */
   gpuCount: number;
   /** GPU memory in GB for hardware section */
   gpuMemoryGb: number;
+
+  // ─── User-defined hyperparameters ───────────────────────────
+  /**
+   * Hyperparameters the user added themselves, beyond the built-in set.
+   *
+   * These are forwarded verbatim into the model's `global_params`, where the
+   * backend keeps a flattened catch-all map, so a config can carry as many
+   * extra parameters as an architecture needs without a schema change here.
+   */
+  customParams?: Record<string, string | number | boolean>;
 
   // ─── Data ───────────────────────────────────────────────────
   /** Total tokens / samples in dataset */

@@ -53,6 +53,12 @@ async def materialize(
     # 2. Set family
     yield _tool("set_family", {"family": spec.family})
 
+    # Platform settings before the graph: the canvas derives block defaults from
+    # them, and they decide the model's cost as much as the blocks do.
+    hw_config = getattr(spec, "hw_config", None) or {}
+    if hw_config:
+        yield _tool("set_hw_config", {"updates": hw_config})
+
     # 3. Add all nodes (in topological order from positions keys)
     # Sort nodes so input comes first, output comes last
     def _node_sort_key(node):
@@ -89,4 +95,13 @@ async def materialize(
 
     # 6. Done
     logger.info(f"✅ Materialization complete")
+    # Hyperparameters last, once the graph and hardware are in place: the
+    # defaults are derived from the layer count and the hardware config, so they
+    # are only meaningful after both exist.
+    yield _tool("initialize_hyperparams", {})
+
+    hyperparams = getattr(spec, "hyperparams", None) or {}
+    if hyperparams:
+        yield _tool("set_hyperparams", {"updates": hyperparams})
+
     yield _tool("done", {})

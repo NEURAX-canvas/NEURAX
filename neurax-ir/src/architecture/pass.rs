@@ -58,7 +58,7 @@ impl IrPass for ArchitecturePass {
     fn compute_metrics(
         &self,
         output: &mut Self::Output,
-        _ctx: &NeuraxContext,
+        ctx: &NeuraxContext,
     ) -> Result<Self::Metrics, Self::PassError> {
         let json_layer_count = output.layers.len();
 
@@ -68,9 +68,13 @@ impl IrPass for ArchitecturePass {
             .num_layers
             .unwrap_or(json_layer_count as u64) as usize;
 
-        // Total parameters - sum from individual layer calculations
-        // This works for any architecture (Transformer, Mamba, MoE, etc.)
-        let total_params: u64 = output.layers.iter().map(|l| l.param_count).sum();
+        // Total parameters, scaling the listed blocks up to the real depth.
+        //
+        // Summing the listed layers alone reported `num_layers: 120` next to the
+        // parameter count of the handful of blocks the JSON spells out, so the
+        // headline figure disagreed with the memory pass by more than an order
+        // of magnitude on every example that uses this pattern.
+        let total_params: u64 = crate::architecture::scaled_total_parameters(&ctx.config);
 
         let mut metrics = ArchitectureMetrics {
             num_layers: global_num_layers.max(json_layer_count),

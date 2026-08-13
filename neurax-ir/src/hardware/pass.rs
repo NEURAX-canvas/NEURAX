@@ -9,6 +9,16 @@ use crate::traits::IrPass;
 use crate::NeuraxContext;
 
 /// Hardware pass implementation
+
+/// True for the 16-bit float formats that use tensor cores.
+///
+/// Configs, papers and the UI write `bf16`; only the longer `bfloat16` spelling
+/// was matched before, so bf16 runs silently fell through to the fp32 branch and
+/// were costed with fp32 throughput and efficiency.
+fn is_half_precision(precision: &str) -> bool {
+    matches!(precision, "fp16" | "float16" | "bf16" | "bfloat16")
+}
+
 pub struct HardwarePass;
 
 impl IrPass for HardwarePass {
@@ -26,8 +36,9 @@ impl IrPass for HardwarePass {
         input: &Self::Input,
         ctx: &NeuraxContext,
     ) -> Result<Self::Output, Self::PassError> {
-        let (compute_ir, _memory_ir, _parallel_ir) = input;
+        let (compute_ir, memory_ir, _parallel_ir) = input;
         let mut hw_ir = HardwareIR::default();
+        hw_ir.parameter_bytes = memory_ir.metrics.parameter_memory_bytes;
 
         // Get GPU profile from JSON config or fallback to database
         let gpu_config = ctx.config.hardware.gpus.first();
@@ -43,44 +54,65 @@ impl IrPass for HardwarePass {
                 let mut profile = GpuProfile::default();
                 if let Some(gpu) = gpu_config {
                     profile.name = gpu.name.clone();
-                    profile.vram_gb = gpu.memory_gb as u64;
-                    profile.peak_tflops = if gpu.tflops_fp16 > 0.0 {
-                        gpu.tflops_fp16
-                    } else {
-                        gpu.tflops_fp32
-                    };
-                    profile.memory_bandwidth = gpu.memory_bandwidth_gbs;
+                    if let Some(memory_gb) = gpu.memory_gb {
+                        profile.vram_gb = memory_gb;
+                    }
+                    if let Some(tflops) = gpu.tflops_fp16.or(gpu.tflops_fp32) {
+                        profile.peak_tflops = tflops;
+                    }
+                    if let Some(bandwidth) = gpu.memory_bandwidth_gbs {
+                        profile.memory_bandwidth = bandwidth;
+                    }
                 }
                 profile
             });
 
-        // Override with values from JSON config if provided
+        // Point `peak_tflops` at the precision the run actually uses. The
+        // database profile lands on the fp16 figure by default, which understates
+        // int8/fp8 runs and misses bf16 on parts where the two differ.
+        {
+            let precision = ctx.config.training.precision.as_str();
+            let by_precision = match precision {
+                "fp32" | "float32" => gpu_profile.tflops_fp32,
+                "fp16" | "float16" => gpu_profile.tflops_fp16,
+                "bf16" | "bfloat16" => gpu_profile.tflops_bf16,
+                "int8" => gpu_profile.tflops_int8,
+                "fp8" | "float8" => gpu_profile.tflops_fp8,
+                _ => 0.0,
+            };
+            if by_precision > 0.0 {
+                gpu_profile.peak_tflops = by_precision;
+            }
+        }
+
+        // Override the database profile only where the config states a value.
+        //
+        // These fields are `Option` precisely so that "unspecified" stays
+        // distinguishable from "specified as some number": treating an absent
+        // spec as a real one used to replace the database's true figures for a
+        // named GPU with placeholder constants.
         if let Some(gpu) = gpu_config {
-            // Use tflops from JSON based on precision
             let precision = &ctx.config.training.precision;
             if precision == "fp8" {
-                if gpu.tflops_fp8 > 0.0 {
-                    gpu_profile.peak_tflops = gpu.tflops_fp8;
-                } else if gpu.tflops_fp16 > 0.0 {
-                    gpu_profile.peak_tflops = gpu.tflops_fp16 * 2.0; // fp8 is 2x fp16
+                if let Some(tflops) = gpu.tflops_fp8 {
+                    gpu_profile.peak_tflops = tflops;
+                } else if let Some(tflops) = gpu.tflops_fp16 {
+                    gpu_profile.peak_tflops = tflops * 2.0; // fp8 is 2x fp16
                 }
-            } else if precision == "fp16" || precision == "bfloat16" {
-                if gpu.tflops_fp16 > 0.0 {
-                    gpu_profile.peak_tflops = gpu.tflops_fp16;
+            } else if is_half_precision(precision) {
+                if let Some(tflops) = gpu.tflops_fp16 {
+                    gpu_profile.peak_tflops = tflops;
                 }
-            } else {
-                if gpu.tflops_fp32 > 0.0 {
-                    gpu_profile.peak_tflops = gpu.tflops_fp32;
-                }
+            } else if let Some(tflops) = gpu.tflops_fp32 {
+                gpu_profile.peak_tflops = tflops;
             }
 
-            // Use memory bandwidth from JSON if specified
-            if gpu.memory_bandwidth_gbs > 0.0 {
-                gpu_profile.memory_bandwidth = gpu.memory_bandwidth_gbs;
+            if let Some(bandwidth) = gpu.memory_bandwidth_gbs {
+                gpu_profile.memory_bandwidth = bandwidth;
             }
 
             // Tensor cores enable higher TFLOPs for FP16/BF16
-            if gpu.tensor_cores && (precision == "fp16" || precision == "bfloat16") {
+            if gpu.tensor_cores.unwrap_or(true) && is_half_precision(precision) {
                 gpu_profile.tensor_core_tflops = gpu_profile.peak_tflops * 2.0;
             }
         }
@@ -141,13 +173,13 @@ impl IrPass for HardwarePass {
         // MLP is compute-bound (higher efficiency)
         let attention_efficiency = match precision.as_str() {
             "fp32" => 0.45,
-            "fp16" | "bfloat16" => 0.55, // FlashAttention helps
+            "fp16" | "bf16" | "bfloat16" => 0.55, // FlashAttention helps
             "fp8" => 0.65,
             _ => 0.45,
         };
         let mlp_efficiency = match precision.as_str() {
             "fp32" => 0.75,
-            "fp16" | "bfloat16" => 0.85, // Tensor cores shine
+            "fp16" | "bf16" | "bfloat16" => 0.85, // Tensor cores shine
             "fp8" => 0.92,
             _ => 0.75,
         };
@@ -200,13 +232,11 @@ impl IrPass for HardwarePass {
         // Communication overhead for multi-GPU
         let num_gpus = ctx.config.hardware.total_gpu_count();
         let interconnect_bw = ctx.config.hardware.interconnect_bandwidth_gbs * 1e9; // bytes/s
-        let param_bytes = output
-            .per_layer_timings
-            .iter()
-            .map(|t| t.memory_time_ms * output.gpu_profile.memory_bandwidth * 1e6)
-            .sum::<f64>() as u64;
+        // A data-parallel all-reduce exchanges the gradients, i.e. one buffer
+        // the size of the parameters — not the model's whole HBM traffic.
+        let param_bytes = output.parameter_bytes;
 
-        // AllReduce overhead: 2 * (N-1)/N * params / bandwidth
+        // Ring all-reduce moves 2·(N-1)/N × buffer per rank.
         let communication_overhead_ms = if num_gpus > 1 && interconnect_bw > 0.0 {
             let factor = 2.0 * (num_gpus - 1) as f64 / num_gpus as f64;
             (param_bytes as f64 * factor / interconnect_bw) * 1000.0
@@ -313,9 +343,18 @@ fn calculate_layer_timings(
         .op_flops
         .iter()
         .map(|op| {
-            // Compute time: FLOPs / (TFLOPs * efficiency * 1e9) * 1000 (ms)
-            let compute_time_ms =
-                op.forward_flops / (gpu.peak_tflops * gpu.efficiency_factor * 1e9) * 1000.0;
+            // Compute time: FLOPs / achievable FLOP/s, in milliseconds.
+            //
+            // `peak_tflops` is in TFLOP/s, so it converts with 1e12. The scale
+            // here used to be 1e9, which treats teraflops as gigaflops and made
+            // every layer time — and the latency, throughput and cost derived
+            // from it — a thousand times too large.
+            let achievable_flops_per_s = gpu.peak_tflops * gpu.efficiency_factor * 1e12;
+            let compute_time_ms = if achievable_flops_per_s > 0.0 {
+                op.forward_flops / achievable_flops_per_s * 1000.0
+            } else {
+                0.0
+            };
             // Simplified memory time
             let memory_time_ms = compute_time_ms * 0.5;
 

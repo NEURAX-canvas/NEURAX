@@ -1,6 +1,58 @@
-//! NEURAX Core - Pipeline orchestration
+//! # NEURAX Core
 //!
-//! Industrial-grade compiler for neural network architectures.
+//! **The NEURAX unified analysis engine — one function call from JSON to a full
+//! analytical report.**
+//!
+//! Part of the [NEURAX](https://github.com/rustnew/NEURAX) analytical compiler
+//! for neural network architectures. Orchestrates the entire pipeline —
+//! **parse → validate → 10-pass IR → report** — behind a tiny public API.
+//!
+//! ## Quick example
+//!
+//! ```rust
+//! use neurax_core::analyze_json;
+//!
+//! let json = r#"{
+//!   "schema_version": "1.0",
+//!   "model": {
+//!     "name": "tiny-gpt",
+//!     "type": "transformer",
+//!     "layers": [
+//!       { "id": "attn_0", "layer_type": "attention",
+//!         "input_shape": [128, 768], "output_shape": [128, 768],
+//!         "params": { "num_heads": 12 } }
+//!     ],
+//!     "global_params": { "hidden_size": 768, "num_layers": 1 }
+//!   },
+//!   "training": { "batch_size": 32, "optimizer": "adamw", "precision": "bf16" },
+//!   "hardware": {
+//!     "gpus": [
+//!       { "name": "A100-80GB", "count": 1, "memory_gb": 80,
+//!         "tflops_fp16": 312, "tflops_fp32": 19.5,
+//!         "memory_bandwidth_gb_s": 2039, "tensor_cores": true }
+//!     ],
+//!     "interconnect": "None", "interconnect_bandwidth_gb_s": 0
+//!   }
+//! }"#;
+//!
+//! let result = analyze_json(json).expect("analysis succeeds");
+//! assert!(result.compute.metrics.total_flops > 0.0);
+//! assert!(result.memory.metrics.peak_vram_bytes > 0);
+//! ```
+//!
+//! ## Main entry points
+//!
+//! - [`analyze_json`] — full analysis from a JSON string
+//! - [`analyze_file`] — full analysis from a file
+//! - [`validate_json`] — parse + validate only
+//! - [`get_model_summary`] — quick summary without full analysis
+//!
+//! ## Run the example
+//!
+//! ```bash
+//! cargo run --example analyze_end_to_end
+//! ```
+
 
 mod engine;
 pub mod export;

@@ -21,7 +21,8 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
 import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
-import { HyperparameterOptPanel } from '@/components/panels/HyperparameterOptPanel.tsx';
+import { SimulationTargetPanel } from '@/components/panels/SimulationTargetPanel.tsx';
+import { ModelHyperparametersDialog } from '@/components/panels/ModelHyperparametersPanel.tsx';
 import { InferenceIntelligence } from '@/components/inference';
 import { ProductionWorkspace } from '@/components/production/ProductionWorkspace.tsx';
 import { SimulationWorkspace } from '@/components/simulation/SimulationWorkspace.tsx';
@@ -792,7 +793,8 @@ const Index = () => {
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
-  const [showOptimizePanel, setShowOptimizePanel] = useState(false);
+  const [showTargetPanel, setShowTargetPanel] = useState(false);
+  const [showHyperparametersPanel, setShowHyperparametersPanel] = useState(false);
 
   const [selectedArchitecture, setSelectedArchitecture] = useState<ArchitectureFamily>('transformer');
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<WorkspaceTab>('architecture');
@@ -1251,21 +1253,12 @@ params: params as Record<string, ParameterValue>,
       const ir = compileToNeuraxIR(nodes, connections, {
         modelName: 'NeuraxModel',
         family: selectedArchitecture,
-        hardware: hwConfig.hardware,
-        precision: hwConfig.precision,
-        batchSize: hwConfig.batchSize,
         groups,
-        // Training
-        learningRate: hwConfig.learningRate,
-        numEpochs: hwConfig.numEpochs,
-        seqLen: hwConfig.seqLen,
-        // Hardware
-        gpuCount: hwConfig.gpuCount,
-        gpuMemoryGb: hwConfig.gpuMemoryGb,
-        // Data
-        datasetSize: hwConfig.datasetSize,
-        vocabSize: hwConfig.vocabSize,
-        numClasses: hwConfig.numClasses,
+        // Spread the whole hyperparameter set: listing fields by hand silently
+        // dropped every family-specific one (dropout, kvHeads, ropeTheta,
+        // numExperts, dState, ...), so the compiler analysed a model the user
+        // had not configured.
+        ...hwConfig,
       });
 
       const compilerWarnings: string[] = (ir as any)?._warnings ?? [];
@@ -1486,18 +1479,9 @@ params: params as Record<string, ParameterValue>,
       const ir = compileToNeuraxIR(nodes, connections, {
         modelName: 'NeuraxModel',
         family: selectedArchitecture,
-        hardware: hwConfig.hardware,
-        precision: hwConfig.precision,
-        batchSize: hwConfig.batchSize,
         groups,
-        learningRate: hwConfig.learningRate,
-        numEpochs: hwConfig.numEpochs,
-        seqLen: hwConfig.seqLen,
-        gpuCount: hwConfig.gpuCount,
-        gpuMemoryGb: hwConfig.gpuMemoryGb,
-        datasetSize: hwConfig.datasetSize,
-        vocabSize: hwConfig.vocabSize,
-        numClasses: hwConfig.numClasses,
+        // See handleRunAnalysis: spread so no hyperparameter is dropped.
+        ...hwConfig,
       });
 
       const cw: string[] = (ir as any)?._warnings ?? [];
@@ -2225,7 +2209,8 @@ params: params as Record<string, ParameterValue>,
         onSaveCanvas={handleSaveCanvas}
         onExport={() => setShowExportPanel(true)}
         onImport={() => setShowImportPanel(true)}
-        onOptimize={() => setShowOptimizePanel(true)}
+        onSelectTarget={() => setShowTargetPanel(true)}
+        onHyperparameters={() => setShowHyperparametersPanel(true)}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen((v) => !v)}
         selectedArchitecture={selectedArchitecture}
@@ -2251,8 +2236,8 @@ params: params as Record<string, ParameterValue>,
           architectureContent={architectureContent}
           simulationContent={<SimulationWorkspace nodes={nodes} connections={connections} analysis={analysis} perLayer={perLayer} warnings={warnings} topology={compiledTopology} />}
           productionContent={<ProductionWorkspace nodes={nodes} connections={connections} modelName="NeuraxModel" />}
-          inferenceContent={<InferenceIntelligence architectureType={selectedArchitecture} />}
-          timeMachineContent={<TimeMachineWorkspace nodes={nodes} connections={connections} analysis={analysis} />}
+          inferenceContent={<InferenceIntelligence architectureType={selectedArchitecture} nodes={nodes} connections={connections} />}
+          timeMachineContent={<TimeMachineWorkspace nodes={nodes} connections={connections} />}
         >
           {null}
         </WorkspaceTabs>
@@ -2304,9 +2289,14 @@ params: params as Record<string, ParameterValue>,
         onImport={handleImportArchitecture}
       />
 
-      <HyperparameterOptPanel
-        isOpen={showOptimizePanel}
-        onClose={() => setShowOptimizePanel(false)}
+      <SimulationTargetPanel
+        isOpen={showTargetPanel}
+        onClose={() => setShowTargetPanel(false)}
+      />
+
+      <ModelHyperparametersDialog
+        isOpen={showHyperparametersPanel}
+        onClose={() => setShowHyperparametersPanel(false)}
         family={selectedArchitecture}
       />
 

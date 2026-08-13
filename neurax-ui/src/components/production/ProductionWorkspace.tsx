@@ -1,9 +1,5 @@
 import { useState, useMemo } from 'react';
-import {
-  Leaf, Clock, Database, Cpu, Activity, Info,
-  Check, Copy, Download, Sparkles, ChevronDown, ChevronRight,
-  Settings2, GraduationCap
-} from 'lucide-react';
+import { Leaf, Database, Activity, Info, Check, Copy, Download, Sparkles, ChevronDown, ChevronRight, Settings2, GraduationCap, Layers3 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Slider } from '@/components/ui/slider.tsx';
@@ -31,6 +27,15 @@ interface ProductionWorkspaceProps {
   nodes: CanvasNode[];
   connections: Connection[];
   modelName: string;
+}
+
+/** Compact count: 1.2M rather than 1200000. */
+function formatCompact(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
+  return String(Math.round(value));
 }
 
 export function ProductionWorkspace({ nodes, connections, modelName }: ProductionWorkspaceProps) {
@@ -127,12 +132,38 @@ export function ProductionWorkspace({ nodes, connections, modelName }: Productio
           <div className="space-y-6">
             <SectionHeader icon={Settings2} title="Optimal Weights & Biases" />
 
-            {/* Quick Stats */}
+            {/* What the chosen initialisation does to this model.
+                The three cards here used to read "Epochs Saved", "Hours Saved"
+                and "Data Efficiency", all derived from a hardcoded 100-epoch,
+                24-hour baseline and invented per-method multipliers — so every
+                model, on every GPU, was told it saved the same amount. These
+                describe the initialisation itself, which is what this panel
+                actually computes. */}
             {architecture && (
               <div className="grid grid-cols-3 gap-3">
-                <MetricCard icon={Clock} label="Epochs Saved" value={`~${architecture.metrics.estimatedEpochsSaved}`} color="text-success" />
-                <MetricCard icon={Cpu} label="Hours Saved" value={`~${architecture.metrics.computeHoursSaved}h`} color="text-info" />
-                <MetricCard icon={Database} label="Data Efficiency" value={`+${architecture.metrics.datasetEfficiency}%`} color="text-warning" />
+                <MetricCard
+                  icon={Layers3}
+                  label="Layers initialised"
+                  value={`${architecture.layers.length}`}
+                  color="text-info"
+                />
+                <MetricCard
+                  icon={Database}
+                  label="Weights"
+                  value={formatCompact(
+                    architecture.layers.reduce(
+                      (total, layer) => total + layer.shape.reduce((a, b) => a * b, 1),
+                      0,
+                    ),
+                  )}
+                  color="text-warning"
+                />
+                <MetricCard
+                  icon={Activity}
+                  label="Gradient flow"
+                  value={`${architecture.metrics.gradientFlowScore}/100`}
+                  color="text-success"
+                />
               </div>
             )}
 

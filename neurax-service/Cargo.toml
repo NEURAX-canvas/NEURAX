@@ -11,10 +11,10 @@ keywords = ["api", "web", "ml", "compiler", "service"]
 categories = ["web-programming"]
 
 [dependencies]
-neurax-core = { version = "0.1.0", path = "../neurax-core" }
-neurax-parser = { version = "0.1.0", path = "../neurax-parser" }
-neurax-ir = { version = "0.1.0", path = "../neurax-ir" }
-neurax-hardware-db = { version = "0.1.0", path = "../neurax-hardware-db" }
+neurax-core = { version = "0.1.1", path = "../neurax-core" }
+neurax-parser = { version = "0.1.1", path = "../neurax-parser" }
+neurax-ir = { version = "0.1.1", path = "../neurax-ir" }
+neurax-hardware-db = { version = "0.1.1", path = "../neurax-hardware-db" }
 actix-web = "4"
 actix-ws = "0.2"
 actix-cors = "0.7"

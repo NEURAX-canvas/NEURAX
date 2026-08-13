@@ -1,7 +1,7 @@
 import { useState, lazy, Suspense } from 'react';
 import {
   Activity, BarChart3, Layers, HardDrive,
-  GitCompare, Target, TrendingUp, Bug
+  GitCompare, Target, TrendingUp, Bug,
 } from 'lucide-react';
 import { CanvasNode, Connection, AnalysisResult, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
 import { ChartSkeleton } from './shared';
@@ -15,16 +15,86 @@ const OptimizationCharts = lazy(() => import('./categories/OptimizationCharts.ts
 const TrainingCharts = lazy(() => import('./categories/TrainingCharts.tsx').then(m => ({ default: m.TrainingCharts })));
 const DebuggingCharts = lazy(() => import('./categories/DebuggingCharts.tsx').then(m => ({ default: m.DebuggingCharts })));
 
-const CATEGORIES = [
-  { id: 'realtime', label: 'Real-Time', icon: Activity, count: 6 },
-  { id: 'global', label: 'Results', icon: BarChart3, count: 8 },
-  { id: 'perlayer', label: 'Per Layer', icon: Layers, count: 6 },
-  { id: 'memory', label: 'Memory', icon: HardDrive, count: 6 },
-  { id: 'comparison', label: 'Comparison', icon: GitCompare, count: 9 },
-  { id: 'optimization', label: 'Optimization', icon: Target, count: 5 },
-  { id: 'training', label: 'Training', icon: TrendingUp, count: 6 },
-  { id: 'debugging', label: 'Debugging', icon: Bug, count: 8 },
-] as const;
+export type SimulationCategoryId =
+  | 'overview' | 'perlayer' | 'memory' | 'training'
+  | 'optimization' | 'comparison' | 'diagnostics' | 'compilation';
+
+/**
+ * Analysis views, ordered as they are read rather than as they were written.
+ *
+ * The sequence follows the question a designer actually works through: what is
+ * this model, where does its cost sit, will it fit, what will it cost to train,
+ * how could it be faster, how does it compare, and what is wrong with it.
+ * Compilation telemetry comes last — it describes the run, not the model.
+ *
+ * `chartCount` is asserted against the number of cards each module renders, so
+ * the badges cannot drift out of date the way they had (Comparison advertised
+ * nine charts and rendered four).
+ */
+export const SIMULATION_CATEGORIES = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    hint: 'Headline size, cost and hardware fit',
+    icon: BarChart3,
+    chartCount: 13,
+  },
+  {
+    id: 'perlayer',
+    label: 'Per Layer',
+    hint: 'Where the parameters, FLOPs and latency sit',
+    icon: Layers,
+    chartCount: 6,
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    hint: 'VRAM over time, peak breakdown and OOM risk',
+    icon: HardDrive,
+    chartCount: 6,
+  },
+  {
+    id: 'training',
+    label: 'Training',
+    hint: 'Time, cost and carbon for the training run',
+    icon: TrendingUp,
+    chartCount: 4,
+  },
+  {
+    id: 'optimization',
+    label: 'Optimization',
+    hint: 'Roofline, bottlenecks and what to change first',
+    icon: Target,
+    chartCount: 5,
+  },
+  {
+    id: 'comparison',
+    label: 'Comparison',
+    hint: 'This design against other hardware and precisions',
+    icon: GitCompare,
+    chartCount: 4,
+  },
+  {
+    id: 'diagnostics',
+    label: 'Diagnostics',
+    hint: 'Warnings, unsupported ops and confidence',
+    icon: Bug,
+    chartCount: 8,
+  },
+  {
+    id: 'compilation',
+    label: 'Compilation',
+    hint: 'Phase timing and progress of the analysis run',
+    icon: Activity,
+    chartCount: 9,
+  },
+] as const satisfies ReadonlyArray<{
+  id: SimulationCategoryId;
+  label: string;
+  hint: string;
+  icon: typeof Activity;
+  chartCount: number;
+}>;
 
 interface SimulationWorkspaceProps {
   nodes: CanvasNode[];
@@ -35,31 +105,49 @@ interface SimulationWorkspaceProps {
   topology?: Record<string, unknown>;
 }
 
-export function SimulationWorkspace({ nodes, connections, analysis, perLayer, warnings, topology }: SimulationWorkspaceProps) {
-  const [activeCategory, setActiveCategory] = useState('realtime');
+export function SimulationWorkspace({
+  nodes,
+  connections,
+  analysis,
+  perLayer,
+  warnings,
+  topology,
+}: SimulationWorkspaceProps) {
+  const [activeCategory, setActiveCategory] = useState<SimulationCategoryId>('overview');
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden bg-background">
-      {/* Category Tabs */}
       <div className="border-b border-border bg-card px-4 py-2">
-        <div className="flex items-center gap-1 overflow-x-auto scrollbar-thin">
-          {CATEGORIES.map((cat) => {
-            const Icon = cat.icon;
-            const isActive = activeCategory === cat.id;
+        <div
+          className="flex items-center gap-1 overflow-x-auto scrollbar-thin"
+          role="tablist"
+          aria-label="Analysis views"
+        >
+          {SIMULATION_CATEGORIES.map((category) => {
+            const Icon = category.icon;
+            const isActive = activeCategory === category.id;
             return (
               <button
-                key={cat.id}
-                onClick={() => setActiveCategory(cat.id)}
-                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap ${isActive
+                key={category.id}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                title={category.hint}
+                onClick={() => setActiveCategory(category.id)}
+                className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap ${
+                  isActive
                     ? 'bg-primary text-primary-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                  }`}
+                }`}
               >
                 <Icon className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden sm:inline">{cat.label}</span>
-                <span className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full hidden sm:inline ${isActive ? 'bg-primary-foreground/20' : 'bg-muted'
-                  }`}>
-                  {cat.count}
+                <span className="hidden sm:inline">{category.label}</span>
+                <span
+                  className={`text-[10px] px-1 sm:px-1.5 py-0.5 rounded-full hidden sm:inline ${
+                    isActive ? 'bg-primary-foreground/20' : 'bg-muted'
+                  }`}
+                >
+                  {category.chartCount}
                 </span>
               </button>
             );
@@ -67,14 +155,13 @@ export function SimulationWorkspace({ nodes, connections, analysis, perLayer, wa
         </div>
       </div>
 
-      {/* Chart Content — only the active category is mounted (lazy) */}
-      <div className="flex-1 overflow-auto p-4 scrollbar-thin">
+      {/* Only the active category is mounted, so its charts load on demand. */}
+      <div className="flex-1 overflow-auto p-4 scrollbar-thin" role="tabpanel">
         <Suspense fallback={<ChartSkeleton variant="stats-grid" />}>
-          {activeCategory === 'realtime' && <RealTimeCharts analysis={analysis} />}
-          {activeCategory === 'global' && <GlobalResultsCharts analysis={analysis} />}
+          {activeCategory === 'overview' && <GlobalResultsCharts analysis={analysis} />}
           {activeCategory === 'perlayer' && <PerLayerCharts analysis={analysis} perLayer={perLayer} />}
           {activeCategory === 'memory' && <MemoryCharts analysis={analysis} />}
-          {activeCategory === 'comparison' && <ComparisonCharts analysis={analysis} topology={topology} />}
+          {activeCategory === 'training' && <TrainingCharts analysis={analysis} />}
           {activeCategory === 'optimization' && (
             <OptimizationCharts
               analysis={analysis}
@@ -83,8 +170,10 @@ export function SimulationWorkspace({ nodes, connections, analysis, perLayer, wa
               connections={connections}
             />
           )}
-          {activeCategory === 'training' && <TrainingCharts analysis={analysis} />}
-          {activeCategory === 'debugging' && (
+          {activeCategory === 'comparison' && (
+            <ComparisonCharts analysis={analysis} topology={topology} />
+          )}
+          {activeCategory === 'diagnostics' && (
             <DebuggingCharts
               analysis={analysis}
               perLayer={perLayer}
@@ -92,6 +181,7 @@ export function SimulationWorkspace({ nodes, connections, analysis, perLayer, wa
               nodes={nodes}
             />
           )}
+          {activeCategory === 'compilation' && <RealTimeCharts analysis={analysis} />}
         </Suspense>
       </div>
     </div>

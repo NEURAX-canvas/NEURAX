@@ -3,6 +3,7 @@
 //! This crate provides pure analytical formulas for computing FLOPs,
 //! memory requirements, and other metrics for various ML layer types.
 
+pub mod activation;
 pub mod attention;
 pub mod cnn_blocks;
 pub mod conv;

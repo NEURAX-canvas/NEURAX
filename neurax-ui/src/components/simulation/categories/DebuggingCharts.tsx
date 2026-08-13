@@ -85,7 +85,7 @@ export function DebuggingCharts({
         {/* ── Row 1: 8.1 · 8.2 · 8.3 ── */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* ── 8.1 Diagnostic Severity ── */}
-          <ChartCard title="8.1 — Diagnostic Severity">
+          <ChartCard title="Diagnostic Severity">
             <ChartContainer minH={256}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -115,7 +115,7 @@ export function DebuggingCharts({
           </ChartCard>
 
           {/* ── 8.2 Diagnostics by Layer ── */}
-          <ChartCard title="8.2 — Diagnostics by Layer">
+          <ChartCard title="Diagnostics by Layer">
             <div className="space-y-2">
               <div className="grid grid-cols-[1.2fr_repeat(6,minmax(0,1fr))] gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                 <span>Layer</span>
@@ -143,7 +143,7 @@ export function DebuggingCharts({
           </ChartCard>
 
           {/* ── 8.3 Shape Confidence ── */}
-          <ChartCard title="8.3 — Shape Confidence">
+          <ChartCard title="Shape Confidence">
             <ChartContainer minH={256}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={confidenceRows} margin={CHART_MARGINS.bar}>
@@ -163,7 +163,7 @@ export function DebuggingCharts({
         </div>
 
         {/* ── 8.4 Parallelism Efficiency (full width) ── */}
-        <ChartCard title="8.4 — Parallelism Efficiency">
+        <ChartCard title="Parallelism Efficiency">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-lg bg-secondary/20 p-3">
               <div className="flex items-center gap-2 mb-2">
@@ -227,7 +227,7 @@ export function DebuggingCharts({
         {/* ── Row 2: 8.5 · 8.6 · 8.7 ── */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* ── 8.5 OpKind Distribution ── */}
-          <ChartCard title="8.5 — OpKind Distribution">
+          <ChartCard title="OpKind Distribution">
             <ChartContainer minH={256}>
               {hasOpData ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -256,7 +256,7 @@ export function DebuggingCharts({
           </ChartCard>
 
           {/* ── 8.6 Unsupported Ops / Fallbacks ── */}
-          <ChartCard title="8.6 — Unsupported Ops / Fallbacks">
+          <ChartCard title="Unsupported Ops / Fallbacks">
             <div className="space-y-3 max-h-64 overflow-auto pr-1 scrollbar-thin">
               {unsupportedRows.map((item) => (
                 <div key={`${item.name}:${item.detail}`} className="rounded-lg bg-secondary/20 px-3 py-2">
@@ -274,7 +274,7 @@ export function DebuggingCharts({
           </ChartCard>
 
           {/* ── 8.7 Resolution Distribution ── */}
-          <ChartCard title="8.7 — Resolution Distribution">
+          <ChartCard title="Resolution Distribution">
             <ChartContainer minH={256}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={resolutionRows} margin={CHART_MARGINS.bar}>
@@ -294,7 +294,7 @@ export function DebuggingCharts({
         </div>
 
         {/* ── 8.8 Penalty Impact Waterfall (full width) ── */}
-        <ChartCard title="8.8 — Penalty Impact Waterfall">
+        <ChartCard title="Penalty Impact Waterfall">
           <div className="grid grid-cols-5 gap-2">
             {waterfallRows.map((row, index) => {
               const isInitial = index === 0;

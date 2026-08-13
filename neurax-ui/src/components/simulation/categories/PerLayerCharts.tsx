@@ -69,7 +69,7 @@ function buildLatencyData(analysis: AnalysisResult, perLayer: PerLayerBreakdownR
 
 function FlopsPerLayer({ data }: { data: ReturnType<typeof buildLayerData> }) {
   return (
-    <ChartCard title="3.1 — FLOPs per Layer" badge={{ text: 'live', variant: 'live' }}>
+    <ChartCard title="FLOPs per Layer" badge={{ text: 'live', variant: 'live' }}>
       <ChartContainer>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={CHART_MARGINS.bar}>
@@ -101,7 +101,7 @@ function FlopsPerLayer({ data }: { data: ReturnType<typeof buildLayerData> }) {
 function VramByLayer({ data, hasLiveMap }: { data: ReturnType<typeof buildVramData>; hasLiveMap: boolean }) {
   return (
     <ChartCard
-      title="3.2 — VRAM per Layer"
+      title="VRAM per Layer"
       badge={hasLiveMap ? { text: 'live', variant: 'live' } : { text: 'derived', variant: 'derived' }}
     >
       <ChartContainer>
@@ -141,7 +141,7 @@ function VramByLayer({ data, hasLiveMap }: { data: ReturnType<typeof buildVramDa
 function LatencyPerLayer({ data, hasLiveMap }: { data: ReturnType<typeof buildLatencyData>; hasLiveMap: boolean }) {
   return (
     <ChartCard
-      title="3.3 — Latency per Layer"
+      title="Latency per Layer"
       badge={hasLiveMap ? { text: 'live', variant: 'live' } : { text: 'derived', variant: 'derived' }}
     >
       <ChartContainer>
@@ -174,7 +174,7 @@ function LatencyPerLayer({ data, hasLiveMap }: { data: ReturnType<typeof buildLa
 
 function ParamsPerLayer({ data }: { data: ReturnType<typeof buildLayerData> }) {
   return (
-    <ChartCard title="3.4 — Parameters per Layer" badge={{ text: 'live', variant: 'live' }}>
+    <ChartCard title="Parameters per Layer" badge={{ text: 'live', variant: 'live' }}>
       <ChartContainer>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={CHART_MARGINS.bar}>
@@ -205,7 +205,7 @@ function ParamsPerLayer({ data }: { data: ReturnType<typeof buildLayerData> }) {
 
 function ComputeMemoryRatio({ merged }: { merged: { name: string; flops: number; vramMb: number; ratio: number }[] }) {
   return (
-    <ChartCard title="3.5 — Compute-Memory Ratio (FLOPs/MB)" badge={{ text: 'derived', variant: 'derived' }}>
+    <ChartCard title="Compute-Memory Ratio (FLOPs/MB)" badge={{ text: 'derived', variant: 'derived' }}>
       <ChartContainer>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={merged} margin={CHART_MARGINS.bar}>
@@ -245,7 +245,7 @@ function LayerScore({ data }: { data: ReturnType<typeof buildLayerData> }) {
   });
 
   return (
-    <ChartCard title="3.6 — Layer Efficiency Score" badge={{ text: 'derived', variant: 'derived' }}>
+    <ChartCard title="Layer Efficiency Score" badge={{ text: 'derived', variant: 'derived' }}>
       <ChartContainer>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={scored} margin={CHART_MARGINS.bar}>

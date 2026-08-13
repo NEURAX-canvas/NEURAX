@@ -55,6 +55,8 @@ fn test_all_model_types() {
             ModelType::Gan => "Generative adversarial",
             ModelType::Hybrid => "Multi-architecture",
             ModelType::Multimodal => "Multimodal vision+language",
+            ModelType::Snn => "Spiking neural networks",
+            ModelType::Experimental => "Custom / novel designs",
         };
 
         println!(

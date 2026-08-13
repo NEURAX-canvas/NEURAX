@@ -22,12 +22,15 @@ import { useToast } from '@/hooks/use-toast.ts';
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 
 // ─── Notionists Avatar Family ────────────────────────────────────
-import { NOTIONISTS_AVATARS } from '@/components/profile/NotionistsAvatarPicker.tsx';
+import {
+  AVATAR_OPTIONS,
+  resolveAvatar,
+} from '@/components/profile/NotionistsAvatarPicker.tsx';
+import { Identicon } from '@/components/profile/Identicon.tsx';
 
-// Extraire uniquement les emojis des Notionists
-const AVATAR_EMOJIS = NOTIONISTS_AVATARS.map(avatar => avatar.emoji);
-
-const EMOJI_KEY = 'neurax_account_emoji';
+// Key kept as-is so profiles saved by the emoji picker are still found; the
+// value is now an avatar id, and legacy emoji values resolve to a stable option.
+const AVATAR_KEY = 'neurax_account_emoji';
 
 const PROVIDERS: { value: ApiProvider; label: string; icon: string }[] = [
   { value: 'openai', label: 'OpenAI', icon: '🤖' },
@@ -51,9 +54,9 @@ export default function Account() {
   const [busy, setBusy] = useState(false);
 
   // ── Émoji ──
-  const [selectedEmoji, setSelectedEmoji] = useState<string>(() => {
-    return localStorage.getItem(EMOJI_KEY) || NOTIONISTS_AVATARS[0].emoji;
-  });
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>(
+    () => resolveAvatar(localStorage.getItem(AVATAR_KEY)).id,
+  );
 
   // ── Profile edit ──
   const [editName, setEditName] = useState('');
@@ -97,9 +100,9 @@ export default function Account() {
 
   // ── Emoji ──
   const onSaveEmoji = useCallback(() => {
-    localStorage.setItem(EMOJI_KEY, selectedEmoji);
+    localStorage.setItem(AVATAR_KEY, selectedAvatarId);
     toast({ title: 'Emoji saved', description: 'Your account emoji has been updated.' });
-  }, [selectedEmoji, toast]);
+  }, [selectedAvatarId, toast]);
 
   // ── Profile ──
   const onSaveProfile = async () => {
@@ -220,7 +223,7 @@ export default function Account() {
         {/* ── Header ── */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
-            <span className="text-4xl">{selectedEmoji}</span>
+            <Identicon seed={resolveAvatar(selectedAvatarId).seed} size={56} />
             <div>
               <h1 className="text-2xl font-bold">{username}</h1>
               <p className="text-sm text-muted-foreground">{email}</p>
@@ -252,38 +255,32 @@ export default function Account() {
             <div className="rounded-xl border bg-card p-6">
               <div className="flex items-center gap-3 mb-4">
                 <Palette className="w-5 h-5 text-primary" />
-                <h2 className="text-sm font-semibold">Notionist Avatar</h2>
+                <h2 className="text-sm font-semibold">Avatar</h2>
               </div>
               <p className="text-xs text-muted-foreground mb-4">
-                Choose your Notionist avatar from the family of 12 unique characters.
+                Generated patterns, each drawn from its own seed — nothing is fetched to display one.
               </p>
-              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-12 gap-2">
-                {NOTIONISTS_AVATARS.map((notionist) => {
-                  const isSelected = selectedEmoji === notionist.emoji;
+              <div className="grid grid-cols-6 sm:grid-cols-8 md:grid-cols-12 gap-2" role="radiogroup" aria-label="Avatar">
+                {AVATAR_OPTIONS.map((avatar) => {
+                  const isSelected = selectedAvatarId === avatar.id;
                   return (
                     <button
-                      key={notionist.id}
+                      key={avatar.id}
                       type="button"
-                      className={`h-12 w-12 rounded-lg border text-xl flex items-center justify-center transition-all relative group ${
+                      role="radio"
+                      aria-checked={isSelected}
+                      className={`h-12 w-12 rounded-lg border flex items-center justify-center transition-all relative group text-foreground ${
                         isSelected
-                          ? 'ring-2 scale-110'
-                          : 'hover:scale-105'
+                          ? 'border-primary ring-2 ring-primary/40 scale-110'
+                          : 'border-border hover:scale-105'
                       }`}
-                      style={{
-                        borderColor: isSelected ? notionist.color : 'hsl(var(--border))',
-                        backgroundColor: isSelected ? `${notionist.color}15` : 'transparent',
-                        ...(isSelected && { 
-                          '--tw-ring-color': `${notionist.color}40`
-                        } as React.CSSProperties)
-                      }}
-                      onClick={() => setSelectedEmoji(notionist.emoji)}
-                      aria-label={`Select ${notionist.name}`}
-                      title={notionist.name}
+                      onClick={() => setSelectedAvatarId(avatar.id)}
+                      aria-label={`Select ${avatar.name}`}
+                      title={avatar.name}
                     >
-                      {notionist.emoji}
-                      {/* Tooltip on hover */}
+                      <Identicon seed={avatar.seed} size={34} />
                       <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-md border">
-                        {notionist.name.replace('Notion ', '')}
+                        {avatar.name}
                       </span>
                     </button>
                   );
@@ -291,7 +288,7 @@ export default function Account() {
               </div>
               <div className="mt-4 flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">
-                  {NOTIONISTS_AVATARS.find(n => n.emoji === selectedEmoji)?.name || 'Select an avatar'}
+                  {resolveAvatar(selectedAvatarId).name}
                 </span>
                 <Button size="sm" onClick={onSaveEmoji} disabled={busy}>
                   <Save className="w-3.5 h-3.5 mr-1.5" /> Save Avatar

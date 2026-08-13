@@ -11,7 +11,8 @@ import {
   MessageSquareText,
   FolderOpen,
   CloudUpload,
-  Sliders,
+  SlidersHorizontal,
+  Cpu,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { ArchitectureSelector } from '@/components/architecture/ArchitectureSelector.tsx';
@@ -51,7 +52,8 @@ interface TopNavProps {
   nodes?: CanvasNode[];
   connections?: Connection[];
   // Hyperparameter optimization
-  onOptimize?: () => void;
+  onSelectTarget?: () => void;
+  onHyperparameters?: () => void;
   // Project management
   projects?: Project[];
   currentProjectId?: string | null;
@@ -77,7 +79,8 @@ export function TopNav({
   currentPresetId,
   nodes = [],
   connections = [],
-  onOptimize,
+  onSelectTarget,
+  onHyperparameters,
   projects = [],
   currentProjectId,
   onSaveProject,
@@ -246,10 +249,20 @@ export function TopNav({
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
-            onClick={onOptimize}
+            onClick={onHyperparameters}
           >
-            <Sliders className="w-4 h-4 mr-1.5" />
-            Optimize
+            <SlidersHorizontal className="w-4 h-4 mr-1.5" />
+            Hyperparameters
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+            onClick={onSelectTarget}
+            title="Choose the chip every metric is computed for"
+          >
+            <Cpu className="w-4 h-4 mr-1.5" />
+            Target
           </Button>
           <Button
             variant="ghost"
@@ -368,8 +381,11 @@ export function TopNav({
               >
                 <Trash2 className="w-4 h-4 mr-2" /> Clear Canvas
               </Button>
-              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onOptimize?.(); setMobileMenuOpen(false); }}>
-                <Sliders className="w-4 h-4 mr-2" /> Optimize Hyperparameters
+              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onHyperparameters?.(); setMobileMenuOpen(false); }}>
+                <SlidersHorizontal className="w-4 h-4 mr-2" /> Set Hyperparameters
+              </Button>
+              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onSelectTarget?.(); setMobileMenuOpen(false); }}>
+                <Cpu className="w-4 h-4 mr-2" /> Simulation Target
               </Button>
               <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onExport?.(); setMobileMenuOpen(false); }}>
                 <ChevronDown className="w-4 h-4 mr-2" /> Export

@@ -168,7 +168,7 @@ pub struct RawGlobalParams {
 }
 
 /// Raw training configuration
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RawTraining {
     #[serde(default = "default_batch_size")]
@@ -192,6 +192,11 @@ pub struct RawTraining {
     pub max_steps: usize,
     #[serde(default)]
     pub warmup_steps: usize,
+    /// Number of passes over the dataset. Together with `data.dataset_size` this
+    /// lets the cost pass derive `max_steps` when the caller does not set it
+    /// explicitly, which is the common case for the public examples and the UI.
+    #[serde(default)]
+    pub num_epochs: Option<f64>,
     #[serde(default)]
     pub parallelism: RawParallelism,
 }
@@ -204,7 +209,7 @@ fn default_precision() -> String {
 }
 
 /// Raw parallelism configuration
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RawParallelism {
     #[serde(default = "default_one")]
@@ -259,7 +264,7 @@ fn default_gpu_count() -> u32 {
 }
 
 /// Raw data configuration
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RawData {
     #[serde(default)]
@@ -276,6 +281,10 @@ pub struct RawData {
     pub image_height: Option<usize>,
     #[serde(default)]
     pub image_width: Option<usize>,
+    /// Total training-set size in tokens (or samples for non-token models).
+    /// Consumed by the cost pass to derive the number of training steps.
+    #[serde(default)]
+    pub dataset_size: Option<f64>,
 }
 
 fn default_dtype() -> String {
@@ -283,7 +292,7 @@ fn default_dtype() -> String {
 }
 
 /// Raw metrics configuration
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RawMetricsConfig {
     #[serde(default = "default_true")]
@@ -334,7 +343,7 @@ impl Default for RawMetricGroups {
 }
 
 /// Raw cost configuration
-#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct RawCostConfig {
     #[serde(default)]
@@ -349,4 +358,77 @@ pub struct RawCostConfig {
 
 fn default_pue() -> f64 {
     1.2
+}
+
+// ─── Default impls aligned with the serde field defaults ────────────────────
+//
+// These sections are marked `#[serde(default)]` on `RawModelConfig`, so when a
+// JSON document omits one entirely, serde builds it with `Default` rather than
+// with the per-field `#[serde(default = "...")]` functions. A derived `Default`
+// therefore produced zeroes where the field defaults say otherwise: `pue_factor`
+// 0 instead of 1.2 (zeroing energy and CO2), the parallelism degrees 0 instead
+// of 1, `calculate_all` false instead of true, and empty precision/dtype
+// strings. Implementing `Default` by hand keeps both paths in agreement.
+
+impl Default for RawTraining {
+    fn default() -> Self {
+        Self {
+            batch_size: default_batch_size(),
+            sequence_length: None,
+            optimizer: None,
+            learning_rate: None,
+            precision: default_precision(),
+            gradient_checkpointing: false,
+            zero_stage: 0,
+            max_steps: 0,
+            warmup_steps: 0,
+            num_epochs: None,
+            parallelism: RawParallelism::default(),
+        }
+    }
+}
+
+impl Default for RawParallelism {
+    fn default() -> Self {
+        Self {
+            data_parallel: default_one(),
+            tensor_parallel: default_one(),
+            pipeline_parallel: default_one(),
+        }
+    }
+}
+
+impl Default for RawData {
+    fn default() -> Self {
+        Self {
+            input_shape: Vec::new(),
+            dtype: default_dtype(),
+            vocab_size: None,
+            num_classes: None,
+            image_channels: None,
+            image_height: None,
+            image_width: None,
+            dataset_size: None,
+        }
+    }
+}
+
+impl Default for RawMetricsConfig {
+    fn default() -> Self {
+        Self {
+            calculate_all: default_true(),
+            groups: RawMetricGroups::default(),
+        }
+    }
+}
+
+impl Default for RawCostConfig {
+    fn default() -> Self {
+        Self {
+            provider: None,
+            gpu_hour_usd: None,
+            energy_kwh_usd: None,
+            pue_factor: default_pue(),
+        }
+    }
 }

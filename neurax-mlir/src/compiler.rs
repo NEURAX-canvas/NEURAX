@@ -161,9 +161,9 @@ pub fn compile_model_to_mlir(
         let hw_op = HardwareDialect::gpu(
             context,
             &gpu.name,
-            gpu.memory_gb as i64,
-            gpu.tflops_fp16,
-            gpu.memory_bandwidth_gbs,
+            gpu.memory_gb.unwrap_or(40) as i64,
+            gpu.tflops_fp16.unwrap_or(100.0),
+            gpu.memory_bandwidth_gbs.unwrap_or(1000.0),
             location,
         )
         .map_err(|e| format!("Failed to create hw op: {e:?}"))?;
@@ -391,7 +391,7 @@ fn estimate_training_hours(config: &ModelConfig) -> f64 {
     let gpu_tflops = config
         .hardware
         .primary_gpu()
-        .map(|g| g.tflops_fp16)
+        .and_then(|g| g.tflops_fp16)
         .unwrap_or(100.0)
         * 1e12;
 

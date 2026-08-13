@@ -39,7 +39,7 @@ const FAQS: FAQ[] = [
   },
   {
     question: 'Which architecture families are supported?',
-    answer: 'All 11 major families with 680+ configurable blocks: Transformer/LLM (66 blocks), CNN/Vision (116 blocks), State Space Models/Mamba (97 blocks), Mixture-of-Experts (67 blocks), Diffusion Models (75 blocks), GANs (82 blocks), GNNs (46 blocks), RNN/LSTM (70 blocks), Reinforcement Learning (12 blocks), Spiking Neural Networks (12 blocks), and Experimental architectures (∞ custom blocks).'
+    answer: 'All 11 families, 208 catalogue blocks in total: Transformer/LLM (20), CNN/Vision (26), State Space (Mamba) (16), Mixture-of-Experts (21), Diffusion (21), GANs (19), GNNs (21), RNN/LSTM (19), Spiking (13), Multimodal (24), Experimental (8). Experimental blocks carry their own cost equations, so an operator NEURAX has no built-in formula for still compiles.'
   }
 ];
 

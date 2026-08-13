@@ -72,8 +72,13 @@ impl Shape {
     }
 
     /// Calculate number of elements
+    ///
+    /// Returns `None` when the shape is not fully concrete, and saturates
+    /// rather than wrapping if the dimensions multiply beyond `usize` — a
+    /// wrapped element count would silently understate tensor memory.
     pub fn num_elements(&self) -> Option<usize> {
-        self.to_concrete().map(|s| s.iter().product())
+        self.to_concrete()
+            .map(|s| s.iter().fold(1usize, |acc, d| acc.saturating_mul(*d)))
     }
 
     /// Calculate size in bytes

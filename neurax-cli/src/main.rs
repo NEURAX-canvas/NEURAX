@@ -82,10 +82,16 @@ fn cmd_analyze(args: &[String]) -> Result<(), i32> {
 
     // Determine output path
     let final_output_path = output_path.or_else(|| {
-        // Auto-generate output path: input.json -> input_output.json
+        // Auto-generate output path, with the extension matching what was
+        // actually rendered: the default format is Markdown, so writing it to
+        // `<stem>_output.json` produced a file that no JSON reader could load.
         let stem = input_path.file_stem()?.to_str()?;
         let parent = input_path.parent()?;
-        Some(parent.join(format!("{}_output.json", stem)))
+        let extension = match format.as_str() {
+            "json" => "json",
+            _ => "md",
+        };
+        Some(parent.join(format!("{}_output.{}", stem, extension)))
     });
 
     // Write output

@@ -294,6 +294,76 @@ struct PluginValidateResponse {
 struct InferenceRequest {
     #[serde(default)]
     params: neurax_ir::inference::InferenceParams,
+    /// The model being simulated, in the same shape `/analyze` accepts.
+    ///
+    /// Optional, so callers that only want sampling behaviour keep working. When
+    /// present, context degradation, hallucination risk, router load and KV
+    /// cache are computed for this model instead of for assumed defaults.
+    #[serde(default)]
+    topology: Option<serde_json::Value>,
+}
+
+/// Derive the inference-relevant dimensions from a model config.
+///
+/// Reuses the analysis parser rather than reading the JSON directly, so the
+/// simulation and the compiler always agree on what a topology means.
+fn model_profile_from_topology(
+    topology: &serde_json::Value,
+) -> Option<neurax_ir::inference::ModelProfile> {
+    let json = serde_json::to_string(topology).ok()?;
+    let config = neurax_parser::parse_model_config(&json).ok()?;
+
+    let attention = config
+        .model
+        .layers
+        .iter()
+        .find(|l| l.layer_type == neurax_parser::LayerType::Attention);
+    let moe = config
+        .model
+        .layers
+        .iter()
+        .find(|l| l.layer_type == neurax_parser::LayerType::MoE);
+    let ssm = config.model.layers.iter().find(|l| {
+        matches!(
+            l.layer_type,
+            neurax_parser::LayerType::MambaBlock | neurax_parser::LayerType::S4Block
+        )
+    });
+
+    let hidden_size = attention
+        .and_then(|l| l.params.hidden_size)
+        .or(config.model.global_params.embedding_dim);
+    let num_heads = attention.and_then(|l| l.params.num_heads);
+
+    Some(neurax_ir::inference::ModelProfile {
+        total_parameters: Some(neurax_ir::architecture::scaled_total_parameters(&config)),
+        num_layers: config
+            .model
+            .global_params
+            .num_layers
+            .or(Some(config.model.layers.len() as u64)),
+        hidden_size: hidden_size.map(|v| v as u64),
+        num_heads: num_heads.map(|v| v as u64),
+        num_kv_heads: attention
+            .and_then(|l| l.params.num_kv_heads)
+            .or(num_heads)
+            .map(|v| v as u64),
+        trained_context: config
+            .model
+            .global_params
+            .sequence_length
+            .or(config.training.sequence_length)
+            .map(|v| v as u64),
+        num_experts: moe.and_then(|l| l.params.num_experts).map(|v| v as u64),
+        top_k: moe.and_then(|l| l.params.top_k).map(|v| v as u64),
+        state_dim: ssm.and_then(|l| l.params.state_dim).map(|v| v as u64),
+        dtype_bytes: Some(match config.training.precision.as_str() {
+            "fp32" | "float32" => 4,
+            "fp16" | "float16" | "bf16" | "bfloat16" => 2,
+            "fp8" | "float8" | "int8" => 1,
+            _ => 4,
+        }),
+    })
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -1187,8 +1257,23 @@ async fn inference_simulate(
     }
 
     let params = req.params.clone();
+    // A topology that cannot be parsed is reported as such rather than silently
+    // simulated as some other model.
+    let profile = match req.topology.as_ref() {
+        Some(topology) => match model_profile_from_topology(topology) {
+            Some(profile) => Some(profile),
+            None => {
+                tracing::warn!("[INFERENCE] Topology could not be parsed; rejecting");
+                return HttpResponse::build(StatusCode::BAD_REQUEST).body(
+                    "topology could not be parsed; omit it to simulate sampling behaviour alone",
+                );
+            }
+        },
+        None => None,
+    };
+
     let result = actix_web::rt::task::spawn_blocking(move || {
-        neurax_ir::inference::InferencePass::run(&params)
+        neurax_ir::inference::InferencePass::run_with_model(&params, profile.as_ref())
     });
 
     let timeout_result = actix_web::rt::time::timeout(Duration::from_secs(30), result).await;
@@ -2659,26 +2744,26 @@ async fn credits_get(http_req: HttpRequest, state: web::Data<AppState>) -> impl 
         now.with_month(next_month).unwrap_or(now).to_rfc3339()
     };
 
-    state
-        .credits
-        .entry(user.id.clone())
-        .or_insert_with(|| CreditInfo {
-            user_id: user.id.clone(),
-            used: 0,
-            limit,
-            plan: plan.clone(),
-            period_start: period_start.clone(),
-            period_end: period_end.clone(),
-        });
-
-    // Update limit and plan in case they changed
-    {
-        let mut entry = state.credits.get_mut(&user.id).unwrap();
-        entry.value_mut().limit = limit;
-        entry.value_mut().plan = plan.clone();
-    }
-
-    let credit_info = state.credits.get(&user.id).unwrap().value().clone();
+    // Get or create the credit tracking entry, then read it back.
+    // Hold a single mutable reference for both: taking the lock twice lets a
+    // concurrent writer evict the entry in between, and `unwrap()` on the
+    // second lookup would panic and take down the request handler.
+    let credit_info = {
+        let mut entry = state
+            .credits
+            .entry(user.id.clone())
+            .or_insert_with(|| CreditInfo {
+                user_id: user.id.clone(),
+                used: 0,
+                limit,
+                plan: plan.clone(),
+                period_start,
+                period_end,
+            });
+        entry.limit = limit;
+        entry.plan = plan.clone();
+        entry.clone()
+    };
 
     HttpResponse::Ok().json(CreditsResponse {
         credits: credit_info,
@@ -2689,7 +2774,11 @@ async fn credits_get(http_req: HttpRequest, state: web::Data<AppState>) -> impl 
 #[allow(dead_code)]
 fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
     let limit = plan_credit_limit(plan);
-    state.credits.entry(user_id.to_string()).or_insert_with(|| {
+    // Insert-and-read under one lock. Re-acquiring it to `unwrap()` a second
+    // lookup would panic if a concurrent writer evicted the entry in between,
+    // and the check-then-increment must be atomic or two requests racing at the
+    // limit boundary can both be admitted.
+    let mut entry = state.credits.entry(user_id.to_string()).or_insert_with(|| {
         let now = chrono::Utc::now();
         CreditInfo {
             user_id: user_id.to_string(),
@@ -2701,11 +2790,10 @@ fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
         }
     });
 
-    let mut entry = state.credits.get_mut(user_id).unwrap();
-    if entry.value().used >= entry.value().limit && entry.value().limit != u32::MAX {
+    if entry.used >= entry.limit && entry.limit != u32::MAX {
         return false;
     }
-    entry.value_mut().used += 1;
+    entry.used += 1;
     true
 }
 

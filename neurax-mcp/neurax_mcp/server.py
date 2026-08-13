@@ -41,16 +41,17 @@ def _format_metrics(results: dict) -> str:
         return json.dumps(results, indent=2)
 
     lines = ["NEURAX Analysis Results:"]
-    fields = [
-        ("total_parameters", "Total Parameters", "{:,}"),
-        ("total_flops", "Total FLOPs", "{:.2e}"),
-    ]
-    for key, label, fmt in fields:
-        val = metrics.get(key, 0)
-        lines.append(f"- {label}: {fmt.format(val)}")
+    lines.append(f"- Total Parameters: {metrics.get('total_parameters', 0):,}")
+
+    # Model size is the constraint most on-device work is actually held to
+    # ("must fit in 1 MB"), and it was the one figure this summary omitted —
+    # callers were left to infer it from the parameter count and the precision.
+    lines.append(f"- Model Size: {format_size(metrics.get('parameter_memory_bytes', 0))}")
+
+    lines.append(f"- Total FLOPs: {metrics.get('total_flops', 0):.2e}")
 
     peak_vram = metrics.get("peak_vram_bytes", 0)
-    lines.append(f"- Peak VRAM: {peak_vram / 1e9:.2f} GB")
+    lines.append(f"- Peak VRAM: {format_size(peak_vram)}")
 
     latency = metrics.get("latency_ms", 0)
     if latency:
@@ -60,15 +61,86 @@ def _format_metrics(results: dict) -> str:
     if throughput:
         lines.append(f"- Throughput: {throughput:.2f} tok/s")
 
-    cost = metrics.get("training_cost_usd", 0)
-    lines.append(f"- Training Cost: ${cost:.2f}")
-    hours = metrics.get("training_time_hours", 0)
-    lines.append(f"- Training Time: {hours:.2f} hours")
-    energy = metrics.get("energy_kwh", 0)
-    lines.append(f"- Energy: {energy:.2f} kWh")
-    co2 = metrics.get("co2_kg", 0)
-    lines.append(f"- CO2: {co2:.2f} kg")
+    # Training figures are meaningless for an inference-only design and come
+    # back as zeros; reporting them anyway made every on-device analysis look
+    # like it had a broken cost model.
+    training = [
+        ("training_cost_usd", "Training Cost", "${:,.2f}"),
+        ("training_time_hours", "Training Time", "{:,.2f} hours"),
+        ("energy_kwh", "Energy", "{:,.2f} kWh"),
+        ("co2_kg", "CO2", "{:,.2f} kg"),
+    ]
+    reported = [(label, fmt.format(metrics[key]))
+                for key, label, fmt in training
+                if metrics.get(key, 0)]
+    if reported:
+        for label, value in reported:
+            lines.append(f"- {label}: {value}")
+    else:
+        lines.append("- Training cost: not applicable (no training budget given)")
 
+    return "\n".join(lines)
+
+
+def format_size(num_bytes: float) -> str:
+    """Human-readable size, with the byte count kept for exact comparisons."""
+    if not num_bytes:
+        return "0 B"
+    for unit, scale in (("GB", 1024 ** 3), ("MB", 1024 ** 2), ("KB", 1024)):
+        if num_bytes >= scale:
+            return f"{num_bytes / scale:.2f} {unit} ({num_bytes:,.0f} bytes)"
+    return f"{num_bytes:,.0f} bytes"
+
+
+def _format_budget_report(results: dict, budget: dict) -> str:
+    """Check measured metrics against the caller's deployment budget.
+
+    Each constraint is reported with the measured value and the headroom, so a
+    design can be iterated toward a target rather than merely described.
+    """
+    metrics = results.get("metrics", results.get("report", {}).get("metrics", {}))
+    if not metrics:
+        return "No metrics returned; cannot check the budget."
+
+    size_bytes = metrics.get("parameter_memory_bytes", 0)
+    checks = [
+        ("Model size", budget.get("max_size_mb"),
+         size_bytes / (1024 ** 2), "MB", "{:.3f}"),
+        ("Peak VRAM", budget.get("max_vram_gb"),
+         metrics.get("peak_vram_bytes", 0) / (1024 ** 3), "GB", "{:.3f}"),
+        ("Latency", budget.get("max_latency_ms"),
+         metrics.get("latency_ms", 0), "ms", "{:.2f}"),
+        ("Parameters", budget.get("max_parameters"),
+         metrics.get("total_parameters", 0), "params", "{:,.0f}"),
+    ]
+
+    stated = [c for c in checks if c[1] is not None]
+    if not stated:
+        return ("No budget constraints given. Measured: "
+                + _format_metrics(results))
+
+    lines = ["NEURAX Budget Check:", ""]
+    all_pass = True
+    for label, limit, measured, unit, fmt in stated:
+        fits = measured <= limit
+        all_pass = all_pass and fits
+        margin = limit - measured
+        lines.append(
+            f"[{'PASS' if fits else 'FAIL'}] {label}: "
+            f"{fmt.format(measured)} {unit} against a limit of {fmt.format(limit)} {unit} "
+            f"({'headroom' if fits else 'over by'} {fmt.format(abs(margin))} {unit})"
+        )
+
+    lines.append("")
+    lines.append("VERDICT: the design fits every stated budget."
+                 if all_pass else
+                 "VERDICT: the design exceeds at least one budget and needs to be reduced.")
+    if not all_pass:
+        lines.append(
+            "Levers, in rough order of effect: reduce hidden size (parameters scale "
+            "with its square in the projections), cut layer count, shrink the "
+            "vocabulary or embedding dimension, or move to a narrower dtype."
+        )
     return "\n".join(lines)
 
 
@@ -111,6 +183,48 @@ AVAILABLE_TOOLS = [
             },
             "required": ["architecture"]
         }
+    ),
+    Tool(
+        name="check_budget",
+        description=(
+            "Analyze an architecture and check it against deployment budgets "
+            "(model size, VRAM, latency). Use this when the user states a hard "
+            "constraint such as 'must be under 1 MB' or 'must run in 20 ms on a "
+            "phone': it reports pass/fail per constraint with the measured value "
+            "and the headroom, so a design can be iterated until it actually fits."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "architecture": {
+                    "type": "object",
+                    "description": "Same shape as analyze_architecture.",
+                },
+                "budget": {
+                    "type": "object",
+                    "description": "Constraints to check. Omit any that do not apply.",
+                    "properties": {
+                        "max_size_mb": {
+                            "type": "number",
+                            "description": "Maximum model size on disk, in MB.",
+                        },
+                        "max_vram_gb": {
+                            "type": "number",
+                            "description": "Maximum peak VRAM, in GB.",
+                        },
+                        "max_latency_ms": {
+                            "type": "number",
+                            "description": "Maximum per-step latency, in ms.",
+                        },
+                        "max_parameters": {
+                            "type": "number",
+                            "description": "Maximum parameter count.",
+                        },
+                    },
+                },
+            },
+            "required": ["architecture", "budget"],
+        },
     ),
     Tool(
         name="get_hardware_list",
@@ -182,7 +296,7 @@ async def handle_list_tools() -> list[Tool]:
 @app.call_tool()
 async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
-        if name == "analyze_architecture":
+        if name in ("analyze_architecture", "check_budget"):
             arch = arguments.get("architecture", {})
             raw_nodes = arch.get("nodes", [])
             raw_connections = arch.get("connections", [])
@@ -230,6 +344,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
 
             gpu_name = raw_hardware.get("gpu_name", "H100-SXM")
             gpu_count = raw_hardware.get("gpu_count", 1)
+            precision = raw_hardware.get("precision", "bf16")
 
             topology = {
                 "schema_version": "1.0",
@@ -240,13 +355,18 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 },
                 "training": {
                     "batch_size": raw_hardware.get("batch_size", 1),
+                    # The backend reads the storage width from `training.precision`.
+                    # Sending it only as `data.dtype` left every analysis on the
+                    # fp32 default, overstating model size fourfold for an int8
+                    # design — decisive against an on-device size budget.
+                    "precision": precision,
                 },
                 "hardware": {
                     "gpus": [{"name": gpu_name, "count": gpu_count}],
                 },
                 "data": {
                     "input_shape": arch.get("input_shape", [1, 128]),
-                    "dtype": raw_hardware.get("precision", "bfloat16"),
+                    "dtype": precision,
                 },
             }
 
@@ -261,7 +381,12 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 }
 
             result = await _call_backend("/analyze", method="POST", data={"topology": topology})
-            return [TextContent(type="text", text=_format_metrics(result))]
+            if name == "analyze_architecture":
+                return [TextContent(type="text", text=_format_metrics(result))]
+            return [TextContent(
+                type="text",
+                text=_format_budget_report(result, arguments.get("budget", {})),
+            )]
 
         elif name == "get_hardware_list":
             result = await _call_backend("/hardware")

@@ -65,6 +65,11 @@ class ArchNode:
     id: str
     type: str
     params: dict[str, Any] = field(default_factory=dict)
+    #: Cost equations for a block the compiler has no built-in formula for.
+    #: Graph convolutions, spiking neurons and genuinely novel operators all
+    #: compile as custom layers, and a custom layer without equations counts as
+    #: zero parameters — which the compiler rejects as an empty model.
+    custom_equations: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -79,6 +84,12 @@ class ArchSpec:
     nodes: list[ArchNode]
     edges: list[ArchEdge]
     rationale: str = ""
+    #: Platform-level settings the design needs (precision, batch size, target
+    #: GPU, sequence length, ...). Kept beside the graph because they change the
+    #: model's cost as much as the blocks do — precision alone moves size 4x.
+    hw_config: dict[str, Any] = field(default_factory=dict)
+    #: Training hyperparameters (optimizer, warmup, schedule, parallelism, ...).
+    hyperparams: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ArchSpec":
@@ -87,6 +98,11 @@ class ArchSpec:
                 id=str(n.get("id", "")),
                 type=str(n.get("type", "")),
                 params=n.get("params") if isinstance(n.get("params"), dict) else {},
+                custom_equations=(
+                    n.get("custom_equations")
+                    if isinstance(n.get("custom_equations"), dict)
+                    else {}
+                ),
             )
             for n in (data.get("nodes") or [])
         ]
@@ -102,6 +118,8 @@ class ArchSpec:
             nodes=nodes,
             edges=edges,
             rationale=str(data.get("rationale", "")),
+            hw_config=data.get("hw_config") if isinstance(data.get("hw_config"), dict) else {},
+            hyperparams=data.get("hyperparams") if isinstance(data.get("hyperparams"), dict) else {},
         )
 
 

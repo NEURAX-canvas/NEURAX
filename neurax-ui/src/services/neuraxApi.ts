@@ -269,6 +269,15 @@ export interface InferenceReport {
 
 export interface InferenceSimulateRequest {
   params: InferenceParams;
+  /**
+   * The model being simulated, in the shape `/analyze` accepts.
+   *
+   * Optional. When supplied, context degradation, hallucination risk, router
+   * load and KV cache are computed for this model instead of for assumed
+   * defaults — the endpoint previously assumed a 32k window and an eight-expert
+   * router for every design.
+   */
+  topology?: Record<string, unknown>;
 }
 
 export interface InferenceSimulateResponse {

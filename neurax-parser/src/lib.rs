@@ -1,4 +1,58 @@
-//! NEURAX Parser - JSON parsing for universal model format
+//! # NEURAX Parser
+//!
+//! **The NEURAX universal model format — JSON → strongly-typed AST.**
+//!
+//! Part of the [NEURAX](https://github.com/rustnew/NEURAX) analytical compiler
+//! for neural network architectures. Parses the NEURAX JSON format (a universal
+//! description of *any* neural architecture) into a validated, dimension-resolved
+//! strongly-typed AST.
+//!
+//! ## Pipeline
+//!
+//! 1. **Parse** — [`parse_model_config`] turns JSON into a [`ModelConfig`]
+//! 2. **Validate** — [`ModelValidator`] checks schema + semantic coherence
+//! 3. **Absorb** — [`AbsorbedModel::absorb`] resolves symbolic dimensions
+//!
+//! ## Quick example
+//!
+//! ```rust
+//! use neurax_parser::{parse_model_config, ModelValidator};
+//!
+//! let json = r#"{
+//!   "schema_version": "1.0",
+//!   "model": {
+//!     "name": "tiny-gpt",
+//!     "type": "transformer",
+//!     "layers": [
+//!       { "id": "attn_0", "layer_type": "attention",
+//!         "input_shape": [128, 768], "output_shape": [128, 768],
+//!         "params": { "num_heads": 12 } }
+//!     ],
+//!     "global_params": { "hidden_size": 768, "num_layers": 1 }
+//!   },
+//!   "training": { "batch_size": 32, "optimizer": "adamw", "precision": "bf16" },
+//!   "hardware": {
+//!     "gpus": [
+//!       { "name": "A100-80GB", "count": 1, "memory_gb": 80,
+//!         "tflops_fp16": 312, "tflops_fp32": 19.5,
+//!         "memory_bandwidth_gb_s": 2039, "tensor_cores": true }
+//!     ],
+//!     "interconnect": "None", "interconnect_bandwidth_gb_s": 0
+//!   }
+//! }"#;
+//!
+//! let config = parse_model_config(json).expect("valid NEURAX JSON");
+//! let validation = ModelValidator::new().validate(json);
+//! assert!(validation.is_valid);
+//! assert_eq!(config.model.layers.len(), 1);
+//! ```
+//!
+//! ## Run the example
+//!
+//! ```bash
+//! cargo run --example parse_basics
+//! ```
+
 
 pub mod absorption;
 mod coherence;

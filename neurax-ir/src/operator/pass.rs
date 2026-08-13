@@ -51,14 +51,13 @@ impl IrPass for OperatorPass {
             .filter(|l| l.layer_type == neurax_parser::LayerType::Mlp)
             .count();
         let json_block_count = json_attention_count.max(json_mlp_count).max(1);
-        let global_num_layers = arch_ir
-            .global_params
-            .num_layers
-            .unwrap_or(arch_ir.layers.len() as u64) as usize;
-        let block_scale = if global_num_layers > json_block_count {
-            global_num_layers as f64 / json_block_count as f64
-        } else {
-            1.0_f64
+        // Same rule as `repeat_scale_for`: only an explicitly declared depth
+        // means the listed layers stand in for more than themselves.
+        let block_scale = match arch_ir.global_params.num_layers.map(|n| n as usize) {
+            Some(global_num_layers) if global_num_layers > json_block_count => {
+                global_num_layers as f64 / json_block_count as f64
+            }
+            _ => 1.0_f64,
         };
 
         for layer in &arch_ir.layers {
@@ -169,8 +168,11 @@ fn decompose_layer_to_ops(
         }
         LayerType::Attention => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
-            let heads = layer.params.num_heads.unwrap_or(8);
-            let kv_heads = layer.params.num_kv_heads.unwrap_or(heads);
+            // `.max(1)`: the parser rejects a zero head count, but this pass is
+            // reachable from the published crate API without going through it,
+            // and a zero here would be a division by zero below.
+            let heads = layer.params.num_heads.unwrap_or(8).max(1);
+            let kv_heads = layer.params.num_kv_heads.unwrap_or(heads).max(1);
             let causal = layer.params.causal;
             let head_dim = hidden / heads;
 
@@ -221,7 +223,7 @@ fn decompose_layer_to_ops(
             let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
             let activation = layer.params.activation.as_deref().unwrap_or("gelu");
 
-            let flops = if layer.params.gated {
+            let flops = if crate::architecture::is_gated_mlp(&layer.params) {
                 mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation)
             } else {
                 mlp::mlp_flops(batch, seq, hidden, intermediate, activation)
@@ -545,14 +547,64 @@ fn decompose_layer_to_ops(
         LayerType::Custom => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             // Use custom equations or default FLOPs
-            let flops = if let Some(ref eqs) = layer.custom_equations {
-                // Parse custom FLOPs equation (simplified)
-                eqs.flops_forward
-                    .as_ref()
-                    .and_then(|s| s.parse::<f64>().ok())
-                    .unwrap_or(0.0)
-            } else {
-                0.0
+            // Evaluate the author's FLOP equation.
+            //
+            // This used to `parse::<f64>()` the equation string, which succeeds
+            // only for a bare literal: any real formula such as "2 * B * S * H"
+            // failed to parse and the block was silently costed at zero FLOPs.
+            let equation = layer
+                .custom_equations
+                .as_ref()
+                .and_then(|eqs| eqs.flops_forward.as_ref());
+            let flops = match equation {
+                Some(equation) => {
+                    let evaluated = crate::architecture::evaluate_custom_equation_with(
+                        equation,
+                        &to_parser_layer(layer),
+                        batch,
+                        seq,
+                    );
+                    if evaluated.is_none() {
+                        // Report the broken formula. Otherwise the block costs
+                        // nothing and the failure surfaces much later as an
+                        // unexplained "zero FLOPs" error.
+                        ctx.add_diagnostic(crate::Diagnostic {
+                            severity: crate::Severity::Critical,
+                            category: crate::DiagnosticCategory::CustomLayerFallback,
+                            code: crate::DiagnosticCode::E003,
+                            message: format!(
+                                "Custom FLOP equation for layer '{}' could not be evaluated: `{}`",
+                                layer.id, equation
+                            ),
+                            layer_id: Some(layer.id.clone()),
+                            suggestion: Some(
+                                "Use the documented variables (B, S, H, D, I, V, N) and operators \
+                                 supported by the expression evaluator."
+                                    .to_string(),
+                            ),
+                            precision_impact: 1.0,
+                        });
+                    }
+                    evaluated.unwrap_or(0.0)
+                }
+                None => {
+                    ctx.add_diagnostic(crate::Diagnostic {
+                        severity: crate::Severity::Warning,
+                        category: crate::DiagnosticCategory::CustomLayerFallback,
+                        code: crate::DiagnosticCode::W001,
+                        message: format!(
+                            "Custom layer '{}' has no FLOP equation; it is costed as free.",
+                            layer.id
+                        ),
+                        layer_id: Some(layer.id.clone()),
+                        suggestion: Some(
+                            "Add `custom_equations.flops_forward` so the block is accounted for."
+                                .to_string(),
+                        ),
+                        precision_impact: 0.5,
+                    });
+                    0.0
+                }
             };
             ops.push(AtomOp {
                 id: ops.len(),
@@ -569,4 +621,16 @@ fn decompose_layer_to_ops(
     }
 
     ops
+}
+
+/// Adapt an IR layer back to the parser type the shared helpers expect.
+fn to_parser_layer(layer: &crate::architecture::LayerDef) -> neurax_parser::Layer {
+    neurax_parser::Layer {
+        id: layer.id.clone(),
+        layer_type: layer.layer_type,
+        input_shape: layer.input_shape.clone(),
+        output_shape: layer.output_shape.clone(),
+        params: layer.params.clone(),
+        custom_equations: layer.custom_equations.clone(),
+    }
 }

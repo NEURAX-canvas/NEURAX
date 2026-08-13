@@ -35,7 +35,7 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         LayerType::Mlp => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            if layer.params.gated {
+            if is_gated_mlp(&layer.params) {
                 mlp::gated_mlp_params(hidden, intermediate, layer.params.bias)
             } else {
                 mlp::mlp_params(hidden, intermediate, layer.params.bias)
@@ -288,8 +288,171 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         }
         // Custom layer - use param_count if provided, else estimate from shapes
         LayerType::Custom => {
-            // Try to estimate from custom equations or use a default
-            layer.params.param_count.unwrap_or(0)
+            // An explicit count wins; otherwise evaluate a `params` equation if
+            // the author supplied one. A custom block that yields no parameters
+            // is legitimate (a normalisation or routing step), but it must not
+            // be the silent outcome of an equation nobody evaluated.
+            layer.params.param_count.unwrap_or_else(|| {
+                layer
+                    .custom_equations
+                    .as_ref()
+                    .and_then(|eqs| eqs.extra.get("params").or_else(|| eqs.extra.get("parameters")))
+                    .and_then(|equation| evaluate_custom_equation(equation, layer))
+                    .map(|value| value.max(0.0) as u64)
+                    .unwrap_or(0)
+            })
+        }
+    }
+}
+
+/// Number of times a listed layer stands in for real layers of the model.
+///
+/// Configs commonly describe a deep model by listing one representative block
+/// per kind and setting `global_params.num_layers` to the real depth. Both the
+/// architecture and memory passes need the same multiplier; keeping it here
+/// stops the two from disagreeing, which previously let the headline parameter
+/// count come out roughly 20x below the memory pass's figure for the same model.
+pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f64 {
+    let layers = &config.model.layers;
+
+    // Scaling only applies when the author states a depth the JSON does not
+    // spell out. Defaulting the depth to the number of listed layers made a
+    // fully-listed architecture look partial: a five-layer model with one
+    // attention block was read as five attention blocks, inflating it fivefold.
+    let Some(global_num_layers) = config.model.global_params.num_layers.map(|n| n as usize) else {
+        return 1.0;
+    };
+    let num_dense_layers = config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
+
+    let count_of = |pred: &dyn Fn(&Layer) -> bool| layers.iter().filter(|l| pred(l)).count();
+    let json_moe_count = count_of(&|l: &Layer| l.layer_type == LayerType::MoE);
+    let json_attention_count = count_of(&|l: &Layer| l.layer_type == LayerType::Attention);
+    let json_ssm_count = count_of(&|l: &Layer| {
+        matches!(
+            l.layer_type,
+            LayerType::MambaBlock
+                | LayerType::S4Block
+                | LayerType::H3Block
+                | LayerType::StateSpace
+        )
+    });
+
+    // Only blocks that repeat through the depth of the model scale up; the
+    // embedding, the final norm and the head appear exactly once.
+    let is_repeatable = matches!(
+        layer.layer_type,
+        LayerType::Attention
+            | LayerType::Mlp
+            | LayerType::Normalization
+            | LayerType::MoE
+            | LayerType::MambaBlock
+            | LayerType::S4Block
+            | LayerType::H3Block
+            | LayerType::StateSpace
+            | LayerType::RwkvBlock
+            | LayerType::RetentionBlock
+    );
+    if !is_repeatable {
+        return 1.0;
+    }
+
+    // MoE models such as DeepSeek-V3 split their depth between dense and expert
+    // blocks, so each kind scales against its own share.
+    if num_dense_layers > 0 && json_moe_count > 0 {
+        return if layer.layer_type == LayerType::MoE {
+            let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
+            num_moe_layers as f64 / json_moe_count.max(1) as f64
+        } else {
+            let dense_blocks = json_attention_count.saturating_sub(json_moe_count).max(1);
+            num_dense_layers as f64 / dense_blocks as f64
+        };
+    }
+
+    let json_block_count = json_attention_count.max(json_ssm_count).max(1);
+    if global_num_layers > json_block_count {
+        global_num_layers as f64 / json_block_count as f64
+    } else {
+        1.0
+    }
+}
+
+/// Total parameters of the model the config describes, scaling the listed
+/// blocks up to `global_params.num_layers`.
+pub fn scaled_total_parameters(config: &neurax_parser::ModelConfig) -> u64 {
+    config
+        .model
+        .layers
+        .iter()
+        .map(|layer| {
+            let raw = calculate_layer_params(layer);
+            let scale = repeat_scale_for(config, layer);
+            (raw as f64 * scale).round() as u64
+        })
+        .sum()
+}
+
+/// Whether a feed-forward layer uses a gated (three-matrix) structure.
+///
+/// Gating can be stated two ways and both must agree: an explicit `gated: true`
+/// flag, or an activation that is inherently gated. A config asking for SwiGLU
+/// is describing a gate and an up projection whether or not it also sets the
+/// flag, and treating it as a plain two-matrix MLP undercounts that layer's
+/// parameters and FLOPs by a third.
+pub fn is_gated_mlp(params: &neurax_parser::LayerParams) -> bool {
+    params.gated
+        || params
+            .activation
+            .as_deref()
+            .is_some_and(neurax_formulas::activation::is_gated_activation)
+}
+
+/// Evaluate a user-supplied equation for a custom layer.
+///
+/// Custom blocks are how a researcher describes an operator NEURAX has no
+/// built-in formula for. The equation is evaluated in the sandboxed evaluator
+/// from `neurax-formulas`, with the layer's own dimensions bound to the
+/// documented variable names (`B`, `S`, `H`, `D`, `I`, `V`).
+///
+/// Returns `None` when there is no equation or it cannot be evaluated, so the
+/// caller can fall back rather than treating a broken formula as zero work.
+pub fn evaluate_custom_equation(equation: &str, layer: &Layer) -> Option<f64> {
+    evaluate_custom_equation_with(equation, layer, 1, 1)
+}
+
+/// As [`evaluate_custom_equation`], with the batch and sequence length the
+/// analysis is running at.
+pub fn evaluate_custom_equation_with(
+    equation: &str,
+    layer: &Layer,
+    batch: usize,
+    seq_len: usize,
+) -> Option<f64> {
+    let hidden = layer.params.hidden_size.unwrap_or(512);
+    let heads = layer.params.num_heads.unwrap_or(8).max(1);
+    let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
+    let vocab = layer.params.vocab_size.unwrap_or(0);
+
+    let mut evaluator = neurax_formulas::custom::CustomEquationEvaluator::new();
+    evaluator.set_variables(&[
+        ("B", batch as f64),
+        ("S", seq_len as f64),
+        ("H", hidden as f64),
+        ("D", (hidden / heads) as f64),
+        ("I", intermediate as f64),
+        ("V", vocab as f64),
+        ("N", heads as f64),
+    ]);
+
+    match evaluator.evaluate(equation) {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(
+                "custom equation for layer '{}' could not be evaluated: {} ({})",
+                layer.id,
+                equation,
+                error
+            );
+            None
         }
     }
 }

@@ -34,7 +34,7 @@ pub fn gat_flops(
     num_edges: usize,
     num_heads: usize,
 ) -> f64 {
-    let head_dim = out_features / num_heads;
+    let head_dim = out_features / num_heads.max(1);
 
     // Per-head attention
     let per_head = {
@@ -89,7 +89,7 @@ pub fn gcn_params(in_features: usize, out_features: usize, bias: bool) -> u64 {
 
 /// Compute parameters for GAT layer
 pub fn gat_params(in_features: usize, out_features: usize, num_heads: usize, bias: bool) -> u64 {
-    let head_dim = out_features / num_heads;
+    let head_dim = out_features / num_heads.max(1);
     let weight = in_features * num_heads * head_dim;
     let attn_src = num_heads * head_dim;
     let attn_dst = num_heads * head_dim;

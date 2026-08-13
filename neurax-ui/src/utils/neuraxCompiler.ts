@@ -1493,6 +1493,26 @@ export function compileToNeuraxIR(
     useCache?: boolean | null;
     activation?: string | null;
 
+    // Training / optimisation
+    optimizer?: string | null;
+    weightDecay?: number | null;
+    warmupSteps?: number | null;
+    lrScheduler?: string | null;
+    maxSteps?: number | null;
+    gradientCheckpointing?: boolean | null;
+    zeroStage?: number | null;
+    earlyStoppingPatience?: number | null;
+
+    // Parallelism
+    tensorParallel?: number | null;
+    pipelineParallel?: number | null;
+    expertParallel?: number | null;
+    microBatchSize?: number | null;
+    gradAccumSteps?: number | null;
+
+    /** User-defined hyperparameters, forwarded into `global_params`. */
+    customParams?: Record<string, string | number | boolean> | null;
+
     // CNN
     imgHeight?: number | null;
     imgWidth?: number | null;
@@ -1657,6 +1677,22 @@ export function compileToNeuraxIR(
     outChannels = null,
 
     maxNewTokens = null,
+
+    optimizer = null,
+    weightDecay = null,
+    warmupSteps = null,
+    lrScheduler = null,
+    maxSteps = null,
+    gradientCheckpointing = null,
+    zeroStage = null,
+    earlyStoppingPatience = null,
+    tensorParallel = null,
+    pipelineParallel = null,
+    expertParallel = null,
+    microBatchSize = null,
+    gradAccumSteps = null,
+    customParams = null,
+
     groups = [],
   } = options;
 
@@ -2265,6 +2301,26 @@ export function compileToNeuraxIR(
   if (numExperts != null) global_params.num_experts = numExperts;
   if (topK != null) global_params.top_k = topK;
 
+  // Settings that describe the training regime rather than the tensor shapes.
+  // They ride in global_params, which the backend keeps as a flattened
+  // catch-all, so they reach the analysis without a schema change on either side.
+  if (weightDecay != null) global_params.weight_decay = weightDecay;
+  if (lrScheduler != null) global_params.lr_scheduler = lrScheduler;
+  if (earlyStoppingPatience != null) global_params.early_stopping_patience = earlyStoppingPatience;
+  if (expertParallel != null) global_params.expert_parallel = expertParallel;
+  if (microBatchSize != null) global_params.micro_batch_size = microBatchSize;
+  if (gradAccumSteps != null) global_params.gradient_accumulation_steps = gradAccumSteps;
+
+  // User-defined hyperparameters last, so an explicit entry wins over a
+  // built-in of the same name rather than being silently discarded.
+  if (customParams) {
+    for (const [key, value] of Object.entries(customParams)) {
+      if (key.trim() !== '' && value !== undefined && value !== null) {
+        global_params[key] = value;
+      }
+    }
+  }
+
   // Build training config
   const trainingConfig: NeuraxTraining = {
     batch_size: batchSize ?? 1,
@@ -2272,6 +2328,25 @@ export function compileToNeuraxIR(
     ...(learningRate != null && { learning_rate: learningRate }),
     ...(numEpochs != null && { num_epochs: numEpochs }),
     ...(resolvedSeqLen != null && resolvedSeqLen > 0 && { sequence_length: resolvedSeqLen }),
+    // Optimisation and parallelism settings. These were declared on
+    // NeuraxTraining but never emitted, so choosing an optimizer, a warmup or a
+    // parallelism degree in the UI had no effect on the analysis.
+    ...(optimizer != null && { optimizer }),
+    ...(warmupSteps != null && { warmup_steps: warmupSteps }),
+    ...(maxSteps != null && maxSteps > 0 && { max_steps: maxSteps }),
+    ...(gradientCheckpointing != null && { gradient_checkpointing: gradientCheckpointing }),
+    ...(zeroStage != null && { zero_stage: zeroStage }),
+    ...((tensorParallel != null || pipelineParallel != null) && {
+      parallelism: {
+        // Data parallelism takes whatever the other two degrees leave.
+        data_parallel: Math.max(
+          1,
+          Math.floor((gpuCount ?? 1) / Math.max(1, (tensorParallel ?? 1) * (pipelineParallel ?? 1))),
+        ),
+        tensor_parallel: tensorParallel ?? 1,
+        pipeline_parallel: pipelineParallel ?? 1,
+      },
+    }),
   };
 
   // Build hardware config

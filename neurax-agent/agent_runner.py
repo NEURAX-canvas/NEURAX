@@ -12,6 +12,8 @@ from suggestions import _rehydrate_catalogue
 # New 3-phase modules
 from arch_planner import plan_architecture, plan_strategy
 from topology_validator import validate_arch_spec, ArchSpec
+from requirements import extract_budget
+from budget_check import measure_and_check, narrow_precision_to_fit
 from layout_engine import assign_positions
 from materializer import materialize
 
@@ -115,9 +117,23 @@ async def _run_agent(
         validation_result = None
         previous_errors: list[str] = []
 
-        # Max 3 attempts to get a valid spec from the LLM
-        for attempt in range(1, 4):
-            logger.info(f"📋 Planning attempt {attempt}/3...")
+        hw_config = snapshot.get("hw_config")
+
+        # What the client actually asked for, read from their own words. A design
+        # that is structurally valid but twice the size they allowed is not the
+        # model they requested, so the budget is part of the acceptance test.
+        budget = extract_budget(user_message, hw_config)
+        if not budget.is_empty():
+            logger.info(f"🎯 Client budget: {budget.describe()}")
+            await q.put(_event("assistant", {
+                "content": f"Designing to your stated budget — {budget.describe()}."
+            }))
+
+        budget_report = None
+        MAX_ATTEMPTS = 4
+
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            logger.info(f"📋 Planning attempt {attempt}/{MAX_ATTEMPTS}...")
             try:
                 spec = await plan_architecture(
                     user_message=user_message,
@@ -125,33 +141,102 @@ async def _run_agent(
                     catalogue=family_catalogue,
                     constraints=constraints,
                     creativity=creativity,
-                    hw_config=snapshot.get("hw_config"),
+                    hw_config=hw_config,
                     strategy=[item.text for item in strategy_items],
                     previous_errors=previous_errors if previous_errors else None
                 )
-                
-                # ── 2. Phase 2: Validation ──
+
+                # ── 2. Phase 2: Structural validation ──
                 validation_result = validate_arch_spec(spec, family_catalogue, constraints)
-                
-                if validation_result.valid:
-                    logger.info(f"✅ Spec validated successfully on attempt {attempt}")
-                    if spec.rationale:
-                        await q.put(_event("assistant", {"content": spec.rationale}))
-                    await q.put(_update_plan(0, "done")) # Mark first step (planning) as done
-                    break
-                else:
+
+                if not validation_result.valid:
                     previous_errors = validation_result.errors
                     logger.warning(f"⚠️ Validation failed on attempt {attempt}: {previous_errors}")
-                    if attempt < 3:
+                    if attempt < MAX_ATTEMPTS:
                         await q.put(_event("assistant", {"content": f"Refining design (fix: {previous_errors[0]})..."}))
+                    continue
+
+                # ── 2b. Phase 2b: Measure the design against the budget ──
+                if budget.is_empty():
+                    logger.info(f"✅ Spec validated on attempt {attempt}")
+                    break
+
+                await q.put(_event("assistant", {"content": "Compiling the design to check it against your budget..."}))
+                budget_report = await measure_and_check(spec, budget, hw_config)
+
+                if budget_report.error:
+                    # The compiler is the authority on size; without it we ship
+                    # the structurally valid design and say the budget is unverified.
+                    logger.warning(f"⚠️ Budget not verified: {budget_report.error}")
+                    await q.put(_event("assistant", {
+                        "content": f"Could not verify the budget ({budget_report.error}); "
+                                   "delivering the design unmeasured."
+                    }))
+                    break
+
+                logger.info("📏 Budget check:\n%s", budget_report.summary())
+                await q.put(_event("assistant", {"content": budget_report.summary()}))
+
+                if budget_report.fits:
+                    logger.info(f"✅ Spec meets the budget on attempt {attempt}")
+                    break
+
+                # Storage width is the one lever that costs nothing to pull: it
+                # changes how weights are stored without touching the design the
+                # client described. Apply it here and re-measure, rather than
+                # asking the planner to and spending an attempt finding out
+                # whether it did.
+                previous_precision = (
+                    (spec.hw_config or {}).get("precision")
+                    or (hw_config or {}).get("precision")
+                    or "fp16"
+                )
+                narrowed, narrowed_report = await narrow_precision_to_fit(
+                    spec, budget, hw_config, budget_report
+                )
+                if narrowed:
+                    budget_report = narrowed_report
+                    logger.info(f"✅ Budget met by narrowing {previous_precision} -> {narrowed}")
+                    # A precision change is a design decision the client should
+                    # see, not something to slip in silently.
+                    await q.put(_event("assistant", {
+                        "content": (
+                            f"Storing weights in {narrowed} instead of {previous_precision} "
+                            f"brings the design inside your budget without changing the "
+                            f"architecture.\n\n{budget_report.summary()}"
+                        )
+                    }))
+                    break
+
+                previous_errors = budget_report.planner_feedback()
+                if attempt < MAX_ATTEMPTS:
+                    await q.put(_event("assistant", {"content": "Over budget — resizing the design..."}))
+
             except Exception as e:
                 logger.error(f"❌ Planning attempt {attempt} failed: {e}")
-                if attempt == 3:
+                if attempt == MAX_ATTEMPTS:
                     raise
 
         if not validation_result or not validation_result.valid:
             error_details = "; ".join(previous_errors) if previous_errors else "Unknown error"
             raise ValueError(f"Could not generate a valid architecture: {error_details}")
+
+        # Report honestly when the budget could not be met rather than shipping a
+        # design that silently misses what the client asked for.
+        if budget_report and not budget_report.fits and not budget_report.error:
+            over = "; ".join(c.describe() for c in budget_report.checks if not c.fits)
+            logger.warning(f"⚠️ Delivering a design that misses the budget: {over}")
+            await q.put(_event("assistant", {
+                "content": (
+                    "I could not reach your budget within the attempts available. "
+                    f"The closest design still misses it: {over}. "
+                    "Relaxing the budget, or accepting a narrower dtype, would close the gap."
+                )
+            }))
+
+        if spec is not None and spec.rationale:
+            await q.put(_event("assistant", {"content": spec.rationale}))
+        await q.put(_update_plan(0, "done"))
 
         # ── 3. Phase 2e: Layout ──
         logger.info("📐 Computing optimal layout...")
