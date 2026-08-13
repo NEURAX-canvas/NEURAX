@@ -647,6 +647,10 @@
    * showing, so the fields do not shift sideways as the list grows past the
    * panel. */
   .scrollbar-visible {
+    /* WebKitGTK — the webview the Linux desktop build renders in — uses
+     * overlay scrollbars that fade away when idle, so `overflow: auto` shows
+     * nothing at rest. The container is set to `overflow-y-scroll` so the
+     * track is always painted, and these rules give it a thumb worth seeing. */
     scrollbar-width: auto;
     scrollbar-color: hsl(var(--muted-foreground) / 0.55) hsl(var(--muted) / 0.6);
     scrollbar-gutter: stable;

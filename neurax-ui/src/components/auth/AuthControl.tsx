@@ -1,18 +1,12 @@
 import { useMemo, useState, type ComponentProps } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogIn, Mail, Github, Gift, Zap, LogOut, Key, Check } from 'lucide-react';
+import { LogIn, Mail, Github, Zap, LogOut, Key, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext.tsx';
 import { useApiKey, PROVIDER_DEFAULTS, type ApiProvider, type ApiKeyConfig } from '@/contexts/ApiKeyContext.tsx';
-import { usePlan } from '@/contexts/PlanContext.tsx';
 import { supabase } from '@/lib/supabaseClient.ts';
 import { identiconDataUri } from '@/components/profile/Identicon.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover.tsx';
 import {
   Dialog,
   DialogContent,
@@ -64,7 +58,6 @@ export function AuthControl({
 }: AuthControlProps) {
   const { session, isAuthenticated, demoUser, demoSignIn, demoSignOut, demoAvatarUrl } = useAuth();
   const { config: apiKeyConfig, isConfigured: hasApiKey, setApiKey, markSetupComplete } = useApiKey();
-  const { planConfig } = usePlan();
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -76,7 +69,6 @@ export function AuthControl({
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
-  const [planPopoverOpen, setPlanPopoverOpen] = useState(false);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>(AVATAR_OPTIONS[0].id);
 
   // API Key state
@@ -110,8 +102,6 @@ export function AuthControl({
     const m = session?.user?.user_metadata as Record<string, unknown> | undefined;
     return (typeof m?.username === 'string' ? m.username : session?.user?.email) ?? 'User';
   }, [session, demoUser]);
-
-  const PlanIcon = Gift;
 
   // ── Reset dialog state ──
   const resetDialog = () => {
@@ -283,30 +273,11 @@ export function AuthControl({
   if (isAuthenticated) {
     return (
       <div className="flex items-center gap-2">
-        {/* Plan badge */}
-        <Popover open={planPopoverOpen} onOpenChange={setPlanPopoverOpen}>
-          <PopoverTrigger asChild>
-            <button
-              type="button"
-              className={
-                `h-8 px-2 rounded-md border border-white/20 hover:border-white/40 transition-colors text-[10px] font-mono uppercase tracking-wider flex items-center gap-1.5 ` +
-                planConfig.badge
-              }
-              disabled={busy}
-              aria-label="Open plans"
-            >
-              <span className="text-current"><PlanIcon className="w-3.5 h-3.5" /></span>
-              {planConfig.displayName}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent className="w-72 p-3" align="end" alignOffset={44} sideOffset={6}>
-            <div className="px-2 py-1.5">
-              <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Current plan</div>
-              <div className="text-sm font-semibold" style={{ color: planConfig.color }}>{planConfig.name}</div>
-              <p className="text-[10px] text-muted-foreground mt-1">Everything included — open source.</p>
-            </div>
-          </PopoverContent>
-        </Popover>
+        {/* There was a plan badge here reading "OSS".
+            NEURAX has one plan and it is open source, so the badge told the
+            user nothing they could act on and took the place beside their own
+            name — which is information. The plan itself is still on the
+            account page for anyone who wants it. */}
 
         {/* API Key indicator */}
         {hasApiKey && (

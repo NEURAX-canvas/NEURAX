@@ -610,7 +610,7 @@ export function ModelHyperparametersPanel({
           </div>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-visible">
+      <div className="flex-1 overflow-y-scroll p-4 space-y-4 scrollbar-visible">
         {query.trim() !== '' && visibleParams.length === 0 && (
           <div className="py-8 text-center text-[10px] text-muted-foreground/60">
             No hyperparameter matches "{query.trim()}".
