@@ -158,7 +158,7 @@ export function SimulationWorkspace({
       {/* Only the active category is mounted, so its charts load on demand. */}
       <div className="flex-1 overflow-auto p-4 scrollbar-thin" role="tabpanel">
         <Suspense fallback={<ChartSkeleton variant="stats-grid" />}>
-          {activeCategory === 'overview' && <GlobalResultsCharts analysis={analysis} />}
+          {activeCategory === 'overview' && <GlobalResultsCharts analysis={analysis} perLayer={perLayer} />}
           {activeCategory === 'perlayer' && <PerLayerCharts analysis={analysis} perLayer={perLayer} />}
           {activeCategory === 'memory' && <MemoryCharts analysis={analysis} />}
           {activeCategory === 'training' && <TrainingCharts analysis={analysis} />}

@@ -325,8 +325,13 @@ function calculateSustainabilityMetrics(
   const efficiencyBoost = methodEfficiency[config.method] || 1.0;
   
   // Calculate gradient flow score based on variance preservation
-  const avgVariance = layers.reduce((sum, l) => sum + l.variance, 0) / layers.length;
-  const gradientFlowScore = Math.min(100, Math.round(100 * Math.exp(-Math.abs(avgVariance - 1))));
+  // An average over no layers is NaN, which reached the UI as "NaN/100".
+  const avgVariance = layers.length
+    ? layers.reduce((sum, l) => sum + l.variance, 0) / layers.length
+    : 0;
+  const gradientFlowScore = layers.length
+    ? Math.min(100, Math.round(100 * Math.exp(-Math.abs(avgVariance - 1))))
+    : 0;
   
   // Estimate savings
   const epochsSaved = Math.round(baseEpochs * (1 - 1 / efficiencyBoost));
@@ -350,6 +355,48 @@ function calculateSustainabilityMetrics(
 }
 
 // Main function to initialize architecture
+/**
+ * Canvas block types that hold trainable weights, grouped by how they are
+ * initialised.
+ *
+ * The list used to name six generic types — dense, conv2d, attention,
+ * transformer, layernorm, batchnorm — none of which any reference template
+ * uses. A LLaMA or BERT template placed `token_embedding`, `gqa_attention`,
+ * `ffn_gated` and `rmsnorm`, matched nothing, and the panel reported zero
+ * layers, zero weights and a NaN gradient-flow score.
+ */
+const TRAINABLE_BLOCK_KINDS: Record<string, 'dense' | 'conv2d' | 'attention' | 'norm'> = {
+  dense: 'dense',
+  linear: 'dense',
+  lm_head: 'dense',
+  classification_head: 'dense',
+  token_embedding: 'dense',
+  embedding: 'dense',
+  ffn_standard: 'dense',
+  ffn_gated: 'dense',
+  moe_layer: 'dense',
+  conv2d: 'conv2d',
+  conv1d: 'conv2d',
+  depthwise_conv2d: 'conv2d',
+  conv_transpose2d: 'conv2d',
+  attention: 'attention',
+  mha_attention: 'attention',
+  gqa_attention: 'attention',
+  mqa_attention: 'attention',
+  cross_attention: 'attention',
+  transformer: 'attention',
+  layernorm: 'norm',
+  rmsnorm: 'norm',
+  batchnorm: 'norm',
+  groupnorm: 'norm',
+  instancenorm: 'norm',
+};
+
+/** True when this block carries weights worth initialising. */
+export function isTrainableBlock(blockType: string): boolean {
+  return blockType in TRAINABLE_BLOCK_KINDS;
+}
+
 export function initializeArchitecture(
   nodes: CanvasNode[],
   connections: Connection[],
@@ -357,9 +404,7 @@ export function initializeArchitecture(
   modelName: string = 'GreenAIModel'
 ): InitializedArchitecture {
   // Filter layers that have trainable weights
-  const trainableLayers = nodes.filter(n => 
-    ['dense', 'conv2d', 'attention', 'transformer', 'layernorm', 'batchnorm'].includes(n.type)
-  );
+  const trainableLayers = nodes.filter((n) => isTrainableBlock(n.type));
   
   // Initialize each layer
   const layers = trainableLayers.map(node => initializeLayerWeights(node, config));

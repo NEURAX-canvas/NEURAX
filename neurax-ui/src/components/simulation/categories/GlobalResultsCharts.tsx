@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, Label,
 } from 'recharts';
 import { BarChart3, PieChart as PieChartIcon, Cpu, Zap, DollarSign, Layers, Info } from 'lucide-react';
-import { AnalysisResult } from '@/types/architecture.ts';
+import { AnalysisResult, PerLayerBreakdownRow } from '@/types/architecture.ts';
 import {
   SIMULATION_COLORS,
   formatBytes,
@@ -23,6 +23,8 @@ import {
 
 interface Props {
   analysis?: AnalysisResult;
+  /** Per-layer breakdown, which is where the real parameter counts live. */
+  perLayer?: PerLayerBreakdownRow[];
 }
 
 function topOps(analysis: AnalysisResult, n: number = 6) {
@@ -41,36 +43,56 @@ const PIE_COLORS = [
   SIMULATION_COLORS.cyan,
 ];
 
-/* ─── 2.1 Model Size (Parameters) ─── */
-function ModelSizeDonut({ analysis }: { analysis: AnalysisResult }) {
-  const ops = topOps(analysis, 4);
-  if (ops.length === 0) {
+/* ─── Model Size (Parameters) ─── */
+//
+// This charted `opsDistribution` — the operation-type histogram — under a title
+// promising parameters, and wrote "ops" in the centre of a donut labelled
+// "Model Size (Parameters)". The real per-layer counts arrive in `perLayer`.
+function ModelSizeDonut({ analysis, perLayer }: { analysis: AnalysisResult; perLayer?: PerLayerBreakdownRow[] }) {
+  const layers = (perLayer ?? [])
+    .filter((row) => (row.params ?? 0) > 0)
+    .sort((a, b) => (b.params ?? 0) - (a.params ?? 0));
+
+  if (layers.length === 0) {
     return (
       <ChartCard title="Model Size (Parameters)">
-        <EmptyChartState icon={PieChartIcon} title="No parameter data" description="Run analysis to see parameter distribution." />
+        <EmptyChartState
+          icon={PieChartIcon}
+          title="No parameter data"
+          description="Run analysis to see how parameters are distributed across layers."
+        />
       </ChartCard>
     );
   }
-  const data = ops.map((op, i) => ({
-    name: op.name,
-    value: op.value,
+
+  // Keep the largest contributors distinct and fold the tail into one slice, so
+  // the palette is never cycled past the steps it was validated for.
+  const TOP = 5;
+  const head = layers.slice(0, TOP);
+  const tail = layers.slice(TOP);
+  const data = head.map((row, i) => ({
+    name: row.name,
+    value: row.params ?? 0,
     color: PIE_COLORS[i % PIE_COLORS.length],
   }));
-  const total = data.reduce((s, d) => s + d.value, 0);
+  if (tail.length > 0) {
+    data.push({
+      name: `Other (${tail.length} layers)`,
+      value: tail.reduce((sum, row) => sum + (row.params ?? 0), 0),
+      color: PIE_COLORS[TOP % PIE_COLORS.length],
+    });
+  }
+
+  const total = analysis.totalParams > 0
+    ? analysis.totalParams
+    : data.reduce((sum, d) => sum + d.value, 0);
+
   return (
     <ChartCard title="Model Size (Parameters)">
       <ChartContainer minH={200}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie
-              data={data}
-              cx="50%"
-              cy="50%"
-              innerRadius={55}
-              outerRadius={80}
-              paddingAngle={2}
-              dataKey="value"
-            >
+            <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={2} dataKey="value">
               <Label
                 content={({ viewBox }) => {
                   if (!viewBox || !('cx' in viewBox)) return null;
@@ -81,7 +103,7 @@ function ModelSizeDonut({ analysis }: { analysis: AnalysisResult }) {
                         {formatCompactNumber(total)}
                       </tspan>
                       <tspan x={vb.cx} dy="1.4em" className="fill-muted-foreground text-[9px] uppercase tracking-wider">
-                        ops
+                        params
                       </tspan>
                     </text>
                   );
@@ -91,7 +113,10 @@ function ModelSizeDonut({ analysis }: { analysis: AnalysisResult }) {
                 <Cell key={idx} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [formatCompactNumber(value), 'Count']} />
+            <Tooltip
+              contentStyle={chartTooltipStyle()}
+              formatter={(value: number) => [formatCompactNumber(value), 'Parameters']}
+            />
           </PieChart>
         </ResponsiveContainer>
       </ChartContainer>
@@ -325,7 +350,7 @@ function Row({ children, cols = 3 }: { children: React.ReactNode; cols?: number 
   return <div className={colClass}>{children}</div>;
 }
 
-export function GlobalResultsCharts({ analysis }: Props) {
+export function GlobalResultsCharts({ analysis, perLayer }: Props) {
   if (!analysis) return null;
 
   return (
@@ -337,7 +362,7 @@ export function GlobalResultsCharts({ analysis }: Props) {
         </div>
 
         <Row cols={3}>
-          <ModelSizeDonut analysis={analysis} />
+          <ModelSizeDonut analysis={analysis} perLayer={perLayer} />
           <FlopsByOp analysis={analysis} />
           <LatencyBreakdown analysis={analysis} />
         </Row>
