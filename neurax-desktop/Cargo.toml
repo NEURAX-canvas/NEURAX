@@ -29,7 +29,10 @@ path = "src/main.rs"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-neurax-service = { version = "0.1.1", path = "../neurax-service" }
+# Path only, with no version requirement. This crate ships as an installer
+# rather than to crates.io, so pinning a version here would buy nothing and
+# would silently stop resolving every time the service's version moves.
+neurax-service = { path = "../neurax-service" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"

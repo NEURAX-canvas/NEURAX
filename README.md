@@ -194,7 +194,8 @@ graph TB
 ├── neurax-hardware-db/   # GPU/CPU spec database
 ├── neurax-cli/           # Command-line interface
 ├── neurax-tui/           # Terminal UI
-├── neurax-service/       # Actix-web HTTP API
+├── neurax-service/       # Actix-web HTTP API (library + binary)
+├── neurax-desktop/       # Tauri desktop app — the studio, offline
 ├── neurax-agent/         # Python AI planning agent
 ├── neurax-mcp/           # MCP server
 ├── neurax-ui/            # React web frontend
@@ -207,7 +208,18 @@ graph TB
 
 ## Getting Started
 
-### Web Interface (recommended)
+### Desktop application (recommended)
+
+Download an installer from
+[Releases](https://github.com/rustnew/NEURAX/releases) — `.deb`, `.rpm` and
+`.AppImage` for Linux, `.dmg` for macOS, `.exe` for Windows — then launch it
+from your applications menu, or type `neurax` in a terminal.
+
+The compiler runs inside the application on a loopback socket. No server, no
+account, no upload; it works with the network unplugged. See
+[`neurax-desktop/README.md`](neurax-desktop/README.md) for how it is built.
+
+### Web Interface
 
 ```bash
 git clone https://github.com/rustnew/NEURAX.git
