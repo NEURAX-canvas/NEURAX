@@ -46,20 +46,51 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
 
 ### Universal Architecture Support
 - **11 architecture families** - Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RL, SNN, RNN, Experimental.
-- **680+ configurable blocks** - Attention, MLP, Conv, Embedding, Normalization, and more.
+- **208 configurable blocks** - Attention, MLP, Conv, Embedding, Normalization, and more.
+  The count is asserted against the catalogue by `projectFacts.test.ts`; it said
+  680+ for a long time and the catalogue has never held that many.
 - **88 reference templates** - From GPT-4 to Stable Diffusion, production-ready architectures.
+
+### Accuracy, measured
+
+Every reference model is checked against its published parameter count by
+`neurax-core/tests/published_model_accuracy.rs`:
+
+| Model | Published | NEURAX | Error |
+|---|---|---|---|
+| VGG-16 | 138.0 M | 138.4 M | +0.3 % |
+| Mixtral 8x7B | 46.7 B | 47.4 B | +1.5 % |
+| LLaMA-2 70B | 70.0 B | 68.7 B | −1.8 % |
+| ResNet-50 | 25.6 M | 26.5 M | +3.5 % |
+| RWKV 7B | 7.5 B | 7.2 B | −4.2 % |
+| DeepSeek-V3 | 671 B | 701 B | +4.5 % |
+| Mamba 2.8B | 2.80 B | 2.66 B | −4.9 % |
+
+Four of these were wrong before that test existed — Mixtral by +122 %,
+DeepSeek by +108 %, RWKV by −96.7 %, LLaMA-2 by −28.7 % — because nothing
+anywhere compared a computed figure to a known one. A 1.42-trillion-parameter
+configuration is also checked, to catch arithmetic that wraps at that scale.
+
+Seven models is what is measured. It is not a claim about every architecture
+that exists.
 
 ### Instant Analytical Compilation
 - **<50 ms analysis** - Full 10-pass IR pipeline on 8B-parameter models.
-- **55+ metrics** - FLOPs, VRAM, latency, cost, energy, carbon emissions.
+- **66 metrics** - FLOPs, VRAM, latency, cost, energy, carbon emissions.
 - **Deterministic** - Identical input always produces identical output.
 - **No GPU needed** - Pure analytical formulas; runs in the browser or CLI.
 
 ### Visual Design Canvas
-- Drag-and-drop architecture builder with 680+ blocks.
+- Drag-and-drop architecture builder with 208 blocks.
 - Real-time validation of connections and parameters.
 - Parameter editing directly on the canvas.
-- Export to 7 formats - PyTorch, ONNX, Triton, MLIR, Rust/Burn, JSON, Network Graph.
+- Export to 3 targets - JSON, NEURAX IR, and GitHub.
+
+  There used to be seven. The framework emitters among them produced a class
+  whose `__init__` was empty and whose `forward` was a chain of `x2 = x1` — for
+  LLaMA 2 7B, an identity function under the model's name — so they were
+  removed rather than repaired in place. What leaves NEURAX now is the
+  architecture itself, which it can describe truthfully.
 
 ### AI Copilot Agent
 - Natural-language design - "Create a transformer for image classification".
@@ -340,7 +371,7 @@ NEURAX ships with 88 reference templates across 11 families:
 ### Completed (v0.6.x)
 - 10-pass analytical IR pipeline
 - MLIR compiler backend (13 dialects)
-- Visual canvas with 680+ blocks
+- Visual canvas with 208 blocks
 - AI copilot agent (multi-provider)
 - Inference Intelligence (22 parameters)
 - Time Machine (multi-year projections)

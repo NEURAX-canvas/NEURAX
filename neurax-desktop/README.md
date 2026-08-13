@@ -186,6 +186,20 @@ so a self-hosted deployment of the web service gets it too by setting
 `NEURAX_PROJECTS_FILE`. The behaviour is shared rather than duplicated,
 which is the only way the two can be relied on to stay the same.
 
+### Window controls
+
+The title bar with its minimise, maximise and close buttons is the platform's
+own on macOS and Windows, where replacing it would make NEURAX the one window
+on the machine that behaves differently.
+
+On Linux it is drawn by the application. That is not a preference: on the
+desktop this was tested against, the window came back with
+`_NET_FRAME_EXTENTS = 0, 0, 0, 0` — no frame at all — while
+`_NET_WM_ALLOWED_ACTIONS` still listed minimise, maximise and close. The window
+was fully controllable and there was simply nothing to click. The decision
+lives in one constant, `OWN_TITLE_BAR` in `src/main.rs`, and travels to the
+frontend in the same bootstrap script that carries the API address.
+
 ### The one deliberate difference
 
 On the web, `/` is the landing page. In the desktop application, once you have

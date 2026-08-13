@@ -55,13 +55,20 @@ export const ANALYSIS_BUDGET_MS = 50;
 /**
  * Export targets.
  *
- * Two, deliberately. A design leaving NEURAX is either archived for re-import
- * or handed to the compiler. The framework emitters that used to be listed here
- * produced skeletons never checked against the model they claimed to represent.
+ * A design leaving NEURAX is either archived for re-import, handed to the
+ * compiler, or committed somewhere — nothing else is offered, because nothing
+ * else could be offered truthfully.
+ *
+ * The framework emitters that used to sit here produced a class whose
+ * `__init__` was empty and whose `forward` was a chain of `x2 = x1`: for
+ * LLaMA 2 7B, an identity function carrying the model's name. The GitHub
+ * target used to push exactly that into users' repositories, and now pushes
+ * the same two files this list names.
  */
 export const EXPORT_FORMATS = [
   'JSON — architecture and analysis, re-importable',
   'NEURAX IR — the exact topology the compiler analyses',
+  'GitHub — the same two files, committed to a repository',
 ] as const;
 
 /** The four figures shown under the hero. */
