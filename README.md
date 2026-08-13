@@ -210,14 +210,48 @@ graph TB
 
 ### Desktop application (recommended)
 
-Download an installer from
-[Releases](https://github.com/rustnew/NEURAX/releases) — `.deb`, `.rpm` and
-`.AppImage` for Linux, `.dmg` for macOS, `.exe` for Windows — then launch it
-from your applications menu, or type `neurax` in a terminal.
+**Linux and macOS — one command:**
 
-The compiler runs inside the application on a loopback socket. No server, no
-account, no upload; it works with the network unplugged. See
-[`neurax-desktop/README.md`](neurax-desktop/README.md) for how it is built.
+```bash
+curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
+```
+
+Then type `neurax` in a terminal, or open NEURAX from your applications menu.
+
+That is all it does: download the bundle for your platform, put it under
+`~/.local`, and add it to your applications menu. Nothing is written outside
+your home directory and no step asks for sudo. To see it before running it,
+read [`install.sh`](install.sh) — it is a single readable shell script.
+
+| | |
+|---|---|
+| Pin a version | `curl -fsSL … \| sh -s -- --version v0.7.0` |
+| Install elsewhere | `curl -fsSL … \| sh -s -- --prefix ~/opt` |
+| Remove it | `curl -fsSL … \| sh -s -- --uninstall` |
+
+**Windows**, and anyone who would rather not pipe a script into a shell:
+download an installer from [Releases](https://github.com/rustnew/NEURAX/releases).
+
+| Platform | File |
+|---|---|
+| Linux, any distribution | `NEURAX_<version>_amd64.AppImage` |
+| Debian, Ubuntu | `NEURAX_<version>_amd64.deb` |
+| Fedora, RHEL | `NEURAX-<version>.x86_64.rpm` |
+| macOS, Intel and Apple silicon | `NEURAX_<version>_universal.dmg` |
+| Windows | `NEURAX_<version>_x64-setup.exe` |
+
+macOS will say the application is from an unidentified developer, because the
+build is not notarized. The install script clears the quarantine flag for you;
+if you installed the `.dmg` by hand, right-click the app and choose **Open**
+once.
+
+**What you get.** The same studio as the web application — same panels, same
+analyses, same numbers — with the compiler running inside the application on a
+loopback socket. No account, no upload, no network. Projects are kept on your
+machine and are still there next time you open it.
+
+Building it from source, and how it is put together, is in
+[`neurax-desktop/README.md`](neurax-desktop/README.md).
 
 ### Web Interface
 

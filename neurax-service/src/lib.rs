@@ -17,6 +17,7 @@ use subtle::ConstantTimeEq;
 use tokio::sync::broadcast;
 use tracing_subscriber::EnvFilter;
 
+pub mod persistence;
 mod presets;
 
 // ─── API Key Authentication ─────────────────────────────────────────
@@ -146,15 +147,18 @@ fn check_api_key_scope(
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Hash, Eq, PartialEq)]
 pub struct ProjectKey {
-    user_id: String,
-    id: String,
+    pub(crate) user_id: String,
+    pub(crate) id: String,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Project {
-    id: String,
-    user_id: String,
-    name: String,
+    // Public because persistence and the integration tests read them; the
+    // struct is already serialised out over the API, so nothing is hidden by
+    // keeping them private that is not already on the wire.
+    pub id: String,
+    pub user_id: String,
+    pub name: String,
     description: Option<String>,
     /// Architecture family (e.g. "transformer", "moe")
     architecture: Option<String>,
@@ -3726,7 +3730,16 @@ pub fn serve_on_listener(
 
 /// Bind and serve until the process is stopped. Used by the standalone binary.
 pub async fn run_server(config: ServerConfig) -> std::io::Result<()> {
-    let (server, addrs) = build_server(&config, AppState::new())?;
+    let state = AppState::new();
+
+    // Same persistence the desktop application uses, so a self-hosted
+    // deployment behaves identically. Opt-in, because several replicas sharing
+    // one file would overwrite each other; that case wants a database.
+    if let Some(path) = persistence::configured_path() {
+        persistence::attach(&state, &path);
+    }
+
+    let (server, addrs) = build_server(&config, state)?;
     for addr in &addrs {
         tracing::info!("[STARTUP] Neurax service listening on {addr}");
     }

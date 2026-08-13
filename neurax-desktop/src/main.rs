@@ -78,8 +78,20 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running NEURAX");
+        .build(tauri::generate_context!())
+        .expect("error while building NEURAX")
+        .run(move |_app, event| {
+            // Projects autosave every few seconds; this catches the work done
+            // since the last one. `ExitRequested` fires before the process is
+            // torn down, which is the last point at which writing is still
+            // reliable.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                api.save_now();
+            }
+        });
 }
 
 #[cfg(test)]

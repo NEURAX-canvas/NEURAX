@@ -13,18 +13,41 @@ and it works with the network unplugged.
 
 ## Installing
 
-Download the installer for your platform from
+On Linux and macOS, one command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
+```
+
+It downloads the bundle for your platform, installs it under `~/.local`, adds
+it to your applications menu, and makes `neurax` available in the shell.
+Nothing is written outside your home directory and no step runs under sudo.
+
+    --version <tag>   install a specific release
+    --prefix <dir>    install somewhere other than ~/.local
+    --uninstall       remove it again
+
+On Windows, or to install by hand, take a file from
 [Releases](https://github.com/rustnew/NEURAX/releases):
 
 | Platform | File |
 |---|---|
-| Linux (Debian/Ubuntu) | `neurax_<version>_amd64.deb` |
-| Linux (Fedora/RHEL) | `neurax-<version>.x86_64.rpm` |
-| Linux (any) | `neurax_<version>_amd64.AppImage` |
-| macOS | `NEURAX_<version>_universal.dmg` |
+| Linux, any distribution | `NEURAX_<version>_amd64.AppImage` |
+| Debian, Ubuntu | `NEURAX_<version>_amd64.deb` |
+| Fedora, RHEL | `NEURAX-<version>.x86_64.rpm` |
+| macOS, universal | `NEURAX_<version>_universal.dmg` |
 | Windows | `NEURAX_<version>_x64-setup.exe` |
 
 Then launch it from your applications menu, or type `neurax` in a terminal.
+
+### Publishing a release
+
+`Build desktop installers` runs on a `v*` tag and creates a **draft** release.
+The public releases API does not show drafts to anonymous callers, so
+`install.sh` will not find it until the draft is published — which means a
+build nobody checked is never installable. Run the workflow by hand
+(`workflow_dispatch`) to produce the same bundles as downloadable artifacts
+without publishing anything.
 
 ### `neurax` on the command line
 
@@ -116,6 +139,53 @@ UI exists, its API is already listening.
 
 The API is bound to loopback, never `0.0.0.0`. Nothing NEURAX analyses is
 reachable from the network.
+
+---
+
+## Identical to the web application — and checked
+
+Someone should be able to move between the website and this application
+without noticing. That is not a promise the code makes on its own, so it is
+tested from both ends.
+
+**Same interface, structurally.** There is one frontend, not two. Host
+detection is allowed to decide *how* something happens — which file dialog
+opens, which route `/` lands on — never *what exists*.
+`src/services/hostParity.test.ts` fails if any file outside a short, reasoned
+list branches on the host, if a desktop-only component appears, or if the
+Tauri API is imported statically into the web bundle.
+
+**Same capabilities, provably.** `neurax-service/tests/desktop_parity.rs`
+starts the API the way this application starts it — loopback listener,
+`tauri://` origins, no Supabase — and then calls every endpoint the frontend
+actually uses: analysis, the hardware database, presets, inference simulation,
+the time machine, hardware comparison, compliance, credits, and the full
+project lifecycle. It also checks that CORS admits `tauri://localhost` and
+refuses an arbitrary web origin, because a preflight rejection would break
+every request without any handler ever being reached.
+
+### Where the desktop is better
+
+| | Web | Desktop |
+|---|---|---|
+| Analysis | Round trip to a server | In-process, no network |
+| Works offline | No | Entirely |
+| Account | Required | None |
+| Your designs | Sent to a server | Never leave the machine |
+| Projects after a restart | Lost | Kept, in your data directory |
+| Exporting | Browser download, location chosen for you | System save dialog, real path reported |
+
+Project persistence lives in `neurax_service::persistence`, not in this crate,
+so a self-hosted deployment of the web service gets it too by setting
+`NEURAX_PROJECTS_FILE`. The behaviour is shared rather than duplicated,
+which is the only way the two can be relied on to stay the same.
+
+### The one deliberate difference
+
+On the web, `/` is the landing page. In the desktop application, once you have
+a profile, `/` opens the studio directly — someone who has already installed
+NEURAX does not need to be sold it. Before that it still shows the landing
+page, because that is where the profile is created.
 
 ---
 

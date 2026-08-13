@@ -1,8 +1,9 @@
 name: Build desktop installers
 
-# Not on every push. Building three operating systems takes tens of minutes and
+# Not on every push. Building two operating systems takes tens of minutes and
 # produces artefacts nobody looks at unless a release is being cut, so this runs
-# on a version tag or when asked for by hand.
+# on a version tag, or on request when you want to test a build without
+# publishing anything.
 on:
   push:
     tags: ["v*"]
@@ -17,13 +18,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Ubuntu 22.04 rather than latest: the AppImage links against the
+          # glibc of the machine that built it, so building on the oldest
+          # supported runner is what makes it run on older distributions too.
           - platform: ubuntu-22.04
             args: ""
+            label: linux-x86_64
           - platform: macos-latest
-            # One bundle running natively on both Apple silicon and Intel.
+            # One bundle that runs natively on both Apple silicon and Intel,
+            # so `install.sh` has a single file to fetch for either.
             args: "--target universal-apple-darwin"
-          - platform: windows-latest
-            args: ""
+            label: macos-universal
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -49,7 +54,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             neurax-desktop/target
-          key: ${{ matrix.platform }}-desktop-${{ hashFiles('neurax-desktop/Cargo.toml') }}
+          key: ${{ matrix.platform }}-desktop-${{ hashFiles('neurax-desktop/Cargo.lock') }}
           restore-keys: ${{ matrix.platform }}-desktop-
 
       - name: Setup Node
@@ -65,13 +70,52 @@ jobs:
 
       # `tauri-action` runs the config's `beforeBuildCommand`, which builds the
       # frontend in desktop mode, then bundles for the host platform.
+      #
+      # The release is created as a draft. `install.sh` finds bundles through
+      # the public releases API, which does not show drafts to anonymous
+      # callers — so publishing the draft is the step that makes
+      # `curl … | sh` start working, and doing it by hand means a broken build
+      # is never installable by anyone.
       - uses: tauri-apps/tauri-action@v0
+        id: tauri
+        if: github.ref_type == 'tag'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: neurax-desktop
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          tagName: ${{ github.ref_name }}
           releaseName: NEURAX ${{ github.ref_name }}
-          releaseBody: "Desktop builds of NEURAX. See the changelog for what is in this release."
+          releaseBody: |
+            Desktop builds of NEURAX — the studio and the compiler, on your machine.
+
+            Install with one command on Linux or macOS:
+
+            ```
+            curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
+            ```
+
+            Or download an installer below.
           releaseDraft: true
           args: ${{ matrix.args }}
+
+      # Manual runs build the same bundles but publish nothing, so a build can
+      # be checked before a tag exists.
+      - uses: tauri-apps/tauri-action@v0
+        if: github.ref_type != 'tag'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: neurax-desktop
+          args: ${{ matrix.args }}
+
+      - name: Upload bundles as workflow artifacts
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v4
+        with:
+          name: neurax-${{ matrix.label }}
+          path: |
+            neurax-desktop/target/release/bundle/appimage/*.AppImage
+            neurax-desktop/target/release/bundle/deb/*.deb
+            neurax-desktop/target/release/bundle/rpm/*.rpm
+            neurax-desktop/target/**/release/bundle/dmg/*.dmg
+          if-no-files-found: error
