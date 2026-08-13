@@ -461,6 +461,16 @@ export function ModelHyperparametersPanel({
   const { config, updateConfig, triggerAttempt } = useHardware();
   const [selectedFamily, setSelectedFamily] = useState<ArchitectureFamily>(initialFamily);
   const [query, setQuery] = useState('');
+
+  // Follow the architecture selected on the canvas. Seeding state from the prop
+  // once left the panel showing a previous family's hyperparameters after the
+  // design changed underneath it — the user would be editing settings that do
+  // not belong to the model they are building.
+  const [syncedFamily, setSyncedFamily] = useState(initialFamily);
+  if (initialFamily !== syncedFamily) {
+    setSyncedFamily(initialFamily);
+    setSelectedFamily(initialFamily);
+  }
   const familyDefs = useMemo(() => {
     return FAMILY_HYPERPARAM_DEFS[selectedFamily] ?? { family: selectedFamily, params: [], globalConstraints: [] } as FamilyHyperparameterDefs;
   }, [selectedFamily]);

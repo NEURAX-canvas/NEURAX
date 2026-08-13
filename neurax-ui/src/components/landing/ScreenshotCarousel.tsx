@@ -12,7 +12,7 @@ interface Screenshot {
 const SCREENSHOTS: Screenshot[] = [
   {
     id: '01',
-    title: 'Visual Canvas with 680+ Blocks',
+    title: 'Visual Canvas with 208 Blocks',
     description: 'Drag-and-drop neural network design with real-time parameter editing and visual connections.',
     image: '/screenshots/01-architecture.png',
     category: 'Architecture'

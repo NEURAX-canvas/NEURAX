@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
-import { NotionistsAvatarPicker, NOTIONISTS_AVATARS } from '@/components/profile/NotionistsAvatarPicker.tsx';
+import { NotionistsAvatarPicker, AVATAR_OPTIONS, resolveAvatar } from '@/components/profile/NotionistsAvatarPicker.tsx';
 
 
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
@@ -75,7 +75,7 @@ export function AuthControl({
   const [username, setUsername] = useState('');
   const [busy, setBusy] = useState(false);
   const [planPopoverOpen, setPlanPopoverOpen] = useState(false);
-  const [selectedAvatarId, setSelectedAvatarId] = useState<string>(NOTIONISTS_AVATARS[0].id);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string>(AVATAR_OPTIONS[0].id);
 
   // API Key state
   const [apiProvider, setApiProvider] = useState<ApiProvider>('openai');
@@ -118,7 +118,7 @@ export function AuthControl({
     setApiCustomEndpoint('');
     setApiModel('');
     setApiProvider('openai');
-    setSelectedAvatarId(NOTIONISTS_AVATARS[0].id);
+    setSelectedAvatarId(AVATAR_OPTIONS[0].id);
     setBusy(false);
   };
 
@@ -167,11 +167,8 @@ export function AuthControl({
       return;
     }
 
-    // Persist chosen Notionist avatar
-    const selectedAvatar = NOTIONISTS_AVATARS.find(a => a.id === selectedAvatarId);
-    if (selectedAvatar) {
-      localStorage.setItem('neurax_account_emoji', selectedAvatar.emoji);
-    }
+    // Persist the chosen avatar by id; the identicon is drawn from its seed.
+    localStorage.setItem('neurax_account_emoji', resolveAvatar(selectedAvatarId).id);
 
     demoSignIn(email.trim(), username.trim() || undefined);
 
