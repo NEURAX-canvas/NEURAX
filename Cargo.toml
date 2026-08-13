@@ -10,6 +10,12 @@ members = [
     "neurax-service",
     "neurax-mlir",
 ]
+# `neurax-desktop` links against the platform webview (WebKitGTK on Linux,
+# WebView2 on Windows, WKWebView on macOS). Making it a member would mean
+# `cargo build --workspace` — and so CI, and anyone working on the compiler —
+# required those system libraries. It is its own workspace and reaches the
+# crates it needs by path, so there is still one copy of the compiler.
+exclude = ["neurax-desktop"]
 resolver = "2"
 
 [workspace.dependencies]

@@ -8,6 +8,7 @@
 // ─── Configuration ────────────────────────────────────────────────
 
 import { supabase } from '@/lib/supabaseClient.ts';
+import { resolveApiBase } from '@/services/desktopRuntime.ts';
 
 const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 
@@ -23,8 +24,17 @@ function normalizeLocalApiBase(rawBase: string): string {
   }
 }
 
-const NEURAX_API_BASE =
-  normalizeLocalApiBase(import.meta.env.VITE_NEURAX_API_URL ?? 'http://127.0.0.1:9098');
+/**
+ * Base URL of the NEURAX service.
+ *
+ * In the desktop application the service runs in-process on a port the OS
+ * assigns at launch, so its address cannot be a build-time constant;
+ * `resolveApiBase` prefers the value the host injected and otherwise keeps the
+ * browser's behaviour exactly as it was.
+ */
+const NEURAX_API_BASE = resolveApiBase(
+  normalizeLocalApiBase(import.meta.env.VITE_NEURAX_API_URL ?? 'http://127.0.0.1:9098'),
+);
 
 let accessToken: string | null = null;
 

@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions granted to the NEURAX main window. Deliberately narrow: file access happens only through a dialog the user drove, and links open in the system browser rather than inside the app.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "opener:allow-open-url"
+  ]
+}

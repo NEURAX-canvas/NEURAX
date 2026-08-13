@@ -7,6 +7,7 @@
     "dev": "vite --port 8081",
     "dev:full": "concurrently -n service,ui -c blue,green \"cd .. && cargo run -p neurax-service\" \"vite --port 8080\"",
     "build": "vite build",
+    "build:desktop": "vite build --mode desktop",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -42,6 +43,7 @@
     "@radix-ui/react-tooltip": "^1.1.2",
     "@supabase/supabase-js": "^2.45.0",
     "@tanstack/react-query": "^5.56.2",
+    "@tauri-apps/api": "^2.11.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",

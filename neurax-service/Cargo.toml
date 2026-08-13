@@ -39,3 +39,8 @@ subtle = "2"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 rand = "0.8"
+
+[dev-dependencies]
+# The integration tests drive the service the way the desktop app does — over a
+# real loopback socket — so they need a blocking HTTP client.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }

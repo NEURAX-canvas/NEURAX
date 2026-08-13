@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils.ts';
+import { saveTextFile } from '@/services/desktopRuntime.ts';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
 import {
@@ -32,7 +33,6 @@ import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { generateCode } from '@/utils/codeGenerators.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
-import { generateNetworkGraphHTML } from '@/utils/networkGraphExporter.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
 import { GitHubExportPanel } from './GitHubExportPanel.tsx';
 import { ExportAssistant } from './ExportAssistant.tsx';
@@ -224,15 +224,32 @@ export function ExportPanel({
   });
   const neuraxJson = JSON.stringify(neuraxIR, null, 2);
 
-  /** Trigger file download in the browser */
-  function downloadFile(content: string, filename: string, mimeType: string) {
-    const blob = new Blob([content], { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+  /**
+   * Write the export out and tell the user where it went.
+   *
+   * On the desktop this is a system save dialog, so the description carries the
+   * real path and a dismissed dialog produces no toast at all. In a browser the
+   * download manager picks the location and only the filename is known.
+   */
+  async function saveAndNotify(
+    content: string,
+    filename: string,
+    mimeType: string,
+    title: string,
+  ): Promise<boolean> {
+    try {
+      const result = await saveTextFile(content, filename, mimeType);
+      if (!result.saved) return false;
+      toast({ title, description: result.path ?? filename });
+      return true;
+    } catch (error) {
+      toast({
+        title: 'Export failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+      return false;
+    }
   }
 
   const handleExport = async (format: ExportOption) => {
@@ -247,71 +264,38 @@ export function ExportPanel({
 
     // ── NEURAX IR — the exact topology the compiler analyses ────────
     if (format.id === 'neurax-ir') {
-      const blob = new Blob([neuraxJson], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${architectureName}.neurax.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({
-        title: 'NEURAX IR exported',
-        description: `${architectureName}.neurax.json — the topology as analysed`,
-      });
-      onClose();
+      const saved = await saveAndNotify(
+        neuraxJson,
+        `${architectureName}.neurax.json`,
+        'application/json',
+        'NEURAX IR exported — the topology as analysed',
+      );
+      if (saved) onClose();
       return;
     }
 
     if (format.id === 'json') {
       const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`;
-      downloadFile(neuraxJson, filename, 'application/json');
-      toast({
-        title: "JSON Export Complete",
-        description: `Architecture saved as ${filename}`,
-      });
-      onClose();
+      const saved = await saveAndNotify(
+        neuraxJson,
+        filename,
+        'application/json',
+        'JSON export complete',
+      );
+      if (saved) onClose();
       return;
     }
 
-    // ── Network Graph Export — interactive HTML visualization ───────
-    if (format.id === 'network') {
-      const html = generateNetworkGraphHTML(nodes, connections, groups, {
-        modelName: architectureName,
-        family: selectedArchitecture,
-      });
-      const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}_graph.html`;
-      downloadFile(html, filename, 'text/html');
-      toast({
-        title: "Network Graph Export Complete",
-        description: `Interactive graph saved as ${filename}`,
-      });
-      onClose();
-      return;
-    }
-
-    // ── Other formats (PyTorch, Rust, etc.) — generic download ────
-    const codeMap: Record<string, { content: string; ext: string; mime: string }> = {
-      pytorch: { content: pytorchCode, ext: '.py', mime: 'text/x-python' },
-      rust: { content: rustCode, ext: '.rs', mime: 'text/x-rust' },
-    };
-    const entry = codeMap[format.id];
-    if (entry) {
-      const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}${entry.ext}`;
-      downloadFile(entry.content, filename, entry.mime);
-      toast({
-        title: `${format.name} Export Complete`,
-        description: `File saved as ${filename}`,
-      });
-      onClose();
-      return;
-    }
-
-    // Fallback toast for formats without implementation yet
-    toast({ title: "Export Started", description: `Exporting ${architectureName}${format.extension}...` });
-    setTimeout(() => {
-      toast({ title: "Export Complete", description: `${format.name} file ready for download` });
-    }, 1000);
-    onClose();
+    // `EXPORT_OPTIONS` offers JSON and NEURAX IR and nothing else, so reaching
+    // here means a format was added to the list without a branch to handle it.
+    // The code that used to sit here handled `network`, `pytorch` and `rust`
+    // — formats removed from the list — and ended in a fallback that showed
+    // "Export Complete" a second later without having written anything.
+    toast({
+      title: 'Unsupported export format',
+      description: `No handler for "${format.id}". Export as JSON or NEURAX IR instead.`,
+      variant: 'destructive',
+    });
   };
 
   const handleCopyCode = (code: string) => {
@@ -467,19 +451,14 @@ export function ExportPanel({
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => {
-                    const blob = new Blob([neuraxJson], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${architectureName}.neurax.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    toast({
-                      title: "Export Complete",
-                      description: `NEURAX IR saved as ${architectureName}.neurax.json`,
-                    });
-                  }}
+                  onClick={() =>
+                    saveAndNotify(
+                      neuraxJson,
+                      `${architectureName}.neurax.json`,
+                      'application/json',
+                      'NEURAX IR exported',
+                    )
+                  }
                 >
                   <Download className="w-4 h-4 mr-2" />
                   Download .neurax.json

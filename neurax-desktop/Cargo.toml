@@ -1,0 +1,51 @@
+# NEURAX desktop shell.
+#
+# Deliberately its own workspace rather than a member of the root one. Tauri
+# links against the platform webview (WebKitGTK, WebView2, WKWebView), and
+# making it a workspace member would mean `cargo build --workspace` — and so CI,
+# and every contributor working on the compiler — suddenly needed those system
+# libraries installed. The root `Cargo.toml` excludes this directory; the crates
+# it depends on are reached by path, so there is still exactly one copy of the
+# compiler.
+[workspace]
+
+[package]
+name = "neurax-desktop"
+version = "0.1.1"
+edition = "2021"
+description = "NEURAX desktop application — the analytical compiler, running entirely on your machine"
+license = "MIT"
+repository = "https://github.com/rustnew/NEURAX"
+homepage = "https://rustnew.github.io/NEURAX/"
+readme = "README.md"
+keywords = ["ml", "compiler", "desktop", "tauri", "neural"]
+categories = ["gui", "science"]
+
+[[bin]]
+name = "neurax-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+neurax-service = { version = "0.1.1", path = "../neurax-service" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+actix-web = "4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[profile.release]
+# The desktop build is shipped to end users, so it is tuned for size and speed
+# rather than compile time: one codegen unit lets LLVM inline across the whole
+# crate graph, and stripping symbols removes several megabytes of debug data
+# that no end user can act on.
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

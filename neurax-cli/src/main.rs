@@ -13,7 +13,14 @@ fn main() {
 
     let args: Vec<String> = std::env::args().collect();
 
+    // Bare `neurax` opens the desktop application when it is installed. Typing
+    // the name of a program and getting its window is what a user expects, and
+    // every existing subcommand is untouched. Without the desktop build
+    // present this still prints the usage it always did.
     if args.len() < 2 {
+        if launch_desktop().is_ok() {
+            return;
+        }
         print_usage();
         std::process::exit(1);
     }
@@ -21,6 +28,7 @@ fn main() {
     let command = &args[1];
 
     let result: Result<(), i32> = match command.as_str() {
+        "gui" | "desktop" => cmd_gui(),
         "analyze" => cmd_analyze(&args[2..]),
         "compile" => cmd_compile(&args[2..]),
         "validate" => cmd_validate(&args[2..]),
@@ -45,6 +53,54 @@ fn main() {
         Err(code) => code,
     };
     std::process::exit(exit_code);
+}
+
+/// Name of the desktop executable, as installed by the bundles.
+const DESKTOP_BIN: &str = if cfg!(windows) {
+    "neurax-desktop.exe"
+} else {
+    "neurax-desktop"
+};
+
+/// Replace this process with the desktop application.
+///
+/// It is looked for next to this executable first, then on `PATH`. The
+/// side-by-side check matters because the two are commonly installed together
+/// — `cargo install` puts both in `~/.cargo/bin`, and the bundles put both in
+/// the application directory — and a `PATH` that happens to hold an older
+/// build elsewhere should not win over the one shipped alongside.
+///
+/// Returns `Err` when no desktop build is installed, which is not a failure:
+/// the CLI is usable on its own and callers fall back to printing usage.
+fn launch_desktop() -> Result<(), ()> {
+    let beside = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(DESKTOP_BIN)))
+        .filter(|candidate| candidate.is_file());
+
+    let program = match beside {
+        Some(path) => path,
+        None => PathBuf::from(DESKTOP_BIN),
+    };
+
+    // Detached, so the terminal comes back rather than being held by a GUI.
+    match std::process::Command::new(&program).spawn() {
+        Ok(_) => Ok(()),
+        Err(_) => Err(()),
+    }
+}
+
+fn cmd_gui() -> Result<(), i32> {
+    if launch_desktop().is_ok() {
+        println!("Opening NEURAX...");
+        return Ok(());
+    }
+    eprintln!("The NEURAX desktop application is not installed.");
+    eprintln!();
+    eprintln!("Install it from https://github.com/rustnew/NEURAX/releases, or");
+    eprintln!("build it from a checkout with:");
+    eprintln!("    cd neurax-desktop && cargo tauri build");
+    Err(1)
 }
 
 fn cmd_analyze(args: &[String]) -> Result<(), i32> {
@@ -573,9 +629,11 @@ fn print_usage() {
 NEURAX - Universal Analytic Compiler for AI Architectures
 
 USAGE:
+    neurax                      Open the desktop application
     neurax <COMMAND> [OPTIONS]
 
 COMMANDS:
+    gui         Open the desktop application (alias: desktop)
     compile     Full compilation: validate → analyze → generate code (LLVM IR, Assembly, Object)
     analyze     Analyze a model and generate a report
     validate    Validate a JSON model configuration
