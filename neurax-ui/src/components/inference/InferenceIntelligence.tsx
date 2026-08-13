@@ -3,14 +3,16 @@ import { InferenceControls, buildDefaultInferenceParams } from './InferenceContr
 import { BehaviorDashboard } from './BehaviorDashboard.tsx';
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { InferenceParams, InferenceReport, simulateInference } from '@/services/neuraxApi.ts';
+import { useHardware } from '@/contexts/HardwareContext.tsx';
 
 interface InferenceIntelligenceProps {
   architectureType: ArchitectureFamily;
 }
 
 export function InferenceIntelligence({ architectureType }: InferenceIntelligenceProps) {
+  const { config: design } = useHardware();
   const [params, setParams] = useState<InferenceParams>(() =>
-    buildDefaultInferenceParams(architectureType),
+    buildDefaultInferenceParams(architectureType, design),
   );
   const [report, setReport] = useState<InferenceReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -38,9 +40,11 @@ export function InferenceIntelligence({ architectureType }: InferenceIntelligenc
     };
   }, [params, runSimulation]);
 
+  // Re-seed when the design changes, so the simulation follows the model on the
+  // canvas rather than the one it was opened with.
   useEffect(() => {
-    setParams(buildDefaultInferenceParams(architectureType));
-  }, [architectureType]);
+    setParams(buildDefaultInferenceParams(architectureType, design));
+  }, [architectureType, design.seqLen, design.precision, design.kvHeads, design.numHeads, design.useCache]);
 
   return (
     <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background">

@@ -6,10 +6,28 @@ import { Label } from '@/components/ui/label.tsx';
 import { Input } from '@/components/ui/input.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
 import { ArchitectureFamily } from '@/types/plugins.ts';
+import type { HardwareConfig } from '@/contexts/HardwareContext.tsx';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible.tsx';
 import { InferenceParams } from '@/services/neuraxApi.ts';
 
-export function buildDefaultInferenceParams(architectureType: ArchitectureFamily): InferenceParams {
+/**
+ * Starting parameters for an inference simulation.
+ *
+ * Sampling settings have no counterpart in the design and start from common
+ * defaults. Everything the design already states — context length, storage
+ * width, whether attention is grouped-query — is read from it instead of being
+ * assumed: simulating a 2048-token fp16 standard-attention model while the user
+ * designed a 4096-token int8 GQA one describes a different model than the one
+ * on the canvas.
+ */
+export function buildDefaultInferenceParams(
+  architectureType: ArchitectureFamily,
+  design?: Partial<HardwareConfig>,
+): InferenceParams {
+  const contextLength = design?.seqLen && design.seqLen > 0 ? design.seqLen : 2048;
+  const isGroupedQuery =
+    !!design?.kvHeads && !!design?.numHeads && design.kvHeads < design.numHeads;
+
   return {
     temperature: 0.7,
     top_k: 40,
@@ -18,14 +36,16 @@ export function buildDefaultInferenceParams(architectureType: ArchitectureFamily
     repetition_penalty: 1.1,
     presence_penalty: 0.0,
     frequency_penalty: 0.0,
-    prompt_length: 2048,
-    max_output_tokens: 1024,
+    prompt_length: contextLength,
+    // Half the context left for the answer is a neutral split; the design does
+    // not state a generation length.
+    max_output_tokens: Math.max(128, Math.floor(contextLength / 2)),
     sliding_window: true,
-    kv_cache_reuse: true,
+    kv_cache_reuse: design?.useCache ?? true,
     architecture_family: architectureType,
-    attention_type: 'standard',
+    attention_type: isGroupedQuery ? 'gqa' : 'standard',
     moe_router_mode: architectureType === 'moe' ? 'top-k' : undefined,
-    quantization_level: 'fp16',
+    quantization_level: design?.precision ?? 'fp16',
     long_context_simulation: false,
     adversarial_prompt: false,
     high_temperature_mode: false,

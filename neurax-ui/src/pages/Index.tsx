@@ -2237,7 +2237,7 @@ params: params as Record<string, ParameterValue>,
           simulationContent={<SimulationWorkspace nodes={nodes} connections={connections} analysis={analysis} perLayer={perLayer} warnings={warnings} topology={compiledTopology} />}
           productionContent={<ProductionWorkspace nodes={nodes} connections={connections} modelName="NeuraxModel" />}
           inferenceContent={<InferenceIntelligence architectureType={selectedArchitecture} />}
-          timeMachineContent={<TimeMachineWorkspace nodes={nodes} connections={connections} analysis={analysis} />}
+          timeMachineContent={<TimeMachineWorkspace nodes={nodes} connections={connections} />}
         >
           {null}
         </WorkspaceTabs>
