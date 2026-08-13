@@ -356,9 +356,17 @@ fn cmd_compile(args: &[String]) -> Result<(), i32> {
         "  Max batch:    {}",
         result.memory.metrics.max_batch_size_fit
     );
+    // Per *step*, not per token. Labelled "ms/token" it read as a
+    // contradiction beside the throughput on the next line — 8843 ms/token
+    // alongside 29 643 tokens/sec cannot both be true, and a reader has no way
+    // to tell which one to believe. They agree: one step is batch x sequence
+    // tokens, and 262 144 tokens over 8.843 s is 29 643 tokens/sec.
+    let tokens_per_step = result.hardware.metrics.throughput_tokens_per_s
+        * result.hardware.metrics.latency_ms
+        / 1000.0;
     println!(
-        "  Latency:      {:.2} ms/token",
-        result.hardware.metrics.latency_ms
+        "  Step latency: {:.2} ms ({:.0} tokens/step)",
+        result.hardware.metrics.latency_ms, tokens_per_step
     );
     println!(
         "  Throughput:   {:.0} tokens/sec",
