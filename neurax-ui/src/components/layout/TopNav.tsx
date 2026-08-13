@@ -96,10 +96,7 @@ export function TopNav({
       {/* Left - Logo & Name */}
       <div className="flex items-center gap-2 sm:gap-3 shrink-0">
         <NeuraxLogo size={20} variant="mark" showText={false} />
-        <h1
-          className="hidden xl:block text-xs sm:text-sm font-bold tracking-tight"
-          style={{ color: 'hsl(var(--foreground))' }}
-        >
+        <h1 className="text-xs sm:text-sm font-bold tracking-tight" style={{ color: 'hsl(var(--foreground))' }}>
           NEURAX
         </h1>
 
@@ -110,7 +107,7 @@ export function TopNav({
           `min-w-0` lets this group shrink below its content width, and the
           overflow scrolls, so a narrow window loses scrolling convenience
           rather than losing access to the buttons. */}
-      <div className="hidden md:flex items-center gap-2 xl:gap-4 min-w-0 flex-1 overflow-x-auto scrollbar-thin">
+      <div className="hidden md:flex items-center gap-4 min-w-0 flex-1 overflow-x-auto scrollbar-thin">
         <ArchitectureSelector
           value={selectedArchitecture}
           onChange={onArchitectureChange}
@@ -118,14 +115,9 @@ export function TopNav({
 
         <Popover modal={false}>
           <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground"
-              title="Load a reference architecture"
-            >
-              <BookOpen className="w-4 h-4 2xl:mr-1.5" />
-              <span className="hidden 2xl:inline">Templates</span>
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground">
+              <BookOpen className="w-4 h-4 mr-1.5" />
+              Templates
               <ChevronDown className="w-3.5 h-3.5 ml-1" />
             </Button>
           </PopoverTrigger>
@@ -156,8 +148,8 @@ export function TopNav({
             disabled={!canClearCanvas}
             title="Start a fresh architecture from scratch"
           >
-            <Plus className="w-4 h-4 xl:mr-1.5" />
-            <span className="hidden xl:inline">New</span>
+            <Plus className="w-4 h-4 mr-1.5" />
+            New
           </Button>
           <Button
             variant="ghost"
@@ -251,10 +243,9 @@ export function TopNav({
             className="text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={onClearCanvas}
             disabled={!canClearCanvas}
-            title="Remove every block from the canvas"
           >
-            <Trash2 className="w-4 h-4 xl:mr-1.5" />
-            <span className="hidden xl:inline">Clear</span>
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            Clear
           </Button>
 
           <Button
@@ -262,10 +253,9 @@ export function TopNav({
             size="sm"
             className="text-muted-foreground hover:text-foreground"
             onClick={onHyperparameters}
-            title="Set the model's hyperparameters"
           >
-            <SlidersHorizontal className="w-4 h-4 2xl:mr-1.5" />
-            <span className="hidden 2xl:inline">Hyperparameters</span>
+            <SlidersHorizontal className="w-4 h-4 mr-1.5" />
+            Hyperparameters
           </Button>
           <Button
             variant="ghost"
@@ -274,19 +264,17 @@ export function TopNav({
             onClick={onSelectTarget}
             title="Choose the chip every metric is computed for"
           >
-            <Cpu className="w-4 h-4 2xl:mr-1.5" />
-            <span className="hidden 2xl:inline">Target</span>
+            <Cpu className="w-4 h-4 mr-1.5" />
+            Target
           </Button>
           <Button
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
             onClick={onExport}
-            title="Export as JSON or NEURAX IR"
           >
-            <Upload className="w-4 h-4 2xl:mr-1.5" />
-            <span className="hidden 2xl:inline">Export</span>
-            <ChevronDown className="w-3.5 h-3.5 ml-1 hidden 2xl:inline" />
+            Export
+            <ChevronDown className="w-3.5 h-3.5 ml-1" />
           </Button>
         </nav>
 

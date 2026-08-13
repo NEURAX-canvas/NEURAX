@@ -46,9 +46,44 @@ for (const width of WIDTHS) {
     document.querySelectorAll('button, [role="tab"], a').forEach((el) => {
       const box = el.getBoundingClientRect();
       const label = (el.textContent ?? '').trim().slice(0, 30);
-      // Zero-width elements are collapsed, not clipped.
-      if (box.width > 0 && box.right > window.innerWidth + 1 && label) {
+      const styles = getComputedStyle(el);
+      // Deliberately hidden is fine; the responsive rules collapse labels on
+      // purpose. What is not fine is a control that is meant to be there and
+      // is not reachable.
+      if (styles.display === 'none' || styles.visibility === 'hidden') return;
+      // `offsetParent` is null when any ancestor is display:none, which is how
+      // the inactive workspace panels are hidden. Their controls are not on
+      // screen and are not supposed to be.
+      if (el.offsetParent === null) return;
+      if (!label) return;
+
+      // Squeezed to nothing. This is the case the first version of this check
+      // missed: it skipped zero-width elements as "collapsed", and three
+      // toolbar buttons — Hyperparameters, Target and Export — were being
+      // crushed out of existence at 1440px, the desktop window's own default
+      // size, while the check reported a pass.
+      if (box.width < 8) {
+        out.push(`${label} (crushed to ${Math.round(box.width)}px)`);
+        return;
+      }
+
+      // Past the right edge of the viewport.
+      if (box.right > window.innerWidth + 1) {
         out.push(`${label} (right edge ${Math.round(box.right)})`);
+        return;
+      }
+
+      // Past the visible edge of whatever scrolls it.
+      let parent = el.parentElement;
+      while (parent && parent !== document.body) {
+        if (getComputedStyle(parent).overflowX !== 'visible') {
+          const p = parent.getBoundingClientRect();
+          if (box.right > p.right + 1 || box.left < p.left - 1) {
+            out.push(`${label} (outside its scroller by ${Math.round(box.right - p.right)}px)`);
+          }
+          break;
+        }
+        parent = parent.parentElement;
       }
     });
     return [...new Set(out)];

@@ -83,7 +83,7 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
       <SelectTrigger
         title={currentFamily ? `${currentFamily.name} — ${currentFamily.description}` : undefined}
         className={cn(
-          "w-[168px] xl:w-[210px] 2xl:w-[240px] h-9 shrink-0",
+          "w-[220px] h-9 shrink-0",
           "bg-secondary/50 border-border/50 hover:bg-secondary transition-colors",
           "focus:ring-1 focus:ring-primary/50",
           className
