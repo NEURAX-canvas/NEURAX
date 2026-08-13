@@ -33,7 +33,7 @@ import { VariantPreset } from '@/types/catalog.ts';
 import { AnalysisResult, CanvasNode, Connection, LayerConfig, NodeGroup, PerLayerBreakdownRow, Warning, ParameterValue } from '@/types/architecture.ts';
 import { ImportResult } from '@/utils/architectureImporter.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
-import { getBlockDefaults } from '@/utils/blockDefaults.ts';
+import { getBlockDefaults, normalizeBlockParams } from '@/utils/blockDefaults.ts';
 import { DEFAULT_HARDWARE_CONFIG, HardwareConfig, useHardware, validateHardwareConfig, ArchitectureFamily as HwFamily } from '@/contexts/HardwareContext.tsx';
 import { useAuth } from '@/contexts/AuthContext.tsx';
 import { analyze, analyzeStream, NeuraxApiError, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo } from '@/services/neuraxApi.ts';
@@ -148,14 +148,47 @@ function hydrateNodesForFamily(
 ): CanvasNode[] {
   const layerMap = new Map(getPluginLayers(family).map((layer) => [layer.type, layer]));
 
+  // The model's width, taken from whichever blocks do state it.
+  //
+  // Templates do not repeat the width on every block — GPT-2 XL gives its FFN
+  // an intermediate size but no `hidden_size` — and a block that falls back to
+  // the schema's 768 default instead silently shrinks that layer. Inheriting
+  // keeps a design consistent with itself.
+  const statedWidths = nodes
+    .map((node) => {
+      const p = (node.params ?? {}) as Record<string, unknown>;
+      const value = p.d_model ?? p.hidden_size ?? p.embedding_dim;
+      return typeof value === 'number' && value > 0 ? value : null;
+    })
+    .filter((v): v is number => v !== null);
+  const modelWidth = statedWidths.length
+    ? statedWidths.sort((a, b) => statedWidths.filter((v) => v === a).length - statedWidths.filter((v) => v === b).length).pop()
+    : undefined;
+
   return nodes.map((node) => {
     const config = layerMap.get(node.type);
     if (!config) return node;
 
+    // Normalise before merging: a template states `hidden_size` where the block
+    // schema says `d_model`, and without this the template's value sits beside
+    // the default instead of replacing it.
+    const stated = normalizeBlockParams(
+      node.type,
+      (node.params ?? {}) as Record<string, unknown>,
+    );
+    const schema = getBlockDefaults(node.type);
+    // Inherit the model's width when this block does not state one of its own.
+    if (modelWidth && 'd_model' in schema && stated.d_model === undefined) {
+      stated.d_model = modelWidth;
+    }
+    if (modelWidth && 'normalized_shape' in schema && stated.normalized_shape === undefined) {
+      stated.normalized_shape = modelWidth;
+    }
+
     const params: Record<string, unknown> = {
-      ...getBlockDefaults(node.type),
+      ...schema,
       ...(config.defaultParams ?? {}),
-      ...(node.params ?? {}),
+      ...stated,
     };
 
     if (config.hasActivation && !('activation' in params)) {

@@ -2279,12 +2279,20 @@ export function compileToNeuraxIR(
         outputShape = [batch, seq, hidden];
     }
 
+    // A gated feed-forward block collapses to `mlp` for the compiler, which
+    // then has no way to know it holds three weight matrices rather than two.
+    // Without this the SwiGLU stacks in LLaMA, Mistral and friends were counted
+    // as plain MLPs — about 1.5B parameters short on a 7B model.
+    const sourceType = String(block.ui_node_type ?? block.type ?? '').toLowerCase();
+    const isGatedFeedForward =
+      sourceType === 'ffn_gated' || sourceType === 'swiglu' || sourceType === 'geglu';
+
     return {
       id: block.id,
       layer_type: toParserLayerType(block.ui_node_type ?? block.type),
       input_shape: inputShape,
       output_shape: outputShape,
-      params: p,
+      params: isGatedFeedForward ? { ...p, gated: true } : p,
       ...(block.comment && { comment: block.comment }),
     };
   });

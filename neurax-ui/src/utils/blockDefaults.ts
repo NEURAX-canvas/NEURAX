@@ -167,3 +167,65 @@ const DEFAULTS: Record<string, Params> = {
 export function getBlockDefaults(blockType: string): Params {
     return DEFAULTS[blockType] ?? {};
 }
+
+/**
+ * Parameter names that mean the same thing under a different spelling.
+ *
+ * Templates are written with the names used by model cards and HuggingFace
+ * configs (`hidden_size`, `num_heads`, `intermediate_size`); the block schemas
+ * use the names from the papers (`d_model`, `n_heads`, `d_ff`). The two never
+ * met: a template's `hidden_size: 4096` sat beside the block's own
+ * `d_model: 768` default and was ignored, so every reference architecture in
+ * the library loaded at the wrong width. LLaMA 2 7B came out as a 768-wide
+ * model, and for attention blocks the head counts were lost entirely.
+ *
+ * Aliases are applied per block and only when the block genuinely has the
+ * canonical key — `lstm_cell` really does take `hidden_size`, and a norm's
+ * width is `normalized_shape`, not `d_model`.
+ */
+const PARAM_ALIASES: Record<string, string[]> = {
+  d_model: ['hidden_size', 'embedding_dim', 'model_dim', 'width'],
+  normalized_shape: ['hidden_size', 'd_model'],
+  n_heads: ['num_heads', 'num_attention_heads'],
+  n_kv_heads: ['num_kv_heads', 'num_key_value_heads'],
+  d_ff: ['intermediate_size', 'ffn_dim', 'ffn_hidden_size'],
+  d_state: ['state_dim', 'state_size'],
+  max_len: ['max_length', 'max_position_embeddings'],
+  base: ['theta', 'rope_theta'],
+  vocab_size: ['num_embeddings'],
+  num_classes: ['num_labels'],
+  expert_d_ff: ['expert_intermediate_size'],
+  head_dim: ['head_size'],
+};
+
+/**
+ * Rewrite a block's parameters onto the names its schema uses.
+ *
+ * A value already given under the canonical name always wins; an alias only
+ * fills a gap. Unknown keys are left in place rather than dropped, so a
+ * user-defined parameter still reaches the compiler.
+ */
+export function normalizeBlockParams(
+  blockType: string,
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const schema = getBlockDefaults(blockType);
+  if (!schema) return params;
+
+  const normalized = { ...params };
+  for (const [canonical, aliases] of Object.entries(PARAM_ALIASES)) {
+    if (!(canonical in schema)) continue;
+    if (normalized[canonical] !== undefined && normalized[canonical] !== null) continue;
+
+    for (const alias of aliases) {
+      // An alias that is itself a real key of this block is that block's own
+      // parameter, not a synonym — leave it alone.
+      if (alias in schema) continue;
+      if (normalized[alias] !== undefined && normalized[alias] !== null) {
+        normalized[canonical] = normalized[alias];
+        break;
+      }
+    }
+  }
+  return normalized;
+}
