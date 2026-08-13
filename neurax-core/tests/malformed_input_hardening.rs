@@ -138,6 +138,17 @@ fn shipped_example_models_still_parse() {
         if path.extension().and_then(|s| s.to_str()) != Some("json") {
             continue;
         }
+        // `neurax analyze` writes its report next to the model it analysed, so
+        // running the CLI over this directory leaves `*_output.json` files
+        // behind. Those are reports, not configs, and reading them as configs
+        // failed this test for a reason that had nothing to do with the models.
+        if path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .is_some_and(|stem| stem.ends_with("_output"))
+        {
+            continue;
+        }
         let json = std::fs::read_to_string(&path).expect("readable model file");
         neurax_parser::parse_model_config(&json)
             .unwrap_or_else(|e| panic!("{} should still parse: {e}", path.display()));

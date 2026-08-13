@@ -15,9 +15,7 @@ import {
 import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
 import { Label } from '@/components/ui/label.tsx';
-import { Badge } from '@/components/ui/badge.tsx';
 import { Switch } from '@/components/ui/switch.tsx';
-import { Checkbox } from '@/components/ui/checkbox.tsx';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +34,6 @@ import {
 import { useToast } from '@/hooks/use-toast.ts';
 
 import { CanvasNode, Connection } from '@/types/architecture.ts';
-import { generateCode, GeneratedCode } from '@/utils/codeGenerators.ts';
 import { exportToGitHub, ExportGitHubFile } from '@/services/neuraxApi.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { cn } from '@/lib/utils.ts';
@@ -49,22 +46,33 @@ interface GitHubExportPanelProps {
   modelName?: string;
 }
 
-type ExportFormat = 'pytorch' | 'onnx' | 'rust' | 'triton' | 'json';
 
-interface ExportFormatOption {
-  id: ExportFormat;
-  name: string;
-  extension: string;
-  description: string;
+/** A README describing exactly what was pushed, and nothing more. */
+function buildReadme(modelName: string, blocks: number, links: number): string {
+  return [
+    `# ${modelName}`,
+    '',
+    'Architecture designed with [NEURAX](https://github.com/rustnew/NEURAX),',
+    'an analytical compiler for neural network architectures.',
+    '',
+    `- Blocks: ${blocks}`,
+    `- Connections: ${links}`,
+    '',
+    '## What is in this directory',
+    '',
+    '`*.neurax.json` is the topology as the compiler analyses it. Re-open it in',
+    'the NEURAX studio, or analyse it from the command line:',
+    '',
+    '```bash',
+    'cargo install neurax-cli',
+    `neurax analyze ${modelName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`,
+    '```',
+    '',
+    'This is a description of an architecture, not a trained model and not an',
+    'implementation.',
+    '',
+  ].join('\n');
 }
-
-const EXPORT_FORMATS: ExportFormatOption[] = [
-  { id: 'pytorch', name: 'PyTorch', extension: '.py', description: 'Python model definition' },
-  { id: 'onnx', name: 'ONNX Export', extension: '.py', description: 'ONNX export script' },
-  { id: 'json', name: 'JSON Schema', extension: '.json', description: 'Architecture schema' },
-  { id: 'rust', name: 'Rust / Burn', extension: '.rs', description: 'Rust model structure' },
-  { id: 'triton', name: 'Triton Kernels', extension: '.py', description: 'Optimized GPU kernels' },
-];
 
 export function GitHubExportPanel({
   isOpen,
@@ -87,14 +95,11 @@ export function GitHubExportPanel({
   const [prBranch, setPrBranch] = useState(`neurax/${modelName.toLowerCase().replace(/\s+/g, '-')}`);
 
   // Selected formats
-  const [selectedFormats, setSelectedFormats] = useState<ExportFormat[]>(['pytorch', 'json']);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
   const [exportResult, setExportResult] = useState<{ success: boolean; url?: string; error?: string; fileUrls?: string[] } | null>(null);
 
-  // Preview state
-  const [previewCode, setPreviewCode] = useState<GeneratedCode | null>(null);
 
   // Repo list (user enters owner/repo manually)
   const repoPresets = [
@@ -138,41 +143,32 @@ export function GitHubExportPanel({
     });
   };
 
-  const toggleFormat = (format: ExportFormat) => {
-    setSelectedFormats(prev =>
-      prev.includes(format)
-        ? prev.filter(f => f !== format)
-        : [...prev, format]
-    );
-  };
 
-  const handlePreview = (format: ExportFormat) => {
-    const code = generateCode(format, nodes, connections, { modelName });
-    setPreviewCode(code);
-  };
-
-  /** Build file list from selected export formats */
+  /**
+   * What gets pushed.
+   *
+   * The architecture, and nothing invented. This used to also push generated
+   * PyTorch and Rust — a class whose `__init__` was empty and whose `forward`
+   * was a chain of `x2 = x1`, committed to the user's repository under the
+   * name of their model. A file that claims to be LLaMA and is an identity
+   * function is worse in someone's repository than absent from it.
+   */
   const buildFiles = useCallback((): ExportGitHubFile[] => {
-    const files: ExportGitHubFile[] = [];
     const dir = directory.replace(/\/+$/, ''); // strip trailing slash
-
-    for (const fmt of selectedFormats) {
-      const code = generateCode(fmt, nodes, connections, { modelName });
-      files.push({
-        path: `${dir}/${code.filename}`,
-        content: code.content,
-      });
-    }
-
-    // Always include the NEURAX IR JSON for reproducibility
+    const slug = modelName.toLowerCase().replace(/\s+/g, '_');
     const ir = compileToNeuraxIR(nodes, connections);
-    files.push({
-      path: `${dir}/${modelName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`,
-      content: JSON.stringify(ir, null, 2),
-    });
 
-    return files;
-  }, [selectedFormats, directory, nodes, connections, modelName]);
+    return [
+      {
+        path: `${dir}/${slug}.neurax.json`,
+        content: JSON.stringify(ir, null, 2),
+      },
+      {
+        path: `${dir}/README.md`,
+        content: buildReadme(modelName, nodes.length, connections.length),
+      },
+    ];
+  }, [directory, nodes, connections, modelName]);
 
   const handleExport = async () => {
     if (!selectedRepo) {
@@ -184,14 +180,6 @@ export function GitHubExportPanel({
       return;
     }
 
-    if (selectedFormats.length === 0) {
-      toast({
-        title: 'No Formats Selected',
-        description: 'Please select at least one export format.',
-        variant: 'destructive',
-      });
-      return;
-    }
 
     setIsExporting(true);
     setExportResult(null);
@@ -245,7 +233,6 @@ export function GitHubExportPanel({
 
   const handleClose = () => {
     setExportResult(null);
-    setPreviewCode(null);
     onClose();
   };
 
@@ -365,54 +352,21 @@ export function GitHubExportPanel({
                 </div>
               </div>
 
-              {/* Export Formats Selection */}
-              <div className="space-y-3">
-                <Label className="text-sm font-medium">Export Formats</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {EXPORT_FORMATS.map((format) => {
-                    const isSelected = selectedFormats.includes(format.id);
-
-                    return (
-                      <div
-                        key={format.id}
-                        className={cn(
-                          "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all",
-                          isSelected
-                            ? "border-primary bg-primary/5"
-                            : "border-border hover:border-primary/50"
-                        )}
-                        onClick={() => toggleFormat(format.id)}
-                      >
-                        <Checkbox
-                          checked={isSelected}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{format.name}</span>
-                            <Badge variant="outline" className="text-[9px]">
-                              {format.extension}
-                            </Badge>
-                          </div>
-                          <div className="text-[10px] text-muted-foreground truncate">
-                            {format.description}
-                          </div>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-6 text-[10px]"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handlePreview(format.id);
-                          }}
-                        >
-                          Preview
-                        </Button>
-                      </div>
-                    );
-                  })}
+              {/* What gets pushed. Fixed, because it is the only thing NEURAX
+                  can put in a repository truthfully: the topology it analyses,
+                  and a README that says so. */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Files</Label>
+                <div className="rounded-md border border-border bg-muted/40 p-3 text-xs space-y-1">
+                  <div className="font-mono">{directory.replace(/\/+$/, '')}/{modelName.toLowerCase().replace(/\s+/g, '_')}.neurax.json</div>
+                  <div className="font-mono">{directory.replace(/\/+$/, '')}/README.md</div>
+                  <p className="text-muted-foreground pt-1">
+                    The topology exactly as the compiler analyses it, re-openable in
+                    the studio and analysable with the CLI.
+                  </p>
                 </div>
               </div>
+
 
               {/* Branch & Directory */}
               <div className="grid grid-cols-2 gap-4">
@@ -471,29 +425,6 @@ export function GitHubExportPanel({
                     onChange={(e) => setPrBranch(e.target.value)}
                     placeholder="neurax/model-name"
                   />
-                </div>
-              )}
-
-              {/* Code Preview */}
-              {previewCode && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-medium">
-                      Preview: {previewCode.filename}
-                    </Label>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPreviewCode(null)}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <div className="max-h-48 overflow-auto bg-background rounded-lg border border-border">
-                    <pre className="p-3 text-xs font-mono text-muted-foreground whitespace-pre overflow-x-auto">
-                      {previewCode.content}
-                    </pre>
-                  </div>
                 </div>
               )}
 
@@ -566,7 +497,7 @@ export function GitHubExportPanel({
           </Button>
           <Button
             onClick={handleExport}
-            disabled={!isConnected || !selectedRepo || selectedFormats.length === 0 || isExporting}
+            disabled={!isConnected || !selectedRepo || isExporting}
           >
             {isExporting ? (
               <>

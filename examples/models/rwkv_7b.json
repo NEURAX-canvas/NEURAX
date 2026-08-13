@@ -10,12 +10,49 @@
       "sequence_length": 2048
     },
     "layers": [
-      {"id": "embed", "layer_type": "embedding", "params": {"vocab_size": 50277, "hidden_size": 4096}},
-      {"id": "layer_0", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
-      {"id": "layer_1", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
-      {"id": "layer_2", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
-      {"id": "layer_3", "layer_type": "lstm_block", "params": {"hidden_size": 4096}},
-      {"id": "ln_f", "layer_type": "normalization", "params": {"hidden_size": 4096}}
+      {
+        "id": "embed",
+        "layer_type": "embedding",
+        "params": {
+          "vocab_size": 50277,
+          "hidden_size": 4096
+        }
+      },
+      {
+        "id": "layer_0",
+        "layer_type": "rwkv_block",
+        "params": {
+          "hidden_size": 4096
+        }
+      },
+      {
+        "id": "layer_1",
+        "layer_type": "rwkv_block",
+        "params": {
+          "hidden_size": 4096
+        }
+      },
+      {
+        "id": "layer_2",
+        "layer_type": "rwkv_block",
+        "params": {
+          "hidden_size": 4096
+        }
+      },
+      {
+        "id": "layer_3",
+        "layer_type": "rwkv_block",
+        "params": {
+          "hidden_size": 4096
+        }
+      },
+      {
+        "id": "ln_f",
+        "layer_type": "normalization",
+        "params": {
+          "hidden_size": 4096
+        }
+      }
     ]
   },
   "training": {
@@ -26,7 +63,13 @@
     "num_epochs": 1
   },
   "hardware": {
-    "gpus": [{"name": "A100", "memory_gb": 40, "count": 8}]
+    "gpus": [
+      {
+        "name": "A100",
+        "memory_gb": 40,
+        "count": 8
+      }
+    ]
   },
   "data": {
     "dataset_size": 300000000000,

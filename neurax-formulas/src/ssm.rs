@@ -139,3 +139,99 @@ mod tests {
         assert!(params > 0);
     }
 }
+
+/// Parameters of one RWKV block.
+///
+/// RWKV is not a state-space model and not an LSTM, and it was being costed
+/// with Mamba's formula, which gave RWKV-7B 3.4B parameters against a
+/// published 7.5B. Its block is two sublayers:
+///
+/// * **Time mixing** — four square projections (receptance, key, value,
+///   output), plus per-channel decay and bonus vectors that are linear in the
+///   width and negligible beside the matrices, but counted because they are
+///   real weights.
+/// * **Channel mixing** — the feed-forward half: a square receptance
+///   projection, and a key/value pair through the intermediate width.
+///
+/// `intermediate_size` defaults to 4x the model width, which is what the
+/// released RWKV checkpoints use.
+pub fn rwkv_params(hidden_size: usize, intermediate_size: Option<usize>) -> u64 {
+    let hidden = hidden_size as u64;
+    let intermediate = intermediate_size.map(|i| i as u64).unwrap_or(hidden * 4);
+
+    // Time mixing: R, K, V and the output projection.
+    let time_mix = hidden.saturating_mul(hidden).saturating_mul(4);
+    // Decay, first-token bonus, and the three time-shift mixing vectors.
+    let time_decay = hidden.saturating_mul(5);
+
+    // Channel mixing: receptance is square, key and value cross the
+    // intermediate width.
+    let channel_mix = hidden
+        .saturating_mul(hidden)
+        .saturating_add(hidden.saturating_mul(intermediate).saturating_mul(2));
+    let channel_shift = hidden.saturating_mul(2);
+
+    // Two layer norms, each with a weight and a bias.
+    let norms = hidden.saturating_mul(4);
+
+    time_mix
+        .saturating_add(time_decay)
+        .saturating_add(channel_mix)
+        .saturating_add(channel_shift)
+        .saturating_add(norms)
+}
+
+/// Parameters of one retention block (RetNet).
+///
+/// Multi-scale retention keeps the transformer's four projections and adds a
+/// swish gate of the same width, then a gated feed-forward.
+pub fn retention_params(hidden_size: usize, intermediate_size: Option<usize>) -> u64 {
+    let hidden = hidden_size as u64;
+    let intermediate = intermediate_size.map(|i| i as u64).unwrap_or(hidden * 4);
+
+    // Q, K, V, output, and the gate.
+    let retention = hidden.saturating_mul(hidden).saturating_mul(5);
+    // Gated feed-forward, as in the reference implementation.
+    let ffn = hidden.saturating_mul(intermediate).saturating_mul(2);
+    let norms = hidden.saturating_mul(4);
+
+    retention.saturating_add(ffn).saturating_add(norms)
+}
+
+#[cfg(test)]
+mod recurrent_tests {
+    use super::*;
+
+    /// RWKV-7B: 32 blocks of width 4096, published at ~7.5B parameters with
+    /// the embedding and the head.
+    #[test]
+    fn rwkv_7b_matches_its_published_size() {
+        let per_block = rwkv_params(4096, None);
+        let vocab = 50_277u64;
+        let total = per_block * 32 + vocab * 4096 * 2;
+
+        let published = 7.5e9;
+        let error = (total as f64 - published).abs() / published;
+        assert!(
+            error < 0.10,
+            "RWKV-7B came out at {:.2}B, {:.1}% from the published 7.5B",
+            total as f64 / 1e9,
+            error * 100.0
+        );
+    }
+
+    /// The two halves of the block are the same order of magnitude; a formula
+    /// that dropped one would still look plausible on its own.
+    #[test]
+    fn both_sublayers_contribute() {
+        let narrow = rwkv_params(1024, Some(0));
+        let wide = rwkv_params(1024, Some(4096));
+        assert!(wide > narrow * 2, "channel mixing barely moved the total");
+    }
+
+    #[test]
+    fn retention_is_wider_than_plain_attention() {
+        // Five projections rather than four, so it must exceed 4h^2.
+        assert!(retention_params(1024, Some(0)) > 4 * 1024 * 1024);
+    }
+}

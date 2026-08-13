@@ -28,3 +28,7 @@ paper/*.out
 
 # mdBook build output
 /book/book/
+
+# `neurax analyze` writes its report beside the model it analysed.
+examples/models/*_output.json
+examples/models/*_output.md

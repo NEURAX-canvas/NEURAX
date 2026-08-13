@@ -85,8 +85,11 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
             let num_experts = layer.params.num_experts.unwrap_or(8);
-            let shared_experts = layer.params.shared_experts.unwrap_or(1);
-            // Each expert is a gated MLP (2 matrices for up/down projection)
+            // No shared expert unless the config states one. Defaulting to 1
+            // added an expert to every mixture that did not mention them —
+            // Mixtral has none, and it was being counted with nine.
+            let shared_experts = layer.params.shared_experts.unwrap_or(0);
+            // Each expert is a gated MLP: gate, up and down projections.
             let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
             // Router + all experts + shared experts
             moe::moe_params_with_shared(
@@ -164,15 +167,21 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let expansion = layer.params.expansion_factor.unwrap_or(2);
             ssm::mamba_params(hidden, state_dim, expansion)
         }
-        LayerType::S4Block
-        | LayerType::H3Block
-        | LayerType::StateSpace
-        | LayerType::RwkvBlock
-        | LayerType::RetentionBlock => {
+        LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let state_dim = layer.params.state_dim.unwrap_or(16);
             let expansion = layer.params.expansion_factor.unwrap_or(2);
             ssm::mamba_params(hidden, state_dim, expansion)
+        }
+        // RWKV and RetNet are not state-space models. Costing them with
+        // Mamba's formula put RWKV-7B at 3.4B against a published 7.5B.
+        LayerType::RwkvBlock => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            ssm::rwkv_params(hidden, layer.params.intermediate_size)
+        }
+        LayerType::RetentionBlock => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            ssm::retention_params(hidden, layer.params.intermediate_size)
         }
         // GAN layer types
         LayerType::GeneratorBlock | LayerType::DiscriminatorBlock => {
@@ -352,6 +361,11 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
             | LayerType::StateSpace
             | LayerType::RwkvBlock
             | LayerType::RetentionBlock
+            // Recurrent stacks state their depth the same way a transformer
+            // does. Leaving them out meant a config saying "3-layer LSTM,
+            // num_layers: 3" was read as a single layer.
+            | LayerType::LstmBlock
+            | LayerType::GruBlock
     );
     if !is_repeatable {
         return 1.0;
@@ -369,9 +383,32 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
         };
     }
 
-    let json_block_count = json_attention_count.max(json_ssm_count).max(1);
-    if global_num_layers > json_block_count {
-        global_num_layers as f64 / json_block_count as f64
+    // Each kind scales against how many of *its own* kind were listed, not
+    // against the attention count.
+    //
+    // The previous version derived one scale from the attention blocks and
+    // applied it to everything repeatable. That is correct only when every
+    // kind is listed the same number of times. Mixtral lists 2 attention
+    // blocks and 4 MoE blocks for a 32-layer model: the shared scale of 32/2
+    // gave 32 attention layers — right — and 64 MoE layers, doubling a model
+    // that was already the larger half of its parameters. Measured against the
+    // published figure it came out at 103.8B instead of 46.7B, and DeepSeek-V3
+    // at 1.39T instead of 671B.
+    let listed_of_this_kind = match layer.layer_type {
+        LayerType::MoE => json_moe_count,
+        LayerType::Attention => json_attention_count,
+        LayerType::MambaBlock | LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace => {
+            json_ssm_count
+        }
+        other => count_of(&|l: &Layer| l.layer_type == other),
+    };
+
+    // A kind listed once in a model whose depth is stated separately is a
+    // representative block; a kind listed as many times as the depth is already
+    // spelled out and must not be multiplied again.
+    let listed = listed_of_this_kind.max(1);
+    if global_num_layers > listed {
+        global_num_layers as f64 / listed as f64
     } else {
         1.0
     }

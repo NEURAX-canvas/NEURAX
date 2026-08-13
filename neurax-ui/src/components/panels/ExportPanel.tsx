@@ -31,7 +31,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.t
 import { useToast } from '@/hooks/use-toast.ts';
 import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
 import { ArchitectureFamily } from '@/types/plugins.ts';
-import { generateCode } from '@/utils/codeGenerators.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
 import { GitHubExportPanel } from './GitHubExportPanel.tsx';
@@ -71,6 +70,7 @@ const EXPORT_OPTIONS: ExportOption[] = [
   // not making one.
   { id: 'json', name: 'JSON', description: 'Architecture and analysis, re-importable', extension: '.json', icon: 'FileJson', minPlan: 'free' },
   { id: 'neurax-ir', name: 'NEURAX IR', description: 'Compiler input — the exact topology analysed', extension: '.neurax.json', icon: 'Box', includeAnalysis: true, minPlan: 'free' },
+  { id: 'github', name: 'GitHub', description: 'Push the architecture to a repository', extension: '', icon: 'Github', minPlan: 'free' },
 ];
 
 interface ExportPanelProps {
@@ -84,100 +84,7 @@ interface ExportPanelProps {
 }
 
 // Mock code previews
-const MOCK_PYTORCH_CODE = `import torch
-import torch.nn as nn
 
-class AIArchitecture(nn.Module):
-    def __init__(self):
-        super().__init__()
-        
-        # Input layer: [batch, 224, 224, 3]
-        self.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1)
-        self.relu1 = nn.ReLU()
-        
-        # Attention block
-        self.attention = nn.MultiheadAttention(
-            embed_dim=512,
-            num_heads=8,
-            batch_first=True
-        )
-        self.layer_norm = nn.LayerNorm(512)
-        
-        # Output layer
-        self.fc = nn.Linear(512, 1000)
-    
-    def forward(self, x):
-        x = self.relu1(self.conv1(x))
-        x = x.flatten(2).transpose(1, 2)
-        
-        attn_out, _ = self.attention(x, x, x)
-        x = self.layer_norm(x + attn_out)
-        
-        x = x.mean(dim=1)
-        return self.fc(x)
-
-# Model Statistics:
-# - Total Parameters: 25,600,000
-# - Estimated FLOPs: 4.1 GFLOPs
-# - Memory Usage: 97.6 MB (FP32)
-`;
-
-const MOCK_RUST_CODE = `use tch::{nn, Tensor};
-
-/// AI Architecture Designer - Generated Model
-/// 
-/// Architecture Summary:
-/// - Input Shape: [batch, 224, 224, 3]
-/// - Output Shape: [batch, 1000]
-/// - Total Parameters: 25,600,000
-/// - Estimated FLOPs: 4.1 GFLOPs
-
-pub struct AIArchitecture {
-    conv1: nn::Conv2D,
-    attention: MultiHeadAttention,
-    layer_norm: nn::LayerNorm,
-    fc: nn::Linear,
-}
-
-impl AIArchitecture {
-    pub fn new(vs: &nn::Path) -> Self {
-        let conv1 = nn::conv2d(
-            vs / "conv1",
-            3,  // in_channels
-            64, // out_channels
-            3,  // kernel_size
-            Default::default(),
-        );
-        
-        let attention = MultiHeadAttention::new(
-            vs / "attention",
-            512, // embed_dim
-            8,   // num_heads
-        );
-        
-        let layer_norm = nn::layer_norm(
-            vs / "layer_norm",
-            vec![512],
-            Default::default(),
-        );
-        
-        let fc = nn::linear(vs / "fc", 512, 1000, Default::default());
-        
-        Self { conv1, attention, layer_norm, fc }
-    }
-    
-    pub fn forward(&self, x: &Tensor) -> Tensor {
-        let x = self.conv1.forward(x).relu();
-        let x = x.flatten(2, -1).transpose(1, 2);
-        
-        let attn_out = self.attention.forward(&x, &x, &x);
-        let x = self.layer_norm.forward(&(&x + &attn_out));
-        
-        let x = x.mean_dim(&[1], false, tch::Kind::Float);
-        self.fc.forward(&x)
-    }
-}
-`;
 
 export function ExportPanel({
   isOpen,
@@ -195,15 +102,6 @@ export function ExportPanel({
   const { toast } = useToast();
 
   const { config: hwConfig } = useHardware();
-
-  // Generate real code based on current architecture
-  const pytorchCode = nodes.length > 0
-    ? generateCode('pytorch', nodes, connections, { modelName: architectureName }).content
-    : MOCK_PYTORCH_CODE;
-
-  const rustCode = nodes.length > 0
-    ? generateCode('rust', nodes, connections, { modelName: architectureName }).content
-    : MOCK_RUST_CODE;
 
   // Compile NEURAX IR JSON from canvas graph
   const neuraxIR = compileToNeuraxIR(nodes, connections, {
@@ -274,6 +172,11 @@ export function ExportPanel({
       return;
     }
 
+    if (format.id === 'github') {
+      setShowGitHubExport(true);
+      return;
+    }
+
     if (format.id === 'json') {
       const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`;
       const saved = await saveAndNotify(
@@ -331,12 +234,7 @@ export function ExportPanel({
                 <FileJson className="w-3 h-3 text-primary" />
                 NEURAX IR
               </TabsTrigger>
-              <TabsTrigger value="pytorch">PyTorch</TabsTrigger>
-              <TabsTrigger value="rust">
-                <span className="flex items-center gap-1">
-                  Rust
-                </span>
-              </TabsTrigger>
+
             </TabsList>
 
             <TabsContent value="formats" className="flex-1 overflow-y-auto p-1">
@@ -467,109 +365,7 @@ export function ExportPanel({
             </TabsContent>
 
 
-            <TabsContent value="pytorch" className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Code className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium">PyTorch Model Definition</span>
-                  {nodes.length > 0 && (
-                    <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/30">
-                      Generated from canvas
-                    </Badge>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7"
-                  onClick={() => handleCopyCode(pytorchCode)}
-                >
-                  {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
-                  {copied ? 'Copied!' : 'Copy'}
-                </Button>
-              </div>
-              <div className="flex-1 overflow-auto bg-background rounded-lg border border-border">
-                <pre className="p-4 text-xs font-mono text-muted-foreground whitespace-pre overflow-x-auto">
-                  {pytorchCode}
-                </pre>
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleCopyCode(pytorchCode)}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Code
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowGitHubExport(true)}
-                >
-                  <Github className="w-4 h-4 mr-2" />
-                  Push to GitHub
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const format = EXPORT_OPTIONS.find(f => f.id === 'pytorch');
-                    if (format) handleExport(format);
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download .py
-                </Button>
-              </div>
-            </TabsContent>
 
-            <TabsContent value="rust" className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <Cog className="w-4 h-4 text-primary" />
-                  <span className="text-sm font-medium">Rust Model Structure</span>
-                  {nodes.length > 0 && (
-                    <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/30">
-                      Generated from canvas
-                    </Badge>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7"
-                  onClick={() => handleCopyCode(rustCode)}
-                >
-                  {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
-                  {copied ? 'Copied!' : 'Copy'}
-                </Button>
-              </div>
-              <div className="flex-1 overflow-auto bg-background rounded-lg border border-border">
-                <pre className="p-4 text-xs font-mono text-muted-foreground whitespace-pre overflow-x-auto">
-                  {rustCode}
-                </pre>
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => handleCopyCode(rustCode)}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy Code
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowGitHubExport(true)}
-                >
-                  <Github className="w-4 h-4 mr-2" />
-                  Push to GitHub
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    const format = EXPORT_OPTIONS.find(f => f.id === 'rust');
-                    if (format) handleExport(format);
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download .rs
-                </Button>
-              </div>
-            </TabsContent>
           </Tabs>
 
           {/* GitHub Export Panel */}
