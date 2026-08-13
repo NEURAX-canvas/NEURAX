@@ -5,9 +5,9 @@
   "identifier": "dev.neurax.desktop",
   "build": {
     "frontendDist": "../neurax-ui/dist",
-    "beforeBuildCommand": "npm --prefix ../neurax-ui run build:desktop",
+    "beforeBuildCommand": "npm --prefix neurax-ui run build:desktop",
     "devUrl": "http://localhost:8081",
-    "beforeDevCommand": "npm --prefix ../neurax-ui run dev"
+    "beforeDevCommand": "npm --prefix neurax-ui run dev"
   },
   "app": {
     "withGlobalTauri": false,

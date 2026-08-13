@@ -174,6 +174,24 @@ class BudgetReport:
     checks: list[BudgetCheck] = field(default_factory=list)
     metrics: dict[str, Any] = field(default_factory=dict)
     error: Optional[str] = None
+    #: Diagnostics the compiler emitted about the design itself, as opposed to
+    #: whether it meets the client's budget. A model can fit a size limit
+    #: perfectly and still be one the compiler says will not start.
+    diagnostics: list[dict[str, Any]] = field(default_factory=list)
+
+    def blocking_diagnostics(self) -> list[dict[str, Any]]:
+        """Diagnostics that describe a design which will not work.
+
+        Warnings about, say, an unusual head count are information. A peak VRAM
+        that exceeds the target GPU is a design that cannot run, and no budget
+        check would catch it — the model may be well under the size limit and
+        still never start.
+        """
+        return [
+            d
+            for d in self.diagnostics
+            if str(d.get("severity", "")).lower() in {"critical", "error"}
+        ]
 
     def summary(self) -> str:
         if self.error:
@@ -195,10 +213,27 @@ class BudgetReport:
         only that it "failed" tends to make an arbitrary change; told that the
         model is 12.4 MB against a 1 MB limit, it can size the fix.
         """
-        if self.fits or self.error:
-            return []
+        messages: list[str] = []
 
-        messages = []
+        # Blocking diagnostics are reported whether or not the budget was met.
+        # Returning early on `fits` used to hide them completely: a design that
+        # came in under the size limit was delivered without anyone mentioning
+        # that the compiler said it would not run.
+        for diagnostic in self.blocking_diagnostics():
+            message = str(diagnostic.get("message", "")).strip()
+            if not message:
+                continue
+            suggestion = str(diagnostic.get("suggestion") or "").strip()
+            code = str(diagnostic.get("code") or "").strip()
+            prefix = f"[{code}] " if code else ""
+            messages.append(
+                f"{prefix}The compiler rejects this design: {message}"
+                + (f" {suggestion}" if suggestion else "")
+            )
+
+        if self.fits or self.error:
+            return messages
+
         for check in self.checks:
             if check.fits:
                 continue
@@ -298,9 +333,16 @@ async def measure_and_check(
         logger.warning("budget check could not reach the compiler: %s", exc)
         return BudgetReport(fits=True, error=str(exc))
 
-    metrics = payload.get("report", {}).get("metrics", payload.get("metrics", {}))
+    report = payload.get("report", payload)
+    metrics = report.get("metrics", {})
+    # The compiler's own verdict on the design. Read here rather than discarded,
+    # because the planner needs it: a design can satisfy every stated budget and
+    # still be one the compiler reports as unable to start.
+    diagnostics = report.get("diagnostics", []) or []
     if not metrics:
-        return BudgetReport(fits=True, error="analysis returned no metrics")
+        return BudgetReport(
+            fits=True, error="analysis returned no metrics", diagnostics=diagnostics
+        )
 
     checks: list[BudgetCheck] = []
 
@@ -330,6 +372,7 @@ async def measure_and_check(
         fits=all(check.fits for check in checks),
         checks=checks,
         metrics=metrics,
+        diagnostics=diagnostics,
     )
 
 

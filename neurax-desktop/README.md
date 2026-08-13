@@ -23,6 +23,12 @@ It downloads the bundle for your platform, installs it under `~/.local`, adds
 it to your applications menu, and makes `neurax` available in the shell.
 Nothing is written outside your home directory and no step runs under sudo.
 
+On Linux it takes the AppImage when one was published, and otherwise unpacks
+the `.deb` or the `.rpm` into your home directory rather than handing it to a
+package manager — same files, no root. That fallback is not theoretical: the
+AppImage bundler downloads tooling at build time, and a 503 from that download
+is enough to produce a release with a `.deb` and an `.rpm` and no AppImage.
+
     --version <tag>   install a specific release
     --prefix <dir>    install somewhere other than ~/.local
     --uninstall       remove it again

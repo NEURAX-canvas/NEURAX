@@ -4,7 +4,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 from requirements import extract_budget
-from budget_check import measure_and_check, spec_to_topology
+from budget_check import BudgetReport, measure_and_check, spec_to_topology
 from topology_validator import ArchSpec
 
 MB = 1024 ** 2
@@ -82,3 +82,78 @@ def test_no_budget_means_no_constraint():
         pytest.skip(f"compiler unavailable: {report.error}")
     assert report.fits
     assert report.checks == []
+
+
+# ─── The compiler's diagnostics reach the planner ──────────────────────
+
+def _diag(severity, message, code="W001", suggestion=None):
+    return {
+        "severity": severity,
+        "message": message,
+        "code": code,
+        "suggestion": suggestion,
+        "category": "Memory",
+    }
+
+
+def test_blocking_diagnostics_keeps_only_what_stops_a_design():
+    """Informational warnings are not reasons to redesign; failures are."""
+    report = BudgetReport(
+        fits=True,
+        diagnostics=[
+            _diag("Warning", "Head count is unusual for this width"),
+            _diag("Info", "Using the default rope theta"),
+            _diag("Critical", "This model needs 954.5 GB but the GPU has 17.2 GB"),
+        ],
+    )
+
+    blocking = report.blocking_diagnostics()
+    assert len(blocking) == 1
+    assert "954.5 GB" in blocking[0]["message"]
+
+
+def test_a_design_that_fits_the_budget_still_reports_a_blocking_diagnostic():
+    """The gap this closes.
+
+    A model can sit comfortably under every stated limit and still be one the
+    compiler says will not start. Returning early on `fits` meant nobody was
+    told.
+    """
+    report = BudgetReport(
+        fits=True,
+        diagnostics=[_diag("Critical", "Peak VRAM exceeds the target GPU", code="E002")],
+    )
+
+    feedback = report.planner_feedback()
+    assert feedback, "a blocking diagnostic must reach the planner"
+    assert "E002" in feedback[0]
+    assert "Peak VRAM" in feedback[0]
+
+
+def test_a_clean_design_produces_no_feedback():
+    report = BudgetReport(fits=True, diagnostics=[_diag("Info", "Nothing of note")])
+    assert report.planner_feedback() == []
+
+
+def test_the_suggestion_is_carried_across():
+    report = BudgetReport(
+        fits=True,
+        diagnostics=[
+            _diag(
+                "Critical",
+                "Peak VRAM exceeds the target GPU",
+                suggestion="Enable gradient checkpointing or use a larger GPU.",
+            )
+        ],
+    )
+    assert "gradient checkpointing" in report.planner_feedback()[0]
+
+
+def test_diagnostics_survive_a_report_with_no_metrics():
+    """A rejected design is exactly when its diagnostics matter most."""
+    report = BudgetReport(
+        fits=True,
+        error="analysis returned no metrics",
+        diagnostics=[_diag("Critical", "Attention head count divides into zero")],
+    )
+    assert len(report.planner_feedback()) == 1

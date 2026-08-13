@@ -135,27 +135,36 @@ asset_url_from() {
 # the desktop application, and the newest release is not necessarily one that
 # published installers. So walk the releases newest-first and take the first
 # that has the asset we need.
-resolve_release() {
+# Look for a release carrying `suffix`, without failing if there is none.
+#
+# Sets ASSET_URL and RELEASE_TAG and returns 0 on success; returns 1 otherwise,
+# so the caller can try another format.
+#
+# Deliberately not `/releases/latest`: this repository has tags that predate the
+# desktop application, and the newest release is not necessarily one that
+# published installers. So walk the releases newest-first and take the first
+# that actually has the asset.
+resolve_release_quietly() {
     suffix="$1"
-
-    if [ -n "${VERSION}" ]; then
-        step "Looking up release ${VERSION}"
-        release_json=$(fetch "${API}/releases/tags/${VERSION}") \
-            || die "no release tagged ${VERSION}"
-        ASSET_URL=$(asset_url_from "${release_json}" "${suffix}")
-        [ -n "${ASSET_URL}" ] || die "release ${VERSION} has no ${suffix} bundle"
-        RELEASE_TAG="${VERSION}"
-        return
-    fi
-
-    step "Finding the newest NEURAX release for ${PLATFORM}"
-    releases_json=$(fetch "${API}/releases?per_page=30") \
-        || die "could not reach the GitHub API. Are you online?"
-
-    # Split into one release per line, preserving order (newest first).
     ASSET_URL=""
     RELEASE_TAG=""
-    for tag in $(printf '%s' "${releases_json}" \
+
+    if [ -n "${VERSION}" ]; then
+        release_json=$(fetch "${API}/releases/tags/${VERSION}") || return 1
+        ASSET_URL=$(asset_url_from "${release_json}" "${suffix}")
+        [ -n "${ASSET_URL}" ] || return 1
+        RELEASE_TAG="${VERSION}"
+        return 0
+    fi
+
+    # Fetched once and reused across the formats this is called with.
+    if [ -z "${RELEASES_JSON:-}" ]; then
+        step "Finding the newest NEURAX release for ${PLATFORM}"
+        RELEASES_JSON=$(fetch "${API}/releases?per_page=30") \
+            || die "could not reach the GitHub API. Are you online?"
+    fi
+
+    for tag in $(printf '%s' "${RELEASES_JSON}" \
                     | tr ',' '\n' \
                     | grep '"tag_name"' \
                     | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'); do
@@ -164,27 +173,47 @@ resolve_release() {
         if [ -n "${url}" ]; then
             ASSET_URL="${url}"
             RELEASE_TAG="${tag}"
-            break
+            return 0
         fi
     done
 
-    if [ -z "${ASSET_URL}" ]; then
-        die "no published release contains a ${suffix} bundle yet.
+    return 1
+}
+
+no_release_error() {
+    die "no published release contains $1 yet.
 
 The desktop installers are produced by the \`Build desktop installers\`
-workflow, which runs when a version tag is pushed. Until one has run, build
-from a checkout:
+workflow, which runs when a version tag is pushed. A release it creates is a
+draft, and drafts are invisible here until they are published.
+
+Until then, build from a checkout:
 
     git clone https://github.com/${REPO}.git
     cd NEURAX/neurax-desktop && cargo tauri build"
-    fi
 }
 
 # ─── Install: Linux ─────────────────────────────────────────────────
 
 install_linux() {
     need curl
-    resolve_release ".AppImage"
+
+    # Preference order, and why. The AppImage is one self-contained file that
+    # needs no package manager and no root, so it is tried first. But its build
+    # depends on tooling downloaded at bundle time, which does fail — a 503 from
+    # a raw.githubusercontent.com URL is enough to produce a release with a .deb
+    # and an .rpm and no AppImage. Falling back to unpacking one of those into
+    # $HOME keeps the install working and still never asks for a password.
+    for suffix in ".AppImage" ".deb" ".rpm"; do
+        if resolve_release_quietly "${suffix}"; then
+            LINUX_KIND="${suffix}"
+            break
+        fi
+    done
+
+    if [ -z "${ASSET_URL:-}" ]; then
+        no_release_error "a Linux bundle"
+    fi
 
     step "Installing NEURAX ${RELEASE_TAG}"
     note "${ASSET_URL}"
@@ -194,16 +223,79 @@ install_linux() {
     # shellcheck disable=SC2064  # expand tmp now, not at exit
     trap "rm -rf '${tmp}'" EXIT INT TERM
 
-    fetch_to "${ASSET_URL}" "${tmp}/neurax.AppImage"
-    chmod +x "${tmp}/neurax.AppImage"
-    # Move into place last, so an interrupted download never leaves a broken
-    # executable where a working one used to be.
-    mv -f "${tmp}/neurax.AppImage" "${APP_DIR}/neurax-desktop"
-    ln -sf "${APP_DIR}/neurax-desktop" "${BIN_DIR}/neurax-desktop"
+    case "${LINUX_KIND}" in
+        .AppImage) install_linux_appimage "${tmp}" ;;
+        .deb)      install_linux_deb "${tmp}" ;;
+        .rpm)      install_linux_rpm "${tmp}" ;;
+    esac
 
     install_launcher
     install_desktop_entry
+}
+
+install_linux_appimage() {
+    tmp="$1"
+    fetch_to "${ASSET_URL}" "${tmp}/neurax.AppImage"
+    chmod +x "${tmp}/neurax.AppImage"
+    # Moved into place last, so an interrupted download never leaves a broken
+    # executable where a working one used to be.
+    mv -f "${tmp}/neurax.AppImage" "${APP_DIR}/neurax-desktop"
+    ln -sf "${APP_DIR}/neurax-desktop" "${BIN_DIR}/neurax-desktop"
     check_fuse
+}
+
+# Unpack the package rather than installing it.
+#
+# `dpkg -i` and `rpm -i` both need root and both write to /usr. Unpacking gives
+# the same files under $HOME, which is all NEURAX needs: it is one binary and
+# its resources, with no system integration beyond the menu entry written
+# separately.
+install_linux_deb() {
+    tmp="$1"
+    fetch_to "${ASSET_URL}" "${tmp}/neurax.deb"
+
+    if command -v dpkg-deb >/dev/null 2>&1; then
+        dpkg-deb -x "${tmp}/neurax.deb" "${tmp}/root"
+    elif command -v ar >/dev/null 2>&1; then
+        (cd "${tmp}" && ar x neurax.deb && mkdir -p root && tar -xf data.tar.* -C root)
+    else
+        die "unpacking a .deb needs \`dpkg-deb\` or \`ar\`, and neither is installed."
+    fi
+
+    place_unpacked "${tmp}/root"
+}
+
+install_linux_rpm() {
+    tmp="$1"
+    fetch_to "${ASSET_URL}" "${tmp}/neurax.rpm"
+
+    command -v rpm2cpio >/dev/null 2>&1 || die "unpacking an .rpm needs \`rpm2cpio\`."
+    command -v cpio >/dev/null 2>&1 || die "unpacking an .rpm needs \`cpio\`."
+
+    mkdir -p "${tmp}/root"
+    (cd "${tmp}/root" && rpm2cpio "${tmp}/neurax.rpm" | cpio -idm --quiet)
+
+    place_unpacked "${tmp}/root"
+}
+
+# Move an unpacked package tree into place and expose its binary.
+place_unpacked() {
+    root="$1"
+
+    binary=$(find "${root}" -type f -name "neurax-desktop" -perm -u+x -print -quit)
+    [ -n "${binary}" ] || die "the package contained no neurax-desktop binary."
+
+    rm -rf "${APP_DIR}/files"
+    mkdir -p "${APP_DIR}/files"
+    # `usr` holds the binary, the icons and the desktop file; keeping the whole
+    # tree means the resources stay where the binary expects them.
+    cp -R "${root}/usr" "${APP_DIR}/files/" 2>/dev/null || cp -R "${root}/." "${APP_DIR}/files/"
+
+    installed=$(find "${APP_DIR}/files" -type f -name "neurax-desktop" -print -quit)
+    [ -n "${installed}" ] || die "could not place the binary."
+    chmod +x "${installed}"
+    ln -sf "${installed}" "${APP_DIR}/neurax-desktop"
+    ln -sf "${APP_DIR}/neurax-desktop" "${BIN_DIR}/neurax-desktop"
 }
 
 # An AppImage needs FUSE to mount itself. Most desktops have it; some minimal
@@ -241,7 +333,7 @@ ENTRY
 install_macos() {
     need curl
     need hdiutil
-    resolve_release ".dmg"
+    resolve_release_quietly ".dmg" || no_release_error "a macOS disk image"
 
     step "Installing NEURAX ${RELEASE_TAG}"
     note "${ASSET_URL}"

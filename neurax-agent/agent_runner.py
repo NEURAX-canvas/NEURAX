@@ -158,29 +158,64 @@ async def _run_agent(
                         await q.put(_event("assistant", {"content": f"Refining design (fix: {previous_errors[0]})..."}))
                     continue
 
-                # ── 2b. Phase 2b: Measure the design against the budget ──
-                if budget.is_empty():
-                    logger.info(f"✅ Spec validated on attempt {attempt}")
-                    break
-
-                await q.put(_event("assistant", {"content": "Compiling the design to check it against your budget..."}))
+                # ── 2b. Phase 2b: Compile the design ──
+                #
+                # Always compiled, budget or not. The compiler is the only thing
+                # that knows whether a design will actually run, and an analysis
+                # costs milliseconds. Skipping it when the client stated no
+                # budget — which is most requests — meant the agent delivered
+                # designs the compiler had already judged unable to start,
+                # without ever asking it.
+                stated_budget = not budget.is_empty()
+                await q.put(_event("assistant", {
+                    "content": "Compiling the design to check it against your budget..."
+                    if stated_budget
+                    else "Compiling the design to check it holds up..."
+                }))
                 budget_report = await measure_and_check(spec, budget, hw_config)
 
                 if budget_report.error:
                     # The compiler is the authority on size; without it we ship
                     # the structurally valid design and say the budget is unverified.
-                    logger.warning(f"⚠️ Budget not verified: {budget_report.error}")
+                    logger.warning(f"⚠️ Not verified: {budget_report.error}")
                     await q.put(_event("assistant", {
-                        "content": f"Could not verify the budget ({budget_report.error}); "
-                                   "delivering the design unmeasured."
+                        "content": f"Could not compile the design ({budget_report.error}); "
+                                   "delivering it unmeasured."
                     }))
                     break
 
-                logger.info("📏 Budget check:\n%s", budget_report.summary())
-                await q.put(_event("assistant", {"content": budget_report.summary()}))
+                # What the compiler says about the design itself, separately
+                # from whether it meets a budget. A model can be comfortably
+                # under a size limit and still be one that will not start.
+                blocking = budget_report.blocking_diagnostics()
+                if blocking:
+                    logger.warning(
+                        "🚫 Compiler diagnostics on attempt %s: %s",
+                        attempt,
+                        "; ".join(str(d.get("message", "")) for d in blocking),
+                    )
+                    for diagnostic in blocking[:5]:
+                        await q.put(_event("assistant", {
+                            "content": f"The compiler flags this design: {diagnostic.get('message', '')}"
+                        }))
+
+                if stated_budget:
+                    logger.info("📏 Budget check:\n%s", budget_report.summary())
+                    await q.put(_event("assistant", {"content": budget_report.summary()}))
+
+                if budget_report.fits and not blocking:
+                    logger.info(f"✅ Design holds up on attempt {attempt}")
+                    break
+
+                if blocking and attempt < MAX_ATTEMPTS:
+                    # Hand the compiler's own words to the planner and try
+                    # again, rather than reaching for the precision lever —
+                    # which does nothing for a design that is structurally
+                    # wrong.
+                    previous_errors = budget_report.planner_feedback()
+                    continue
 
                 if budget_report.fits:
-                    logger.info(f"✅ Spec meets the budget on attempt {attempt}")
                     break
 
                 # Storage width is the one lever that costs nothing to pull: it
