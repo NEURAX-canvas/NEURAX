@@ -26,7 +26,7 @@ const ApiKeyContext = createContext<ApiKeyContextType | undefined>(undefined);
 
 const PROVIDER_DEFAULTS: Record<ApiProvider, { endpoint: string; defaultModel: string }> = {
   openai: { endpoint: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
-  anthropic: { endpoint: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-4-20250514' },
+  anthropic: { endpoint: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-5' },
   google: { endpoint: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-2.5-pro-exp-03-25' },
   mistral: { endpoint: 'https://api.mistral.ai/v1', defaultModel: 'mistral-large-2407' },
   custom: { endpoint: '', defaultModel: 'custom-model' },

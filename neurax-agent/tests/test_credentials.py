@@ -77,3 +77,111 @@ def test_the_run_request_carries_credentials():
     assert 'credentials' in fields, 'the agent must accept the caller key'
     # Optional, so a deployment with its own key keeps working.
     assert not fields['credentials'].is_required()
+
+
+# ─── Provider reach: Anthropic, and gateways in front of it ────────────
+
+def _fake_anthropic(monkeypatch, captured):
+    """Stand in for `langchain_anthropic.ChatAnthropic`."""
+    import types
+
+    class FakeChatAnthropic:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    module = types.ModuleType('langchain_anthropic')
+    module.ChatAnthropic = FakeChatAnthropic
+    monkeypatch.setitem(sys.modules, 'langchain_anthropic', module)
+
+
+def test_anthropic_is_selected_and_uses_the_callers_key(monkeypatch):
+    captured = {}
+    _fake_anthropic(monkeypatch, captured)
+    monkeypatch.delenv('ANTHROPIC_API_KEY', raising=False)
+
+    langchain_runner.make_chat_model(
+        credentials={'provider': 'anthropic', 'api_key': 'caller-anthropic-key'}
+    )
+
+    assert captured['anthropic_api_key'] == 'caller-anthropic-key'
+
+
+def test_the_default_claude_model_is_current(monkeypatch):
+    """A stale default silently gives every client an older model.
+
+    The agent defaulted to `claude-3-5-sonnet-20240620` while the studio
+    offered `claude-sonnet-4-20250514`, so which model a client got depended on
+    which of the two happened to fill the blank.
+    """
+    captured = {}
+    _fake_anthropic(monkeypatch, captured)
+    monkeypatch.delenv('LLM_MODEL', raising=False)
+    monkeypatch.delenv('LLAMA_MODEL', raising=False)
+
+    langchain_runner.make_chat_model(credentials={'provider': 'anthropic', 'api_key': 'k'})
+
+    assert captured['model'] == langchain_runner.DEFAULT_ANTHROPIC_MODEL
+    assert captured['model'] == 'claude-sonnet-5'
+
+
+def test_an_anthropic_gateway_is_honoured(monkeypatch):
+    """A client behind a corporate proxy or LiteLLM must be able to point at it.
+
+    Only the OpenAI path honoured `base_url`, so these callers were accepted
+    and then sent to api.anthropic.com regardless.
+    """
+    captured = {}
+    _fake_anthropic(monkeypatch, captured)
+
+    langchain_runner.make_chat_model(
+        credentials={
+            'provider': 'anthropic',
+            'api_key': 'k',
+            'base_url': 'https://llm.example.internal/anthropic/',
+        }
+    )
+
+    assert captured['anthropic_api_url'] == 'https://llm.example.internal/anthropic'
+
+
+def test_the_official_endpoint_is_not_passed_as_an_override(monkeypatch):
+    """Naming the real endpoint should behave exactly like naming none."""
+    captured = {}
+    _fake_anthropic(monkeypatch, captured)
+
+    langchain_runner.make_chat_model(
+        credentials={
+            'provider': 'anthropic',
+            'api_key': 'k',
+            'base_url': 'https://api.anthropic.com/v1',
+        }
+    )
+
+    assert 'anthropic_api_url' not in captured
+
+
+def test_a_custom_provider_reaches_its_own_endpoint(monkeypatch):
+    """`custom` is any OpenAI-compatible server: vLLM, Ollama, a gateway."""
+    captured = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    import types
+    module = types.ModuleType('langchain_openai')
+    module.ChatOpenAI = FakeChatOpenAI
+    monkeypatch.setitem(sys.modules, 'langchain_openai', module)
+
+    langchain_runner.make_chat_model(
+        credentials={
+            'provider': 'custom',
+            'api_key': 'k',
+            'base_url': 'http://192.168.1.50:8000/v1/',
+            'model': 'qwen2.5-72b-instruct',
+        }
+    )
+
+    assert captured['base_url'] == 'http://192.168.1.50:8000/v1'
+    assert captured['model'] == 'qwen2.5-72b-instruct'
+    assert captured['openai_api_key'] == 'k'

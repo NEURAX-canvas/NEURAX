@@ -35,6 +35,17 @@ class _FamilySelection(BaseModel):
     )
 
 
+#: Default models, when the caller names none.
+#:
+#: Stated here rather than inline so the agent and the studio cannot drift:
+#: `neurax-ui/src/contexts/ApiKeyContext.tsx` offers the same identifiers. They
+#: had drifted — the studio proposed `claude-sonnet-4-20250514` while the agent
+#: defaulted to `claude-3-5-sonnet-20240620`, so which model a client actually
+#: got depended on which of the two filled the blank.
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
+DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+
+
 def make_chat_model(
     temperature: float = 0.0,
     max_tokens: int = 2048,
@@ -88,14 +99,27 @@ def make_chat_model(
     if llm_provider == "anthropic":
         try:
             from langchain_anthropic import ChatAnthropic
-            logger.info(f"Using Anthropic provider with model: {llm_model or 'claude-3-5-sonnet-20240620'}")
-            return ChatAnthropic(
-                model=llm_model or "claude-3-5-sonnet-20240620",
-                anthropic_api_key=anthropic_api_key,
-                temperature=temperature,
-                timeout=timeout,
-                max_tokens=max_tokens,
-            )
+
+            # A caller may point Anthropic at a gateway of their own — a
+            # corporate proxy, LiteLLM, a Bedrock-compatible front. Only the
+            # OpenAI path honoured `base_url`, so those callers had no way in
+            # even though their key and model were accepted.
+            anthropic_base_url = (
+                (creds.get("base_url") or "") or os.getenv("ANTHROPIC_BASE_URL", "")
+            ).strip()
+
+            model = llm_model or DEFAULT_ANTHROPIC_MODEL
+            logger.info("Using Anthropic provider with model: %s", model)
+            kwargs = {
+                "model": model,
+                "anthropic_api_key": anthropic_api_key,
+                "temperature": temperature,
+                "timeout": timeout,
+                "max_tokens": max_tokens,
+            }
+            if anthropic_base_url and "api.anthropic.com" not in anthropic_base_url:
+                kwargs["anthropic_api_url"] = anthropic_base_url.rstrip("/")
+            return ChatAnthropic(**kwargs)
         except ImportError:
             logger.error(
                 "langchain-anthropic is not installed. "
@@ -103,7 +127,7 @@ def make_chat_model(
                 "Falling back to OpenAI with gpt-4o-mini."
             )
             # CRITICAL: reset model so we don't send a claude name to OpenAI's API
-            llm_model = "gpt-4o-mini"
+            llm_model = DEFAULT_OPENAI_MODEL
             llm_provider = "openai"
 
     # OpenAI-compatible provider (OpenAI or local LLM servers)
@@ -119,7 +143,7 @@ def make_chat_model(
     elif not llm_api_key:
         base_url = llama_base_url.rstrip("/")
 
-    openai_model = llm_model or "gpt-4o-mini"
+    openai_model = llm_model or DEFAULT_OPENAI_MODEL
     logger.info(f"Using OpenAI provider with model: {openai_model}")
 
     return ChatOpenAI(
