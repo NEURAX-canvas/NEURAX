@@ -22,7 +22,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select.tsx';
 import {
   Tooltip,
@@ -81,24 +80,37 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
 
   return (
     <Select value={value} onValueChange={(v) => onChange(v as ArchitectureFamily)}>
-      <SelectTrigger 
+      <SelectTrigger
+        title={currentFamily ? `${currentFamily.name} — ${currentFamily.description}` : undefined}
         className={cn(
-          "w-[280px] h-9 bg-secondary/50 border-border/50 hover:bg-secondary transition-colors",
+          "w-[168px] xl:w-[210px] 2xl:w-[240px] h-9 shrink-0",
+          "bg-secondary/50 border-border/50 hover:bg-secondary transition-colors",
           "focus:ring-1 focus:ring-primary/50",
           className
         )}
       >
-        <div className="flex items-center gap-2">
-          <div 
-            className="w-5 h-5 rounded flex items-center justify-center"
+        {/*
+          The trigger draws the family name itself rather than delegating to
+          `SelectValue`. `SelectValue` mirrors the whole selected row — icon,
+          name, description and badge — which is right in a dropdown and far
+          too much for a trigger that already carries an icon: inside the
+          toolbar it overflowed and left a fragment of the name on screen,
+          "Transformer / LLM" showing as "LLM". The full name and its
+          description are on the trigger's tooltip.
+        */}
+        <div className="flex items-center gap-2 min-w-0">
+          <div
+            className="w-5 h-5 rounded flex items-center justify-center shrink-0"
             style={{ backgroundColor: `${currentFamily?.color}20` }}
           >
-            <CurrentIcon 
-              className="w-3.5 h-3.5" 
+            <CurrentIcon
+              className="w-3.5 h-3.5"
               style={{ color: currentFamily?.color }}
             />
           </div>
-          <SelectValue placeholder="Select Architecture" />
+          <span className="truncate text-sm font-medium">
+            {currentFamily?.name ?? 'Select architecture'}
+          </span>
         </div>
       </SelectTrigger>
       <SelectContent className="bg-popover border-border z-50">
