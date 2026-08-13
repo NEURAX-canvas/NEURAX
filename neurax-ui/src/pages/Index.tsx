@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
 import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
-import { HyperparameterOptPanel } from '@/components/panels/HyperparameterOptPanel.tsx';
+import { SimulationTargetPanel } from '@/components/panels/SimulationTargetPanel.tsx';
 import { ModelHyperparametersDialog } from '@/components/panels/ModelHyperparametersPanel.tsx';
 import { InferenceIntelligence } from '@/components/inference';
 import { ProductionWorkspace } from '@/components/production/ProductionWorkspace.tsx';
@@ -793,7 +793,7 @@ const Index = () => {
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
-  const [showOptimizePanel, setShowOptimizePanel] = useState(false);
+  const [showTargetPanel, setShowTargetPanel] = useState(false);
   const [showHyperparametersPanel, setShowHyperparametersPanel] = useState(false);
 
   const [selectedArchitecture, setSelectedArchitecture] = useState<ArchitectureFamily>('transformer');
@@ -2209,7 +2209,7 @@ params: params as Record<string, ParameterValue>,
         onSaveCanvas={handleSaveCanvas}
         onExport={() => setShowExportPanel(true)}
         onImport={() => setShowImportPanel(true)}
-        onOptimize={() => setShowOptimizePanel(true)}
+        onSelectTarget={() => setShowTargetPanel(true)}
         onHyperparameters={() => setShowHyperparametersPanel(true)}
         isChatOpen={isChatOpen}
         onToggleChat={() => setIsChatOpen((v) => !v)}
@@ -2289,10 +2289,9 @@ params: params as Record<string, ParameterValue>,
         onImport={handleImportArchitecture}
       />
 
-      <HyperparameterOptPanel
-        isOpen={showOptimizePanel}
-        onClose={() => setShowOptimizePanel(false)}
-        family={selectedArchitecture}
+      <SimulationTargetPanel
+        isOpen={showTargetPanel}
+        onClose={() => setShowTargetPanel(false)}
       />
 
       <ModelHyperparametersDialog
