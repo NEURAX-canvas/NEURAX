@@ -381,19 +381,24 @@ install_macos() {
 
 # ─── The `neurax` command ───────────────────────────────────────────
 
-# Make `neurax` open the application — unless a `neurax` already exists that
-# is not ours.
+# Make `neurax` open the application.
 #
-# The CLI compiler installs under that name too (`cargo install neurax-cli`),
-# and it already opens the desktop app when run with no arguments. So if one is
-# present, leaving it alone gives the user both: `neurax` opens the window,
-# `neurax analyze model.json` still analyses.
+# `neurax` is the application. There used to be a CLI compiler published under
+# the same name, so this stepped aside when it found one already installed;
+# that crate has been removed, and the only thing the name should now start is
+# the window.
+#
+# An older `neurax` may still be on the machine from `cargo install
+# neurax-cli`. It is left alone rather than overwritten — removing something
+# this script did not install is not this script's decision — but the user is
+# told, because otherwise the wrong one wins on PATH with no explanation.
 install_launcher() {
     existing=$(command -v neurax 2>/dev/null || true)
 
     if [ -n "${existing}" ] && [ "${existing}" != "${BIN_DIR}/neurax" ]; then
-        note "\`neurax\` already exists at ${existing} — left as it is"
-        note "It will open this application when run with no arguments"
+        warn "\`neurax\` already exists at ${existing} and was left alone."
+        note "That is the retired CLI. Remove it with:  cargo uninstall neurax-cli"
+        note "Until then, start the application with:   neurax-desktop"
         return
     fi
 
@@ -485,8 +490,7 @@ esac
 
 banner
 
-say "  neurax          open the application"
-say "  neurax --help   if you also have the CLI compiler installed"
+say "  neurax          open NEURAX"
 say ""
 note "The compiler runs inside the application, on your machine."
 note "No account, no upload, no network."

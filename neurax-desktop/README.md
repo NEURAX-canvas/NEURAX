@@ -57,16 +57,17 @@ without publishing anything.
 
 ### `neurax` on the command line
 
-The `neurax` command is the CLI compiler, and it keeps every subcommand it
-had. Run it with no arguments and it opens the desktop window instead of
-printing usage:
+The installer puts the application on your PATH as `neurax`, so typing it opens
+the window:
 
 ```
-neurax              # opens the application
-neurax gui          # the same thing, explicitly
-neurax analyze model.json    # unchanged
-neurax compile model.json    # unchanged
+neurax              # opens NEURAX
+neurax-desktop      # the same binary, under its own name
 ```
+
+There is no CLI compiler any more. The crate that provided `neurax analyze`
+and `neurax compile` has been removed; for analysis without a window, run
+`neurax-service` and call `/analyze` over HTTP.
 
 ---
 

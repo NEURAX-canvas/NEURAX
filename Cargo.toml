@@ -5,7 +5,6 @@ members = [
     "neurax-ir",
     "neurax-formulas",
     "neurax-hardware-db",
-    "neurax-cli",
     "neurax-tui",
     "neurax-service",
     "neurax-mlir",

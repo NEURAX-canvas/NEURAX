@@ -2,9 +2,14 @@
 //!
 //! Exposes [`compile_model_to_mlir`], which lowers a parsed
 //! [`neurax_parser::ModelConfig`] into textual MLIR using the NEURAX
-//! dialects. This is the library API consumed by `neurax-cli`'s
-//! `compile` command so the full MLIR backend is wired into the
-//! `neurax_full` pipeline.
+//! dialects.
+//!
+//! This is a library API with no command behind it. `neurax-cli` used to call
+//! it through a `compile` subcommand; that crate has been removed, so the MLIR
+//! backend is reached by depending on this crate — see `examples/` — rather
+//! than by running a binary. Nothing else in the workspace pulls it in, which
+//! is worth knowing before changing it: its 119 tests are the only thing
+//! exercising it.
 
 use melior::ir::Location;
 

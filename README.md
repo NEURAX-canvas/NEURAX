@@ -22,7 +22,6 @@ NEURAX predicts the **cost, memory, and performance** of neural network architec
 [![neurax-formulas](https://img.shields.io/crates/v/neurax-formulas?style=flat-square&label=neurax-formulas)](https://crates.io/crates/neurax-formulas)
 [![neurax-hardware-db](https://img.shields.io/crates/v/neurax-hardware-db?style=flat-square&label=neurax-hardware-db)](https://crates.io/crates/neurax-hardware-db)
 [![neurax-mlir](https://img.shields.io/crates/v/neurax-mlir?style=flat-square&label=neurax-mlir)](https://crates.io/crates/neurax-mlir)
-[![neurax-cli](https://img.shields.io/crates/v/neurax-cli?style=flat-square&label=neurax-cli)](https://crates.io/crates/neurax-cli)
 [![neurax-tui](https://img.shields.io/crates/v/neurax-tui?style=flat-square&label=neurax-tui)](https://crates.io/crates/neurax-tui)
 [![neurax-service](https://img.shields.io/crates/v/neurax-service?style=flat-square&label=neurax-service)](https://crates.io/crates/neurax-service)
 
@@ -78,7 +77,7 @@ that exists.
 - **<50 ms analysis** - Full 10-pass IR pipeline on 8B-parameter models.
 - **66 metrics** - FLOPs, VRAM, latency, cost, energy, carbon emissions.
 - **Deterministic** - Identical input always produces identical output.
-- **No GPU needed** - Pure analytical formulas; runs in the browser or CLI.
+- **No GPU needed** - Pure analytical formulas; runs in the browser or on a server.
 
 ### Visual Design Canvas
 - Drag-and-drop architecture builder with 208 blocks.
@@ -207,7 +206,6 @@ graph TB
 | **neurax-parser** | Rust | JSON schema to strongly-typed AST |
 | **neurax-formulas** | Rust | Per-architecture analytical formulas |
 | **neurax-hardware-db** | Rust | GPU/CPU specs (20 GPUs, 2 CPUs) |
-| **neurax-cli** | Rust | Command-line interface |
 | **neurax-tui** | Rust (Ratatui) | Terminal user interface |
 | **neurax-mcp** | Python | Model Context Protocol server |
 
@@ -223,7 +221,6 @@ graph TB
 ├── neurax-parser/        # JSON to strongly-typed AST
 ├── neurax-formulas/      # Analytical formulas
 ├── neurax-hardware-db/   # GPU/CPU spec database
-├── neurax-cli/           # Command-line interface
 ├── neurax-tui/           # Terminal UI
 ├── neurax-service/       # Actix-web HTTP API (library + binary)
 ├── neurax-desktop/       # Tauri desktop app — the studio, offline
@@ -296,16 +293,23 @@ cd NEURAX
 # Agent      -> http://localhost:8099
 ```
 
-### CLI
+### Command line
+
+There is no separate CLI crate. `neurax` is the application: the installer
+puts the desktop binary on your PATH under that name, and running it opens the
+window.
+
+For analysis without a window — a build server, a pipeline — run the service
+and call it over HTTP:
 
 ```bash
-# Install from crates.io
-cargo install neurax-cli
-
-# Or build from source
-cargo build -p neurax-cli --release
-./target/release/neurax analyze models/gpt2_small.json
+cargo run -p neurax-service          # listens on 0.0.0.0:9098
+curl -s localhost:9098/analyze \
+  -H 'Content-Type: application/json' \
+  -d "{\"topology\": $(cat examples/models/llama2_70b.json)}"
 ```
+
+Or use the crates directly; see *As a Rust library* below.
 
 ### As a Rust library
 

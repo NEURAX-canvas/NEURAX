@@ -34,7 +34,6 @@ NEURAX is a Cargo workspace plus a React web UI and a Python agent:
 | `neurax-formulas` | Analytical cost/memory/performance formulas |
 | `neurax-hardware-db` | Hardware database (GPUs, CPUs, interconnects) |
 | `neurax-mlir` | MLIR / LLVM 18 compiler backend (13 dialects) |
-| `neurax-cli` | CLI: `analyze`, `validate`, `compile`, `summary` |
 | `neurax-service` | Streaming SSE analysis API |
 | `neurax-mcp` | MCP (Model Context Protocol) integration |
 | `neurax-tui` | Terminal UI (ratatui) |
