@@ -389,73 +389,168 @@ fn has_custom_formulas(arch: &ArchitectureIR) -> bool {
         .any(|layer| layer.custom_equations.is_some())
 }
 
+/// Diagnostics the compiler can stand behind.
+///
+/// Each one states the measurement that triggered it, what that measurement
+/// costs, and what to change — a bare "Low GPU utilization (11.6%)" tells a
+/// designer a number they can already read off the report. Codes are unique per
+/// condition: memory pressure and communication overhead both used to be
+/// reported as W006, so filtering or counting by code conflated them.
 fn generate_diagnostics(metrics: &AllMetrics, memory: &MemoryIR) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
+    let vram = memory.metrics.gpu_vram_bytes;
 
-    // E001: Memory overflow check
-    if metrics.peak_vram_bytes > memory.metrics.gpu_vram_bytes {
+    // ── Memory ───────────────────────────────────────────────────────────
+    if vram > 0 && metrics.peak_vram_bytes > vram {
+        let over = metrics.peak_vram_bytes as f64 / vram as f64;
         diagnostics.push(Diagnostic {
             category: DiagnosticCategory::MemoryOverflow,
             severity: Severity::Critical,
             code: DiagnosticCode::E001,
             message: format!(
-                "Peak VRAM ({:.1} GB) exceeds GPU memory ({:.1} GB)",
+                "This model needs {:.1} GB but the target GPU has {:.1} GB — {:.1}x over. \
+                 It will not start.",
                 metrics.peak_vram_bytes as f64 / 1e9,
-                memory.metrics.gpu_vram_bytes as f64 / 1e9
+                vram as f64 / 1e9,
+                over
             ),
             layer_id: None,
-            suggestion: Some("Enable gradient checkpointing or use model parallelism".to_string()),
+            suggestion: Some(memory_advice(metrics, over)),
             precision_impact: 0.0,
         });
-    }
-
-    // W005: Memory close to limit (80-100%)
-    if metrics.peak_vram_bytes > memory.metrics.gpu_vram_bytes * 80 / 100
-        && metrics.peak_vram_bytes <= memory.metrics.gpu_vram_bytes
-    {
+    } else if vram > 0 && metrics.peak_vram_bytes * 100 > vram * 80 {
         diagnostics.push(Diagnostic {
             category: DiagnosticCategory::MemoryOverflow,
             severity: Severity::Warning,
             code: DiagnosticCode::W005,
             message: format!(
-                "Memory usage ({:.1}%) close to GPU limit",
-                metrics.peak_vram_bytes as f64 / memory.metrics.gpu_vram_bytes as f64 * 100.0
+                "Peak memory is {:.0}% of the GPU. A longer sequence or a larger batch \
+                 will not fit.",
+                metrics.peak_vram_bytes as f64 / vram as f64 * 100.0
             ),
             layer_id: None,
-            suggestion: Some("Consider gradient checkpointing to reduce memory".to_string()),
+            suggestion: Some(
+                "Gradient checkpointing trades about 30% more compute for roughly a \
+                 square-root reduction in activation memory."
+                    .to_string(),
+            ),
             precision_impact: 0.0,
         });
     }
 
-    // W006: Low GPU utilization
-    if metrics.gpu_utilization < 0.5 {
+    // What dominates the footprint is more actionable than the total.
+    let footprint = metrics.parameter_memory_bytes
+        + metrics.activation_memory_bytes
+        + metrics.gradient_memory_bytes
+        + metrics.optimizer_state_bytes;
+    if footprint > 0 {
+        let optimizer_share = metrics.optimizer_state_bytes as f64 / footprint as f64;
+        if optimizer_share > 0.4 {
+            diagnostics.push(Diagnostic {
+                category: DiagnosticCategory::MemoryOverflow,
+                severity: Severity::Hint,
+                code: DiagnosticCode::H001,
+                message: format!(
+                    "Optimizer state is {:.0}% of memory ({:.1} GB) — more than the weights.",
+                    optimizer_share * 100.0,
+                    metrics.optimizer_state_bytes as f64 / 1e9
+                ),
+                layer_id: None,
+                suggestion: Some(
+                    "ZeRO stage 1 shards optimizer state across data-parallel ranks and \
+                     leaves the maths unchanged."
+                        .to_string(),
+                ),
+                precision_impact: 0.0,
+            });
+        }
+    }
+
+    // ── Model shape ──────────────────────────────────────────────────────
+    if metrics.total_parameters > 0 && metrics.vocab_size > 0 && metrics.hidden_size > 0 {
+        let embedding = metrics.vocab_size as u64 * metrics.hidden_size as u64;
+        let share = embedding as f64 / metrics.total_parameters as f64;
+        if share > 0.3 {
+            diagnostics.push(Diagnostic {
+                category: DiagnosticCategory::ArchitectureInefficiency,
+                severity: Severity::Warning,
+                code: DiagnosticCode::W002,
+                message: format!(
+                    "The embedding table is {:.0}% of all parameters ({} x {}). \
+                     Most capacity sits in lookup rather than computation.",
+                    share * 100.0,
+                    metrics.vocab_size,
+                    metrics.hidden_size
+                ),
+                layer_id: None,
+                suggestion: Some(
+                    "Tie the input and output embeddings, or reduce the vocabulary — \
+                     both cut this in half or better without touching the layers."
+                        .to_string(),
+                ),
+                precision_impact: 0.0,
+            });
+        }
+    }
+
+    // ── Hardware fit ─────────────────────────────────────────────────────
+    if metrics.gpu_utilization > 0.0 && metrics.gpu_utilization < 0.5 {
         diagnostics.push(Diagnostic {
             category: DiagnosticCategory::ArchitectureInefficiency,
             severity: Severity::Warning,
             code: DiagnosticCode::W006,
             message: format!(
-                "Low GPU utilization ({:.1}%)",
-                metrics.gpu_utilization * 100.0
+                "The GPU is idle {:.0}% of each step — you are paying for hardware that \
+                 is waiting.",
+                (1.0 - metrics.gpu_utilization) * 100.0
             ),
             layer_id: None,
-            suggestion: Some("Increase batch size or consider tensor parallelism".to_string()),
+            suggestion: Some(
+                "A larger batch is the usual fix; if memory does not allow it, the model \
+                 is too small for this GPU."
+                    .to_string(),
+            ),
             precision_impact: 0.2,
         });
     }
 
-    // W006: High communication overhead
     if metrics.communication_overhead > 0.3 {
         diagnostics.push(Diagnostic {
             category: DiagnosticCategory::ParallelismSuboptimal,
             severity: Severity::Warning,
-            code: DiagnosticCode::W006,
+            code: DiagnosticCode::W003,
             message: format!(
-                "High communication overhead ({:.1}%)",
+                "{:.0}% of each step is spent exchanging gradients rather than computing.",
                 metrics.communication_overhead * 100.0
             ),
             layer_id: None,
-            suggestion: Some("Consider tensor parallelism or faster interconnect".to_string()),
+            suggestion: Some(
+                "Fewer, larger data-parallel ranks, or tensor parallelism inside a node \
+                 where the interconnect is fast."
+                    .to_string(),
+            ),
             precision_impact: 0.1,
+        });
+    }
+
+    // ── Confidence in the analysis itself ────────────────────────────────
+    if metrics.unresolved_dim_count > 0 {
+        diagnostics.push(Diagnostic {
+            category: DiagnosticCategory::ShapeInference,
+            severity: Severity::Warning,
+            code: DiagnosticCode::W002,
+            message: format!(
+                "{} tensor dimensions could not be resolved, so the figures below are \
+                 lower bounds.",
+                metrics.unresolved_dim_count
+            ),
+            layer_id: None,
+            suggestion: Some(
+                "State the missing shapes on the affected blocks — hidden size, sequence \
+                 length and vocabulary are the usual omissions."
+                    .to_string(),
+            ),
+            precision_impact: 0.4,
         });
     }
 
@@ -577,3 +672,24 @@ fn build_kv_cache_scaling(num_layers: usize, hidden_size: usize) -> Vec<KvCacheE
         })
         .collect()
 }
+
+
+/// Advice scaled to how far over the memory budget a design is.
+fn memory_advice(metrics: &AllMetrics, over: f64) -> String {
+        if over > 8.0 {
+            "Nothing short of a smaller model closes a gap this size — reduce depth or \
+             width, or move to a multi-node parallel strategy."
+                .to_string()
+        } else if over > 2.0 {
+            "Gradient checkpointing and ZeRO stage 2 together typically recover this much; \
+             otherwise shard the model across GPUs."
+                .to_string()
+        } else if metrics.optimizer_state_bytes > metrics.parameter_memory_bytes {
+            "Optimizer state is the largest single term here — ZeRO stage 1 alone may be \
+             enough."
+                .to_string()
+        } else {
+            "Gradient checkpointing, or a narrower dtype, should be enough to fit."
+                .to_string()
+        }
+    }

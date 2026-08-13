@@ -311,6 +311,8 @@ Return exactly 4-6 concise, business-aware steps."""
     return res.items
 
 async def plan_architecture(
+    credentials: dict[str, Any] | None = None,
+    *,
     user_message: str,
     family: str,
     catalogue: list[dict[str, Any]],
@@ -341,7 +343,7 @@ async def plan_architecture(
     logger.info(f"🎨 Planning architecture | family={family} | creativity={creativity} | temp={temperature}")
 
     # Use a generous token budget so Haiku doesn't truncate mid-JSON.
-    llm = make_chat_model(temperature=temperature, max_tokens=4096)
+    llm = make_chat_model(temperature=temperature, max_tokens=4096, credentials=credentials)
     structured = llm.with_structured_output(_ArchSpecOut)
 
     # Build catalogue description — cap at 40 blocks and 5 params each to stay

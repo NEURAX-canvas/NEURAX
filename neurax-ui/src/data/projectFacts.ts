@@ -52,15 +52,16 @@ export const PRESET_COUNT = 30;
  */
 export const ANALYSIS_BUDGET_MS = 50;
 
-/** Export targets the compiler can emit. */
+/**
+ * Export targets.
+ *
+ * Two, deliberately. A design leaving NEURAX is either archived for re-import
+ * or handed to the compiler. The framework emitters that used to be listed here
+ * produced skeletons never checked against the model they claimed to represent.
+ */
 export const EXPORT_FORMATS = [
-  'PyTorch',
-  'ONNX',
-  'Triton',
-  'MLIR',
-  'Rust / Burn',
-  'JSON',
-  'Network graph',
+  'JSON — architecture and analysis, re-importable',
+  'NEURAX IR — the exact topology the compiler analyses',
 ] as const;
 
 /** The four figures shown under the hero. */

@@ -41,6 +41,7 @@ async def _run_agent(
     snapshot: dict[str, Any],
     _runs: dict[str, "asyncio.Queue[dict[str, Any]]"],
     creativity: float = 0.0,
+    credentials: dict[str, Any] | None = None,
 ) -> None:
     """
     Main agent orchestration using the 3-phase declarative pipeline:
@@ -136,6 +137,7 @@ async def _run_agent(
             logger.info(f"📋 Planning attempt {attempt}/{MAX_ATTEMPTS}...")
             try:
                 spec = await plan_architecture(
+                    credentials=credentials,
                     user_message=user_message,
                     family=selected_family,
                     catalogue=family_catalogue,

@@ -5,6 +5,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Progress } from '@/components/ui/progress.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { cn } from '@/lib/utils.ts';
+import { useApiKey } from '@/contexts/ApiKeyContext.tsx';
 import type { AgentRunPlanItem } from '@/components/panels/AgentRunModal.tsx';
 
 type ChatRole = 'user' | 'assistant';
@@ -67,6 +68,7 @@ export default function AIChatDrawer({
   onToolEvent,
   className,
 }: AIChatDrawerProps) {
+  const { config: apiKeyConfig } = useApiKey();
   const [draft, setDraft] = useState('');
   const [creativity, setCreativity] = useState(0.0);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -295,7 +297,23 @@ export default function AIChatDrawer({
       const resp = await fetch(`${baseUrl.replace(/\/$/, '')}/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_message: content, snapshot: snapshotForSend, creativity }),
+        // Send the user's own credentials. The studio collects a key and used
+        // to keep it entirely client-side, which meant every run was billed to
+        // whichever key the agent had in its environment — the key the user
+        // entered was never used at all.
+        body: JSON.stringify({
+          user_message: content,
+          snapshot: snapshotForSend,
+          creativity,
+          ...(apiKeyConfig?.key && {
+            credentials: {
+              api_key: apiKeyConfig.key,
+              provider: apiKeyConfig.provider,
+              ...(apiKeyConfig.model && { model: apiKeyConfig.model }),
+              ...(apiKeyConfig.customEndpoint && { base_url: apiKeyConfig.customEndpoint }),
+            },
+          }),
+        }),
       });
       if (!resp.ok) throw new Error(await resp.text());
       const data = (await resp.json()) as { run_id?: string };

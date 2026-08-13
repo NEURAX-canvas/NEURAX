@@ -50,10 +50,27 @@ class CanvasSnapshot(BaseModel):
     analysis_warnings: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class LlmCredentials(BaseModel):
+    """The caller's own model credentials.
+
+    NEURAX is bring-your-own-key: the studio asks each user for a key, and until
+    now never sent it, so every run was billed to whatever key the server had in
+    its environment. Passing them per request makes the stated model true and
+    keeps a public deployment from funding everyone's inference.
+    """
+
+    api_key: str
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+
+
 class RunRequest(BaseModel):
     user_message: str
     snapshot: CanvasSnapshot
     creativity: float = Field(default=0.0, ge=0.0, le=1.0)
+    #: Omit to fall back to the server's own credentials, where configured.
+    credentials: LlmCredentials | None = None
 
 
 @app.get("/health")
@@ -68,7 +85,17 @@ async def create_run(req: RunRequest) -> dict[str, Any]:
     _runs[run_id] = q
 
     snapshot = req.snapshot.model_dump()
-    asyncio.create_task(_run_agent(run_id, q, req.user_message, snapshot, _runs, creativity=req.creativity))
+    asyncio.create_task(
+        _run_agent(
+            run_id,
+            q,
+            req.user_message,
+            snapshot,
+            _runs,
+            creativity=req.creativity,
+            credentials=req.credentials.model_dump() if req.credentials else None,
+        )
+    )
     return {"run_id": run_id}
 
 

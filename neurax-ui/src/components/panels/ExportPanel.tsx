@@ -34,7 +34,6 @@ import { generateCode } from '@/utils/codeGenerators.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { generateNetworkGraphHTML } from '@/utils/networkGraphExporter.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
-import { exportOnnx } from '@/services/neuraxApi.ts';
 import { GitHubExportPanel } from './GitHubExportPanel.tsx';
 import { ExportAssistant } from './ExportAssistant.tsx';
 
@@ -62,14 +61,16 @@ interface ExportOption {
 }
 
 const EXPORT_OPTIONS: ExportOption[] = [
-  { id: 'json', name: 'JSON', description: 'Architecture metadata', extension: '.json', icon: 'FileJson', minPlan: 'free' },
-  { id: 'pytorch', name: 'PyTorch', description: 'Python model definition', extension: '.py', icon: 'Code', includeAnalysis: true, minPlan: 'free' },
-  { id: 'onnx', name: 'ONNX', description: 'ONNX graph export', extension: '.onnx', icon: 'Box', includeAnalysis: true, minPlan: 'free' },
-  { id: 'rust', name: 'Rust / Burn', description: 'Rust model structure', extension: '.rs', icon: 'Cog', minPlan: 'free' },
-  { id: 'triton', name: 'Triton', description: 'Optimized GPU kernels', extension: '.py', icon: 'Zap', minPlan: 'free' },
-  { id: 'server', name: 'Server Config', description: 'Inference server setup', extension: '.yaml', icon: 'Server', minPlan: 'free' },
-  { id: 'network', name: 'Network Graph', description: 'Architecture visualization', extension: '.html', icon: 'Network', minPlan: 'free' },
-  { id: 'github', name: 'GitHub', description: 'Push to repository', extension: '', icon: 'Github', minPlan: 'free' },
+  // Two formats only.
+  //
+  // A design that leaves NEURAX is either being archived and re-imported, or
+  // handed to the compiler — JSON covers the first, NEURAX IR the second. The
+  // framework emitters that used to sit here (PyTorch, ONNX, Rust, Triton,
+  // server config, network graph) produced skeletons that were never checked
+  // against the model they claimed to represent, which is a worse promise than
+  // not making one.
+  { id: 'json', name: 'JSON', description: 'Architecture and analysis, re-importable', extension: '.json', icon: 'FileJson', minPlan: 'free' },
+  { id: 'neurax-ir', name: 'NEURAX IR', description: 'Compiler input — the exact topology analysed', extension: '.neurax.json', icon: 'Box', includeAnalysis: true, minPlan: 'free' },
 ];
 
 interface ExportPanelProps {
@@ -191,7 +192,6 @@ export function ExportPanel({
   const [copied, setCopied] = useState(false);
   const [showGitHubExport, setShowGitHubExport] = useState(false);
   const [showAssistant, setShowAssistant] = useState<string | null>(null);
-  const [isExportingOnnx, setIsExportingOnnx] = useState(false);
   const { toast } = useToast();
 
   const { config: hwConfig } = useHardware();
@@ -245,48 +245,23 @@ export function ExportPanel({
       return;
     }
 
-    // ── ONNX binary export — call the backend API ───────────────────
-    if (format.id === 'onnx') {
-      setIsExportingOnnx(true);
-      try {
-        const result = await exportOnnx({
-          topology: neuraxIR,
-          model_name: architectureName,
-        });
-
-        // Decode base64 and trigger download
-        const binaryData = atob(result.data);
-        const bytes = new Uint8Array(binaryData.length);
-        for (let i = 0; i < binaryData.length; i++) {
-          bytes[i] = binaryData.charCodeAt(i);
-        }
-        const blob = new Blob([bytes], { type: 'application/octet-stream' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${architectureName}.onnx`;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        toast({
-          title: "ONNX Export Complete",
-          description: `${result.model_name} — ${result.node_count} nodes, ${result.initializer_count} parameters, ${(result.size_bytes / 1024).toFixed(1)} KB`,
-        });
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unknown error';
-        toast({
-          title: "ONNX Export Failed",
-          description: message,
-          variant: "destructive",
-        });
-      } finally {
-        setIsExportingOnnx(false);
-      }
+    // ── NEURAX IR — the exact topology the compiler analyses ────────
+    if (format.id === 'neurax-ir') {
+      const blob = new Blob([neuraxJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${architectureName}.neurax.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast({
+        title: 'NEURAX IR exported',
+        description: `${architectureName}.neurax.json — the topology as analysed`,
+      });
       onClose();
       return;
     }
 
-    // ── JSON Export — download the NEURAX IR JSON ───────────────────
     if (format.id === 'json') {
       const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}.neurax.json`;
       downloadFile(neuraxJson, filename, 'application/json');
@@ -447,14 +422,14 @@ export function ExportPanel({
                     const format = EXPORT_OPTIONS.find(f => f.id === selectedFormat);
                     if (format) handleExport(format);
                   }}
-                  disabled={isExportingOnnx}
+                  disabled={false}
                 >
-                  {isExportingOnnx ? (
+                  {false ? (
                     <Loader2 key="loader" className="w-4 h-4 mr-2 animate-spin" />
                   ) : (
                     <Download key="download" className="w-4 h-4 mr-2" />
                   )}
-                  {isExportingOnnx ? 'Exporting...' : `Export ${EXPORT_OPTIONS.find(f => f.id === selectedFormat)?.name}`}
+                  {false ? 'Exporting...' : `Export ${EXPORT_OPTIONS.find(f => f.id === selectedFormat)?.name}`}
                 </Button>
               </div>
             </TabsContent>

@@ -35,19 +35,40 @@ class _FamilySelection(BaseModel):
     )
 
 
-def make_chat_model(temperature: float = 0.0, max_tokens: int = 2048):
+def make_chat_model(
+    temperature: float = 0.0,
+    max_tokens: int = 2048,
+    credentials: dict | None = None,
+):
+    """Build the chat model for a run.
+
+    Credentials supplied by the caller win over the server's environment. That
+    is the whole point of bring-your-own-key: without it every run is billed to
+    whoever operates the service, and the key the studio collects is decorative.
+    """
     timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
+    creds = credentials or {}
 
-    llm_provider = os.getenv("LLM_PROVIDER", "").strip().lower()
-    llm_api_key = os.getenv("LLM_API_KEY", "").strip()
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    llm_model = os.getenv("LLM_MODEL", "").strip() or os.getenv("LLAMA_MODEL", "")
+    llm_provider = (creds.get("provider") or os.getenv("LLM_PROVIDER", "")).strip().lower()
+    caller_key = (creds.get("api_key") or "").strip()
+    llm_api_key = caller_key or os.getenv("LLM_API_KEY", "").strip()
+    anthropic_api_key = (
+        caller_key if llm_provider == "anthropic" else ""
+    ) or os.getenv("ANTHROPIC_API_KEY", "").strip()
+    llm_model = (
+        (creds.get("model") or "").strip()
+        or os.getenv("LLM_MODEL", "").strip()
+        or os.getenv("LLAMA_MODEL", "")
+    )
 
-    # Ensure langchain can find the API key via env var
-    if llm_api_key and not os.environ.get("OPENAI_API_KEY"):
-        os.environ["OPENAI_API_KEY"] = llm_api_key
-    if anthropic_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
-        os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
+    # Only the server's own key is promoted to the environment. A caller's key
+    # is passed to the client directly and never written to process state,
+    # where it would outlive the request and serve the next caller.
+    if not caller_key:
+        if llm_api_key and not os.environ.get("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = llm_api_key
+        if anthropic_api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+            os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
 
     # Auto-detect provider if not explicitly set
     if not llm_provider:
@@ -87,7 +108,7 @@ def make_chat_model(temperature: float = 0.0, max_tokens: int = 2048):
 
     # OpenAI-compatible provider (OpenAI or local LLM servers)
     from langchain_openai import ChatOpenAI
-    llm_base_url = os.getenv("LLM_BASE_URL", "").strip()
+    llm_base_url = ((creds.get("base_url") or "") or os.getenv("LLM_BASE_URL", "")).strip()
     llama_base_url = os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8080").strip()
 
     # Only redirect to a custom base_url if explicitly overridden or no real key exists.
