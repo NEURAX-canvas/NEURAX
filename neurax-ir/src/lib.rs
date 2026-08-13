@@ -61,7 +61,6 @@
 //! cargo run --example pipeline
 //! ```
 
-
 pub mod architecture;
 pub mod compute;
 pub mod cost;

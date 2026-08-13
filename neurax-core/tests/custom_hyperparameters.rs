@@ -107,6 +107,13 @@ fn extra_layer_parameters_are_also_kept() {
 
     let config = neurax_parser::parse_model_config(&json).expect("extra layer key should parse");
     let layer = &config.model.layers[0];
-    assert_eq!(layer.params.extra.get("my_layer_knob").and_then(|v| v.as_u64()), Some(7));
+    assert_eq!(
+        layer
+            .params
+            .extra
+            .get("my_layer_knob")
+            .and_then(|v| v.as_u64()),
+        Some(7)
+    );
     neurax_core::run_analysis(config).expect("extra layer key should analyze");
 }

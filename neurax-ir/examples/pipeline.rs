@@ -78,7 +78,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Pass 2: Graph
     let graph = run_pass(GraphPass, &arch, &ctx)?;
-    println!("[2] Graph: depth={}, ops={}", graph.metrics.graph_depth, graph.metrics.total_operations);
+    println!(
+        "[2] Graph: depth={}, ops={}",
+        graph.metrics.graph_depth, graph.metrics.total_operations
+    );
 
     // Pass 3: Tensor
     let tensor = run_pass(TensorPass, &graph, &ctx)?;
@@ -96,12 +99,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Pass 6: Memory
-    let memory = run_pass(MemoryPass, &(compute.clone(), tensor.clone(), arch.clone()), &ctx)?;
-    println!("[6] Memory: peak={:.2} GB", memory.metrics.peak_vram_bytes as f64 / 1e9);
+    let memory = run_pass(
+        MemoryPass,
+        &(compute.clone(), tensor.clone(), arch.clone()),
+        &ctx,
+    )?;
+    println!(
+        "[6] Memory: peak={:.2} GB",
+        memory.metrics.peak_vram_bytes as f64 / 1e9
+    );
 
     // Pass 7: Parallelism
     let parallelism = run_pass(ParallelismPass, &(memory.clone(), graph.clone()), &ctx)?;
-    println!("[7] Parallelism: optimal={:?}", parallelism.optimal_strategy);
+    println!(
+        "[7] Parallelism: optimal={:?}",
+        parallelism.optimal_strategy
+    );
 
     // Pass 8: Hardware
     let hardware = run_pass(
@@ -109,7 +122,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &(compute.clone(), memory.clone(), parallelism.clone()),
         &ctx,
     )?;
-    println!("[8] Hardware: gpu_utilization={:.2}", hardware.metrics.gpu_utilization);
+    println!(
+        "[8] Hardware: gpu_utilization={:.2}",
+        hardware.metrics.gpu_utilization
+    );
 
     // Pass 9: Cost
     let cost = run_pass(CostPass, &(hardware.clone(), parallelism.clone()), &ctx)?;

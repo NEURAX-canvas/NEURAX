@@ -53,7 +53,6 @@
 //! cargo run --example parse_basics
 //! ```
 
-
 pub mod absorption;
 mod coherence;
 mod error;

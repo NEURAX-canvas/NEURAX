@@ -21,8 +21,14 @@ fn main() {
     let swiglu_params = gated_mlp_params(hidden, intermediate, false);
 
     println!("-- MLP --");
-    println!("standard (GELU): {:.2e} FLOPs / {} params", standard, standard_params);
-    println!("gated (SwiGLU):   {:.2e} FLOPs / {} params (+50%)", gated, swiglu_params);
+    println!(
+        "standard (GELU): {:.2e} FLOPs / {} params",
+        standard, standard_params
+    );
+    println!(
+        "gated (SwiGLU):   {:.2e} FLOPs / {} params (+50%)",
+        gated, swiglu_params
+    );
 
     // -- Attention --
     let num_heads = 32usize;

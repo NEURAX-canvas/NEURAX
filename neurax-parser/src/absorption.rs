@@ -185,8 +185,13 @@ impl GlobalResolutionContext {
         // These specs are optional in the config; fall back only when the
         // caller actually left them out.
         let primary_gpu_tflops = primary.and_then(|g| g.tflops_fp16).unwrap_or(312.0);
-        let primary_gpu_mem = primary.and_then(|g| g.memory_gb).map(|m| m as f64).unwrap_or(80.0);
-        let primary_gpu_bw = primary.and_then(|g| g.memory_bandwidth_gbs).unwrap_or(2000.0);
+        let primary_gpu_mem = primary
+            .and_then(|g| g.memory_gb)
+            .map(|m| m as f64)
+            .unwrap_or(80.0);
+        let primary_gpu_bw = primary
+            .and_then(|g| g.memory_bandwidth_gbs)
+            .unwrap_or(2000.0);
         let has_tc = primary.and_then(|g| g.tensor_cores).unwrap_or(true);
         let num_gpus: u32 = hardware.gpus.iter().map(|t| t.count).sum();
 

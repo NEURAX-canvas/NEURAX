@@ -673,23 +673,21 @@ fn build_kv_cache_scaling(num_layers: usize, hidden_size: usize) -> Vec<KvCacheE
         .collect()
 }
 
-
 /// Advice scaled to how far over the memory budget a design is.
 fn memory_advice(metrics: &AllMetrics, over: f64) -> String {
-        if over > 8.0 {
-            "Nothing short of a smaller model closes a gap this size — reduce depth or \
+    if over > 8.0 {
+        "Nothing short of a smaller model closes a gap this size — reduce depth or \
              width, or move to a multi-node parallel strategy."
-                .to_string()
-        } else if over > 2.0 {
-            "Gradient checkpointing and ZeRO stage 2 together typically recover this much; \
+            .to_string()
+    } else if over > 2.0 {
+        "Gradient checkpointing and ZeRO stage 2 together typically recover this much; \
              otherwise shard the model across GPUs."
-                .to_string()
-        } else if metrics.optimizer_state_bytes > metrics.parameter_memory_bytes {
-            "Optimizer state is the largest single term here — ZeRO stage 1 alone may be \
+            .to_string()
+    } else if metrics.optimizer_state_bytes > metrics.parameter_memory_bytes {
+        "Optimizer state is the largest single term here — ZeRO stage 1 alone may be \
              enough."
-                .to_string()
-        } else {
-            "Gradient checkpointing, or a narrower dtype, should be enough to fit."
-                .to_string()
-        }
+            .to_string()
+    } else {
+        "Gradient checkpointing, or a narrower dtype, should be enough to fit.".to_string()
     }
+}

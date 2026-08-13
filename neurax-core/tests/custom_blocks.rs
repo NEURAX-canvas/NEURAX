@@ -72,9 +72,7 @@ fn an_explicit_parameter_count_wins_over_the_equation() {
 
 #[test]
 fn equations_can_use_every_documented_variable() {
-    for equation in [
-        "B * S * H", "D * N", "I * H", "V * H", "2 * B * S * I",
-    ] {
+    for equation in ["B * S * H", "D * N", "I * H", "V * H", "2 * B * S * I"] {
         let r = analyze(&model_with_custom_block(
             json!({"flops_forward": equation, "params": "H * H"}),
             json!({"hidden_size": 1024, "num_heads": 16, "intermediate_size": 4096,
@@ -134,8 +132,20 @@ fn a_model_built_only_from_custom_blocks_compiles() {
     .to_string();
 
     let r = analyze(&json);
-    assert!(r.arch.metrics.total_parameters > 0, "custom model should have parameters");
-    assert!(r.compute.metrics.forward_flops > 0.0, "custom model should have a cost");
-    assert!(r.memory.metrics.peak_vram_gb() > 0.0, "custom model should have a memory footprint");
-    assert_eq!(r.operator.metrics.custom_op_count, 2, "both blocks should be marked custom");
+    assert!(
+        r.arch.metrics.total_parameters > 0,
+        "custom model should have parameters"
+    );
+    assert!(
+        r.compute.metrics.forward_flops > 0.0,
+        "custom model should have a cost"
+    );
+    assert!(
+        r.memory.metrics.peak_vram_gb() > 0.0,
+        "custom model should have a memory footprint"
+    );
+    assert_eq!(
+        r.operator.metrics.custom_op_count, 2,
+        "both blocks should be marked custom"
+    );
 }

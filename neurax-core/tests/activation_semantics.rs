@@ -92,9 +92,27 @@ fn every_activation_offered_by_the_ui_is_understood() {
     // The picker must not offer a name the cost model cannot price, or the
     // choice would silently fall back to a generic estimate.
     for name in [
-        "relu", "leaky_relu", "relu6", "sigmoid", "tanh", "silu", "swish", "gelu", "gelu_tanh",
-        "gelu_new", "softplus", "mish", "elu", "selu", "hard_swish", "hard_sigmoid", "glu",
-        "swiglu", "geglu", "reglu", "none",
+        "relu",
+        "leaky_relu",
+        "relu6",
+        "sigmoid",
+        "tanh",
+        "silu",
+        "swish",
+        "gelu",
+        "gelu_tanh",
+        "gelu_new",
+        "softplus",
+        "mish",
+        "elu",
+        "selu",
+        "hard_swish",
+        "hard_sigmoid",
+        "glu",
+        "swiglu",
+        "geglu",
+        "reglu",
+        "none",
     ] {
         assert!(
             neurax_formulas::activation::activation_spec(name).is_some(),
@@ -105,7 +123,9 @@ fn every_activation_offered_by_the_ui_is_understood() {
 
 #[test]
 fn analysis_succeeds_for_every_known_activation() {
-    for name in ["relu", "gelu", "silu", "tanh", "mish", "swiglu", "geglu", "reglu", "none"] {
+    for name in [
+        "relu", "gelu", "silu", "tanh", "mish", "swiglu", "geglu", "reglu", "none",
+    ] {
         let r = analyze_mlp_with(name, None);
         assert!(
             r.compute.metrics.forward_flops > 0.0,

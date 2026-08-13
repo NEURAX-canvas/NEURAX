@@ -5,7 +5,8 @@
 //! externe n'est requis.
 
 use super::ir::{
-    HallucinationRisk, InferenceParams, InferenceReport, KvCacheCost, ModelProfile, RiskLevel, RiskOverview, RouterStability, SamplingVolatility, StabilityIndex, StabilityLevel,
+    HallucinationRisk, InferenceParams, InferenceReport, KvCacheCost, ModelProfile, RiskLevel,
+    RiskOverview, RouterStability, SamplingVolatility, StabilityIndex, StabilityLevel,
 };
 
 pub struct InferencePass;

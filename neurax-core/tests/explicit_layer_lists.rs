@@ -73,8 +73,14 @@ fn model_size_follows_the_declared_precision() {
 #[test]
 fn an_explicit_depth_still_scales_the_repeated_blocks() {
     // The heuristic must keep working when the author does declare a depth.
-    let listed = analyze(&tiny_multimodal(None)).arch.metrics.total_parameters;
-    let declared = analyze(&tiny_multimodal(Some(12))).arch.metrics.total_parameters;
+    let listed = analyze(&tiny_multimodal(None))
+        .arch
+        .metrics
+        .total_parameters;
+    let declared = analyze(&tiny_multimodal(Some(12)))
+        .arch
+        .metrics
+        .total_parameters;
     assert!(
         declared > listed,
         "declaring 12 layers should scale the repeated blocks up ({declared} vs {listed})"

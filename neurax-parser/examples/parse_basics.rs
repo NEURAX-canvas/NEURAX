@@ -66,7 +66,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n-- Resolution context --");
     println!("hidden_size: {:?}", grc.hidden_size);
     println!("dtype_bytes: {}", grc.dtype_bytes);
-    println!("optimizer_bytes_per_param: {}", grc.optimizer_bytes_per_param);
+    println!(
+        "optimizer_bytes_per_param: {}",
+        grc.optimizer_bytes_per_param
+    );
     println!("confidence: {:.0}%", grc.confidence_score * 100.0);
     if !grc.missing_fields.is_empty() {
         println!("missing fields: {:?}", grc.missing_fields);

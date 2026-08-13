@@ -79,7 +79,9 @@ pub fn mlp_params(hidden_size: usize, intermediate_size: usize, bias: bool) -> u
     // oversized dimensions and would report a plausible but wrong count.
     let hidden_size = hidden_size as u64;
     let intermediate_size = intermediate_size as u64;
-    let weight_params = hidden_size.saturating_mul(intermediate_size).saturating_mul(2);
+    let weight_params = hidden_size
+        .saturating_mul(intermediate_size)
+        .saturating_mul(2);
     let bias_params = if bias {
         intermediate_size.saturating_add(hidden_size)
     } else {
@@ -94,7 +96,9 @@ pub fn gated_mlp_params(hidden_size: usize, intermediate_size: usize, bias: bool
     // gate_proj + up_proj + down_proj — three matrices, hence 1.5x a plain MLP.
     let hidden_size = hidden_size as u64;
     let intermediate_size = intermediate_size as u64;
-    let weight_params = hidden_size.saturating_mul(intermediate_size).saturating_mul(3);
+    let weight_params = hidden_size
+        .saturating_mul(intermediate_size)
+        .saturating_mul(3);
     let bias_params = if bias {
         intermediate_size.saturating_mul(3)
     } else {

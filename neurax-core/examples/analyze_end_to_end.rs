@@ -49,8 +49,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let summary = get_model_summary(&config);
     println!(
         "Model: {} | type: {} | layers: {} | batch: {} | precision: {} | gpus: {}",
-        summary.name, summary.model_type, summary.num_layers, summary.batch_size,
-        summary.precision, summary.gpu_count
+        summary.name,
+        summary.model_type,
+        summary.num_layers,
+        summary.batch_size,
+        summary.precision,
+        summary.gpu_count
     );
 
     // Full analysis
@@ -60,7 +64,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("-- Compute --");
     println!("  total FLOPs: {:.2e}", result.compute.metrics.total_flops);
     println!("  MACs:        {:.2e}", result.compute.metrics.macs);
-    println!("  FLOPs/token: {:.2e}", result.compute.metrics.flops_per_token);
+    println!(
+        "  FLOPs/token: {:.2e}",
+        result.compute.metrics.flops_per_token
+    );
 
     println!("-- Memory --");
     println!(

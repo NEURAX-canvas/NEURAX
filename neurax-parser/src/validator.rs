@@ -304,7 +304,10 @@ fn validate_layer_params(config: &ModelConfig) -> Result<(), ParserError> {
         // products that accumulate parameter counts, so bound them for every
         // layer type before the type-specific checks below.
         if let Some(hidden_size) = layer.params.hidden_size {
-            check_dimension(hidden_size, format!("layers.{}.params.hidden_size", layer.id))?;
+            check_dimension(
+                hidden_size,
+                format!("layers.{}.params.hidden_size", layer.id),
+            )?;
         }
         if let Some(intermediate_size) = layer.params.intermediate_size {
             check_dimension(

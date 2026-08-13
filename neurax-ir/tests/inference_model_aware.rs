@@ -5,7 +5,7 @@
 //! designs sampled identically produced identical reports, which made the
 //! answers describe no model in particular.
 
-use neurax_ir::inference::{InferencePass, InferenceParams, ModelProfile};
+use neurax_ir::inference::{InferenceParams, InferencePass, ModelProfile};
 
 fn params(prompt: u32, output: u32) -> InferenceParams {
     InferenceParams {
@@ -35,8 +35,14 @@ fn context_degradation_uses_the_model_s_own_window() {
     // one. Against a fixed 32k assumption both looked the same.
     let p = params(6000, 2000);
 
-    let narrow = ModelProfile { trained_context: Some(4096), ..small_model() };
-    let wide = ModelProfile { trained_context: Some(131_072), ..small_model() };
+    let narrow = ModelProfile {
+        trained_context: Some(4096),
+        ..small_model()
+    };
+    let wide = ModelProfile {
+        trained_context: Some(131_072),
+        ..small_model()
+    };
 
     let narrow_left = InferencePass::run_with_model(&p, Some(&narrow)).context_degradation;
     let wide_left = InferencePass::run_with_model(&p, Some(&wide)).context_degradation;
@@ -51,8 +57,14 @@ fn context_degradation_uses_the_model_s_own_window() {
 #[test]
 fn hallucination_risk_accounts_for_model_capacity() {
     let p = params(1024, 512);
-    let tiny = ModelProfile { total_parameters: Some(100_000_000), ..small_model() };
-    let large = ModelProfile { total_parameters: Some(400_000_000_000), ..small_model() };
+    let tiny = ModelProfile {
+        total_parameters: Some(100_000_000),
+        ..small_model()
+    };
+    let large = ModelProfile {
+        total_parameters: Some(400_000_000_000),
+        ..small_model()
+    };
 
     let tiny_confidence = InferencePass::run_with_model(&p, Some(&tiny))
         .hallucination_risk
@@ -72,7 +84,9 @@ fn hallucination_risk_accounts_for_model_capacity() {
 fn kv_cache_is_computed_from_the_model_s_shape() {
     let p = params(1024, 1024);
     let report = InferencePass::run_with_model(&p, Some(&small_model()));
-    let kv = report.kv_cache.expect("a model with layers and heads has a KV cache");
+    let kv = report
+        .kv_cache
+        .expect("a model with layers and heads has a KV cache");
 
     // 2 (K and V) x 32 layers x 8 kv heads x 128 head dim x 2 bytes = 131,072 B/token.
     assert_eq!(kv.bytes_per_token, 2 * 32 * 8 * 128 * 2);
@@ -116,13 +130,24 @@ fn router_load_follows_the_declared_experts() {
         .router_stability
         .expect("MoE reports router stability");
 
-    assert_eq!(a.distribution.len(), 8, "eight declared experts, eight entries");
-    assert_eq!(b.distribution.len(), 64, "sixty-four declared experts, sixty-four entries");
+    assert_eq!(
+        a.distribution.len(),
+        8,
+        "eight declared experts, eight entries"
+    );
+    assert_eq!(
+        b.distribution.len(),
+        64,
+        "sixty-four declared experts, sixty-four entries"
+    );
 
     // Load must still add up.
     for dist in [&a.distribution, &b.distribution] {
         let total: f64 = dist.iter().sum();
-        assert!((total - 1.0).abs() < 1e-6, "router load should sum to 1, got {total}");
+        assert!(
+            (total - 1.0).abs() < 1e-6,
+            "router load should sum to 1, got {total}"
+        );
     }
 }
 
@@ -137,7 +162,9 @@ fn a_report_without_a_model_still_works() {
 #[test]
 fn the_report_says_which_model_it_describes() {
     let report = InferencePass::run_with_model(&params(1024, 512), Some(&small_model()));
-    let profile = report.model_profile.expect("the model should be echoed back");
+    let profile = report
+        .model_profile
+        .expect("the model should be echoed back");
     assert_eq!(profile.total_parameters, Some(7_000_000_000));
     assert_eq!(profile.trained_context, Some(4096));
 }

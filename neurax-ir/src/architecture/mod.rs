@@ -296,7 +296,11 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
                 layer
                     .custom_equations
                     .as_ref()
-                    .and_then(|eqs| eqs.extra.get("params").or_else(|| eqs.extra.get("parameters")))
+                    .and_then(|eqs| {
+                        eqs.extra
+                            .get("params")
+                            .or_else(|| eqs.extra.get("parameters"))
+                    })
                     .and_then(|equation| evaluate_custom_equation(equation, layer))
                     .map(|value| value.max(0.0) as u64)
                     .unwrap_or(0)
@@ -330,10 +334,7 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
     let json_ssm_count = count_of(&|l: &Layer| {
         matches!(
             l.layer_type,
-            LayerType::MambaBlock
-                | LayerType::S4Block
-                | LayerType::H3Block
-                | LayerType::StateSpace
+            LayerType::MambaBlock | LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace
         )
     });
 

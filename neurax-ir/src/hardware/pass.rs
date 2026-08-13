@@ -232,8 +232,8 @@ impl IrPass for HardwarePass {
         // Communication overhead for multi-GPU
         let num_gpus = ctx.config.hardware.total_gpu_count();
         let interconnect_bw = ctx.config.hardware.interconnect_bandwidth_gbs * 1e9; // bytes/s
-        // A data-parallel all-reduce exchanges the gradients, i.e. one buffer
-        // the size of the parameters — not the model's whole HBM traffic.
+                                                                                    // A data-parallel all-reduce exchanges the gradients, i.e. one buffer
+                                                                                    // the size of the parameters — not the model's whole HBM traffic.
         let param_bytes = output.parameter_bytes;
 
         // Ring all-reduce moves 2·(N-1)/N × buffer per rank.

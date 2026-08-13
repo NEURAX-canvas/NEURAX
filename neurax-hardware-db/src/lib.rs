@@ -38,7 +38,6 @@
 //! cargo run --example roofline
 //! ```
 
-
 mod cpu;
 mod gpu;
 mod interconnect;

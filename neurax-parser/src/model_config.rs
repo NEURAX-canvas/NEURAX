@@ -68,11 +68,11 @@ pub enum ModelType {
     Diffusion,
     Gnn,
     Rnn,
-    Ssm,        // State Space Models (Mamba, S4, H3, etc.)
-    Gan,        // Generative Adversarial Networks
-    Hybrid,     // Multi-architecture models (ViT, DiT, etc.)
-    Multimodal, // Vision+language models (CLIP, LLaVA-style, mobile VLMs)
-    Snn,        // Spiking neural networks
+    Ssm,          // State Space Models (Mamba, S4, H3, etc.)
+    Gan,          // Generative Adversarial Networks
+    Hybrid,       // Multi-architecture models (ViT, DiT, etc.)
+    Multimodal,   // Vision+language models (CLIP, LLaVA-style, mobile VLMs)
+    Snn,          // Spiking neural networks
     Experimental, // Novel designs built from custom blocks
 }
 

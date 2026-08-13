@@ -106,7 +106,9 @@ pub fn activation_flops_per_element(name: &str) -> f64 {
 /// A config that asks for `swiglu` is describing a three-matrix MLP whether or
 /// not it also sets a separate `gated` flag, so the two must agree.
 pub fn is_gated_activation(name: &str) -> bool {
-    activation_spec(name).map(|spec| spec.gated).unwrap_or(false)
+    activation_spec(name)
+        .map(|spec| spec.gated)
+        .unwrap_or(false)
 }
 
 /// Canonical spelling of `name`, or `None` if it is not recognised.
@@ -161,6 +163,9 @@ mod tests {
     fn unknown_activations_are_reported_as_unknown() {
         assert!(activation_spec("definitely_not_an_activation").is_none());
         // ... while the lenient helper still yields a usable number.
-        assert_eq!(activation_flops_per_element("definitely_not_an_activation"), 5.0);
+        assert_eq!(
+            activation_flops_per_element("definitely_not_an_activation"),
+            5.0
+        );
     }
 }
