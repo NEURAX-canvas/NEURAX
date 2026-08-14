@@ -1,0 +1,101 @@
+// A dragged node almost never settles at a whole-pixel position: its x/y
+// come from `(mouseClient - canvasOffset) / zoom`, and canvasOffset itself
+// accumulates from raw pointer deltas during panning. Left as float CSS
+// `left`/`top`, the browser rasterises the card's text and borders off the
+// pixel grid — the canvas reads as permanently soft, most visible on the
+// desktop build's WebKitGTK webview, which anti-aliases more aggressively
+// than Chromium. This guards the fix: node and group cards are always
+// painted at a whole device pixel, however fractional their stored
+// coordinates are, while the coordinates themselves stay float (drag math,
+// connection anchors and alignment guides all still need the precision).
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { render } from '@testing-library/react';
+import { CanvasNode } from './CanvasNode';
+import { GroupNode } from './GroupNode';
+import { snapToDevicePixel } from './ArchitectureCanvas';
+import type { CanvasNode as CanvasNodeType, NodeGroup } from '@/types/architecture.ts';
+
+const FRACTIONAL_NODE: CanvasNodeType = {
+  id: 'n1',
+  type: 'dense',
+  name: 'Dense',
+  x: 142.3729,
+  y: 87.618,
+  params: {},
+};
+
+const FRACTIONAL_GROUP: NodeGroup = {
+  id: 'g1',
+  name: 'Block',
+  nodeIds: ['n1'],
+  connectionIds: [],
+  repeatCount: 1,
+  collapsed: false,
+  x: 55.912,
+  y: 12.077,
+};
+
+describe('canvas cards are painted on a whole pixel', () => {
+  it('CanvasNode rounds a fractional position to whole CSS pixels', () => {
+    const { container } = render(
+      <CanvasNode
+        node={FRACTIONAL_NODE}
+        isSelected={false}
+        onSelect={() => {}}
+        onDragStart={() => {}}
+      />,
+    );
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.style.left).toBe(`${Math.round(FRACTIONAL_NODE.x)}px`);
+    expect(card.style.top).toBe(`${Math.round(FRACTIONAL_NODE.y)}px`);
+    // Sanity: the fixture actually is fractional, so this test would fail
+    // without the rounding — it isn't trivially true.
+    expect(Number.isInteger(FRACTIONAL_NODE.x)).toBe(false);
+    expect(Number.isInteger(FRACTIONAL_NODE.y)).toBe(false);
+  });
+
+  it('GroupNode rounds a fractional position to whole CSS pixels', () => {
+    const { container } = render(
+      <GroupNode
+        group={FRACTIONAL_GROUP}
+        nodes={[FRACTIONAL_NODE]}
+        isSelected={false}
+        onSelect={() => {}}
+        onDragStart={() => {}}
+        onUpdateGroup={() => {}}
+        onUngroupGroup={() => {}}
+        onDeleteGroup={() => {}}
+      />,
+    );
+    const card = container.firstElementChild as HTMLElement;
+    expect(card.style.left).toBe(`${Math.round(FRACTIONAL_GROUP.x)}px`);
+    expect(card.style.top).toBe(`${Math.round(FRACTIONAL_GROUP.y)}px`);
+    expect(Number.isInteger(FRACTIONAL_GROUP.x)).toBe(false);
+    expect(Number.isInteger(FRACTIONAL_GROUP.y)).toBe(false);
+  });
+});
+
+describe('snapToDevicePixel', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('rounds to a whole CSS pixel at devicePixelRatio 1', () => {
+    vi.stubGlobal('window', { ...window, devicePixelRatio: 1 });
+    expect(snapToDevicePixel(142.3729)).toBe(142);
+    expect(snapToDevicePixel(87.618)).toBe(88);
+  });
+
+  it('rounds to the nearest physical device pixel on a HiDPI display', () => {
+    // At 2x, a CSS pixel is two device pixels — a value can legitimately
+    // land on a CSS half-pixel and still be crisp, because the physical
+    // pixel grid is twice as fine.
+    vi.stubGlobal('window', { ...window, devicePixelRatio: 2 });
+    expect(snapToDevicePixel(142.3729)).toBe(142.5);
+  });
+
+  it('falls back to whole CSS pixels when devicePixelRatio is unavailable', () => {
+    vi.stubGlobal('window', { ...window, devicePixelRatio: 0 });
+    expect(snapToDevicePixel(10.6)).toBe(11);
+  });
+});

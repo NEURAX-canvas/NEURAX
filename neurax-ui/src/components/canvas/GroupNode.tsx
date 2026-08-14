@@ -57,7 +57,9 @@ export function GroupNode({
         "cursor-move",
         isSelected && "border-primary shadow-xl ring-4 ring-primary/20"
       )}
-      style={{ left: group.x, top: group.y }}
+      // Rounded to a whole pixel for display only — see CanvasNode's own
+      // left/top for why an unrounded position reads as permanent blur.
+      style={{ left: Math.round(group.x), top: Math.round(group.y) }}
       onClick={onSelect}
       onMouseDown={onDragStart}
     >
