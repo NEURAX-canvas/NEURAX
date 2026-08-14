@@ -22,6 +22,37 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const ZOOM_SENSITIVITY = 0.002;
 
+/**
+ * Rounds a CSS length to the nearest physical device pixel.
+ *
+ * `offset.x`/`offset.y` accumulate from raw pointer deltas — after any pan
+ * they are essentially never whole numbers. Fed straight into a CSS
+ * `transform: translate(...)`, a fractional offset forces the browser to
+ * rasterise every node's text and borders off the pixel grid: the canvas
+ * reads as permanently soft, worst on Linux/WebKitGTK (the desktop build's
+ * webview), which anti-aliases more aggressively than Chromium. Snapping
+ * only the rendered transform — never the `offset` state itself — keeps
+ * pointer math, zoom-anchoring and hit-testing exactly as precise as before;
+ * it only changes what gets painted.
+ *
+ * Snapping `offset` here and each node's world position in `CanvasNode`
+ * guarantees a crisp screen pixel only where `zoom` is a whole number — most
+ * concretely 100%, the default and what "Reset View" restores. At a
+ * fractional zoom (say 125%), `offset + zoom·node.x` is still generally
+ * fractional even with both inputs snapped, exactly as it was with no
+ * snapping at all: this is strictly an improvement, never a regression, but
+ * it doesn't chase full crispness through every zoom level. Doing that
+ * would mean computing each node's screen position after the zoom
+ * multiplication — pushing `offset`/`zoom` down into `CanvasNode`/`GroupNode`
+ * and the connection SVG instead of one shared CSS transform on their
+ * parent — which is a materially larger change than the blur fix this
+ * shipped with called for.
+ */
+export function snapToDevicePixel(value: number): number {
+  const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;
+  return Math.round(value * dpr) / dpr;
+}
+
 interface ArchitectureCanvasProps {
   nodes: CanvasNodeType[];
   connections: Connection[];
@@ -688,8 +719,9 @@ export function ArchitectureCanvas({
         <div
           className="absolute inset-0 canvas-transform-layer"
           style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`,
+            transform: `translate3d(${snapToDevicePixel(offset.x)}px, ${snapToDevicePixel(offset.y)}px, 0) scale(${zoom})`,
             transformOrigin: '0 0',
+            willChange: isPanning ? 'transform' : undefined,
           }}
         >
           {/* Connections SVG Layer — always behind node/group cards */}

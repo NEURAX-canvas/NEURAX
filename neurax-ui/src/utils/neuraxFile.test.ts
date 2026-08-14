@@ -22,6 +22,7 @@ import {
   NEURAX_FORMAT_VERSION,
 } from './neuraxFile';
 import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
+import { INITIALIZATION_METHODS } from './weightInitialization.ts';
 
 const nodes: CanvasNode[] = [
   { id: 'n1', type: 'input', name: 'Input', x: 50, y: 140, params: { sequence_length: 4096 } },
@@ -285,6 +286,161 @@ describe('the .neurax document', () => {
 
     it('keeps the name short enough for every filesystem', () => {
       expect(suggestedFileName('x'.repeat(500)).length).toBeLessThanOrEqual(88);
+    });
+  });
+
+  describe('carries Production\'s initialisation recipe', () => {
+    const withInit: DesignSnapshot = {
+      ...snapshot,
+      initialization: {
+        method: 'xavier_normal',
+        gain: 1.0,
+        hyperparameters: {
+          learningRate: 0.0003,
+          dropout: 0.1,
+          weightDecay: 0.01,
+          warmupSteps: 500,
+          optimizer: 'AdamW',
+          gradientClipping: 1.0,
+        },
+        layers: [
+          {
+            layerId: 'n3',
+            layerName: 'GQA',
+            layerType: 'gqa_attention',
+            shape: [4096, 12288],
+            fanIn: 4096,
+            fanOut: 12288,
+            variance: 0.00032552083333333335,
+          },
+        ],
+      },
+    };
+
+    it('round-trips the recipe, not just the architecture', () => {
+      const parsed = parseNeuraxFile(serializeDesign(withInit));
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toEqual(withInit.initialization);
+    });
+
+    it('is additive: an older file with no initialization section still opens', () => {
+      const parsed = parseNeuraxFile(serializeDesign(snapshot));
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toBeNull();
+    });
+
+    it('never stores the generated weight values, only the recipe that reproduces them', () => {
+      // The point of storing method + config instead of the weight arrays: a
+      // git diff of a few million random floats is noise. Only the recipe and
+      // the real per-layer facts derived from it belong in the file.
+      const text = serializeDesign(withInit);
+      const parsed = JSON.parse(text);
+      expect(Object.keys(parsed.initialization).sort()).toEqual(
+        ['gain', 'hyperparameters', 'layers', 'method', 'sparsity'].filter(
+          (k) => k in parsed.initialization,
+        ),
+      );
+      expect(Object.keys(parsed.initialization.layers[0]).sort()).toEqual(
+        ['fanIn', 'fanOut', 'layerId', 'layerName', 'layerType', 'shape', 'variance'].sort(),
+      );
+    });
+
+    it('rejects a malformed initialization section rather than crashing the canvas', () => {
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: { method: 'xavier_normal' }, // no `layers` — incomplete
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toBeNull();
+    });
+
+    it('drops one malformed layer entry rather than trusting the whole array', () => {
+      // A record only had its top-level shape checked (`method` is a string,
+      // `layers` is an array) before being cast straight through — a single
+      // entry missing `shape` reached Production's own rendering as `undefined`
+      // instead of being caught here, next to the data that was actually bad.
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: {
+          method: 'xavier_normal',
+          hyperparameters: withInit.initialization!.hyperparameters,
+          layers: [
+            withInit.initialization!.layers[0], // valid
+            { layerId: 'n4', layerName: 'broken' }, // missing shape/fanIn/fanOut/variance
+          ],
+        },
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization?.layers).toEqual([withInit.initialization!.layers[0]]);
+      expect(parsed.warnings.some((w) => w.includes('malformed'))).toBe(true);
+    });
+
+    it('drops the whole record when every layer is malformed', () => {
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: {
+          method: 'xavier_normal',
+          hyperparameters: withInit.initialization!.hyperparameters,
+          layers: [{ layerId: 'n4' }],
+        },
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toBeNull();
+    });
+
+    it('accepts every real InitializationMethod and rejects an unrecognised one', () => {
+      // The accepted set here is duplicated from `InitializationMethod`
+      // rather than imported (importing it would make this module and
+      // weightInitialization.ts import each other). Driven off
+      // `INITIALIZATION_METHODS` — the same list Production's method picker
+      // renders from — so an eighth or ninth method added there is exercised
+      // here automatically instead of silently exempt from this check.
+      for (const { id } of INITIALIZATION_METHODS) {
+        const handEdited = JSON.stringify({
+          format: NEURAX_FORMAT,
+          version: 1,
+          design: { nodes, connections: [], groups: [] },
+          initialization: {
+            method: id,
+            hyperparameters: withInit.initialization!.hyperparameters,
+            layers: [withInit.initialization!.layers[0]],
+          },
+        });
+        const parsed = parseNeuraxFile(handEdited);
+        expect(parsed.ok, id).toBe(true);
+        if (!parsed.ok) continue;
+        expect(parsed.document.initialization?.method, id).toBe(id);
+      }
+
+      const bogus = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: {
+          method: 'gradient_boosted_vibes',
+          hyperparameters: withInit.initialization!.hyperparameters,
+          layers: [withInit.initialization!.layers[0]],
+        },
+      });
+      const parsed = parseNeuraxFile(bogus);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toBeNull();
+      expect(parsed.warnings.some((w) => w.includes('unrecognised method'))).toBe(true);
     });
   });
 });

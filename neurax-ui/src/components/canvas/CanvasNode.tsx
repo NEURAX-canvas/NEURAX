@@ -219,8 +219,15 @@ export function CanvasNode({
         isMultiSelected && "ring-4 ring-primary/30 ring-offset-2 ring-offset-background"
       )}
       style={{
-        left: node.x,
-        top: node.y,
+        // Rounded to a whole pixel for display only — node.x/node.y stay
+        // float in state and drive connection anchors and drag math
+        // unchanged. Left unrounded, a dragged node settles at a fractional
+        // CSS position, and the browser has to rasterise its text and
+        // borders off the pixel grid: it never looks fully sharp again,
+        // even standing still at 100% zoom. See ArchitectureCanvas's own
+        // offset snap for the other half of this fix.
+        left: Math.round(node.x),
+        top: Math.round(node.y),
       }}
       onClick={(e) => {
         e.stopPropagation();

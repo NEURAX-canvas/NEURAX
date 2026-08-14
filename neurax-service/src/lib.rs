@@ -2811,13 +2811,41 @@ fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
 
 // ─── Compliance Config ──────────────────────────────────────────────
 
+/// Kept as an enum rather than a free string so the compiler — not a reader
+/// of the JSON — enforces the fixed set. A typo or a new status value the
+/// frontend doesn't recognise used to fall through to the UI's "upcoming"
+/// fallback, mislabeling it as on its way rather than flagging it as
+/// unrecognised; that can no longer happen once this only serialises one of
+/// four known lowercase strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ComplianceStatus {
+    /// Legally in force today.
+    Active,
+    /// A change is agreed and dated but not yet legally in force.
+    Upcoming,
+    /// A change is proposed but not yet formally adopted.
+    ///
+    /// Not constructed by today's dataset — the one entry this used to cover
+    /// (the Annex III deferral) was formally adopted in July 2026 and is now
+    /// `Upcoming`. Kept in the enum because regulatory changes routinely
+    /// pass through this state before adoption; removing it would just mean
+    /// re-adding it the next time one does.
+    #[allow(dead_code)]
+    Uncertain,
+    /// A rule that used to apply and no longer does — kept rather than
+    /// deleted so a reader who remembers it finds out it stopped, instead of
+    /// finding nothing.
+    Repealed,
+}
+
 #[derive(Debug, serde::Serialize)]
 struct ComplianceRegulation {
     name: String,
     year: u32,
     limit: Option<f64>,
     unit: Option<String>,
-    status: String,
+    status: ComplianceStatus,
     description: String,
     region: String,
 }
@@ -2827,17 +2855,29 @@ struct ComplianceConfig {
     regulations: Vec<ComplianceRegulation>,
     thresholds: ComplianceThresholds,
     recommendations: Vec<String>,
+    /// The date this dataset was last checked against primary sources, so the
+    /// frontend can say how fresh it is rather than imply the regulatory
+    /// picture is settled. It isn't: three of the six entries below changed
+    /// materially within the twelve months before this date.
+    verified_as_of: String,
 }
 
 #[derive(Debug, serde::Serialize)]
 struct ComplianceThresholds {
-    /// GFLOPs threshold for "high risk" classification (EU AI Act)
-    high_risk_gflops: f64,
-    /// CO₂e threshold in tonnes/year for mandatory reporting (CSRD)
+    /// Cumulative *training* compute, in FLOPs, above which a general-purpose
+    /// AI model is presumed to carry systemic risk under EU AI Act Article 51
+    /// (Regulation (EU) 2024/1689). This is a training-time total, not a
+    /// per-request figure — the Act defines no per-request compute limit.
+    /// Verified via EU AI Act Article 55 guidance, August 2025.
+    systemic_risk_training_flops: f64,
+    /// Recommended point to double-check CSRD scope. CSRD does not itself set
+    /// an emissions-volume trigger — scope is by company size (see the CSRD
+    /// regulation entry) — so this is operational guidance, not a legal cite:
+    /// a training run at this scale is large enough that a company already in
+    /// CSRD's scope should have carbon reporting ready for it.
     carbon_report_tonnes: f64,
-    /// Training compute threshold in FLOPs for disclosure (DSA)
-    dsa_disclosure_flops: f64,
-    /// Recommended max training cost before review
+    /// Recommended training-cost point to trigger a budget review. Operational
+    /// guidance, not a legal threshold.
     cost_review_usd: f64,
 }
 
@@ -3229,15 +3269,18 @@ async fn agent_audit(
         .and_then(|f| f.as_f64())
         .unwrap_or(0.0);
 
-    if total_flops / 1e9 > compliance.thresholds.high_risk_gflops {
-        audit_issues.push(serde_json::json!({
-            "category": "compliance",
-            "severity": "warning",
-            "code": "HIGH_RISK_GFLOPS",
-            "message": format!("Model exceeds {:.0} GFLOPs threshold (EU AI Act)", compliance.thresholds.high_risk_gflops),
-        }));
-        audit_score -= 5.0;
-    }
+    // A per-forward-pass GFLOPs figure used to be checked against a
+    // "high_risk_gflops" threshold framed as an EU AI Act limit. Neither half
+    // of that comparison was real: the Act sets no per-request compute limit
+    // at all — its one quantitative threshold is 10²⁵ FLOPs of *cumulative
+    // training* compute (see `ComplianceThresholds::systemic_risk_training_flops`)
+    // — and `total_flops` here is `total_flops_forward`, a single pass, which
+    // could never approach that figure regardless. Comparing the two would
+    // silently always pass rather than checking anything real, so the check
+    // is removed rather than wired to a threshold it cannot meaningfully be
+    // compared against. A genuine version of this check needs the model's
+    // total training-run compute, which the compiler does not currently
+    // surface to this endpoint.
 
     // Check inference stability
     let stability_score = inference_report.stability_index.score;
@@ -3354,8 +3397,6 @@ async fn agent_carbon(
             "carbon_report_tonnes": compliance.thresholds.carbon_report_tonnes,
             "exceeds_cost_threshold": training_cost_usd > compliance.thresholds.cost_review_usd,
             "cost_review_usd": compliance.thresholds.cost_review_usd,
-            "exceeds_gflops_threshold": false,
-            "high_risk_gflops": compliance.thresholds.high_risk_gflops,
         },
         "recommendations": vec![
             if co2_tonnes > compliance.thresholds.carbon_report_tonnes {
@@ -3444,33 +3485,40 @@ async fn agent_projects(req: HttpRequest, state: web::Data<AppState>) -> impl Re
 }
 
 /// Helper to get compliance data
+/// Checked against primary and legal-tracker sources on this date. Regulatory
+/// text moves: three of these six entries changed materially in the twelve
+/// months before this check (an enforcement date arriving, an executive order
+/// being revoked, a bill dying in a prorogued parliament) — this is not a
+/// one-time fact-check, it needs redoing periodically.
+const COMPLIANCE_VERIFIED_AS_OF: &str = "2026-08-14";
+
 fn get_compliance_data() -> ComplianceConfig {
     let regulations = vec![
         ComplianceRegulation {
-            name: "EU AI Act Phase 1".to_string(),
+            name: "EU AI Act — GPAI Systemic Risk (Art. 51–55)".to_string(),
+            year: 2025,
+            limit: Some(1e25),
+            unit: Some("cumulative training FLOPs".to_string()),
+            status: ComplianceStatus::Active,
+            description: "General-purpose AI models trained with cumulative compute above 10²⁵ FLOPs are presumed to carry systemic risk: technical documentation, adversarial testing, 72-hour incident reporting and energy-efficiency disclosure became legally binding 2 Aug 2025. The AI Office's enforcement powers activated 2 Aug 2026 — both dates have now passed.".to_string(),
+            region: "EU".to_string(),
+        },
+        ComplianceRegulation {
+            name: "EU AI Act — High-Risk Systems (Annex III)".to_string(),
             year: 2027,
-            limit: Some(300.0),
-            unit: Some("GFLOPs/request".to_string()),
-            status: "upcoming".to_string(),
-            description: "General-purpose AI models trained with >10²⁵ FLOPs must comply with transparency and safety obligations.".to_string(),
+            limit: None,
+            unit: None,
+            status: ComplianceStatus::Upcoming,
+            description: "Obligations for high-risk AI systems (biometrics, critical infrastructure, employment, law enforcement) are use-case based, not compute-based — there is no FLOPs threshold. The original deadline was 2 Aug 2026. The Digital Omnibus on AI (Regulation (EU) 2026/1744), published in the Official Journal 24 Jul 2026 and in force since 27 Jul 2026, formally deferred stand-alone Annex III systems to 2 Dec 2027 — that date is now the binding one.".to_string(),
             region: "EU".to_string(),
         },
         ComplianceRegulation {
-            name: "EU AI Act Phase 2".to_string(),
-            year: 2028,
-            limit: Some(150.0),
-            unit: Some("GFLOPs/request".to_string()),
-            status: "upcoming".to_string(),
-            description: "Stricter limits for high-risk AI applications in critical infrastructure, law enforcement, and biometrics.".to_string(),
-            region: "EU".to_string(),
-        },
-        ComplianceRegulation {
-            name: "Carbon Reporting (CSRD)".to_string(),
+            name: "Carbon Reporting (CSRD, post-Omnibus I)".to_string(),
             year: 2026,
             limit: None,
             unit: None,
-            status: "active".to_string(),
-            description: "Corporate Sustainability Reporting Directive requires disclosure of energy consumption and CO₂ emissions for large companies.".to_string(),
+            status: ComplianceStatus::Active,
+            description: "The Omnibus I directive (EU 2026/470), published in the Official Journal 26 Feb 2026 and in force since 18 Mar 2026, narrowed CSRD's scope to companies with over 1,000 employees and over €450M annual turnover — roughly 90% of the companies previously in scope are now excluded. Check scope under the new thresholds before assuming a disclosure obligation applies.".to_string(),
             region: "EU".to_string(),
         },
         ComplianceRegulation {
@@ -3478,51 +3526,137 @@ fn get_compliance_data() -> ComplianceConfig {
             year: 2024,
             limit: None,
             unit: None,
-            status: "active".to_string(),
-            description: "Very large online platforms must disclose AI system training compute and risk assessments.".to_string(),
+            status: ComplianceStatus::Active,
+            description: "Transparency and algorithmic-accountability obligations for large online platforms, in force for very large platforms since Feb 2023 and broadly since 17 Feb 2024. Not an AI-training-compute disclosure regime — that obligation is the EU AI Act's, not the DSA's.".to_string(),
             region: "EU".to_string(),
         },
         ComplianceRegulation {
-            name: "US AI Executive Order".to_string(),
-            year: 2023,
-            limit: None,
-            unit: None,
-            status: "active".to_string(),
-            description: "Companies must report AI models trained with >10²⁵ FLOPs to the US government.".to_string(),
-            region: "US".to_string(),
-        },
-        ComplianceRegulation {
-            name: "Canada AIDA".to_string(),
+            name: "US AI Executive Order 14110".to_string(),
             year: 2025,
             limit: None,
             unit: None,
-            status: "proposed".to_string(),
-            description: "Artificial Intelligence and Data Act — high-impact AI systems must meet safety, transparency, and monitoring requirements.".to_string(),
+            status: ComplianceStatus::Repealed,
+            description: "Biden's EO 14110 (Oct 2023), which required reporting AI models trained above ~10²⁶ FLOPs to the federal government, was revoked 20 Jan 2025 and replaced by EO 14179 (\"Removing Barriers to American Leadership in AI\"). The federal reporting requirement no longer applies; no directly comparable replacement has been issued.".to_string(),
+            region: "US".to_string(),
+        },
+        ComplianceRegulation {
+            name: "Canada AIDA (Bill C-27)".to_string(),
+            year: 2025,
+            limit: None,
+            unit: None,
+            status: ComplianceStatus::Repealed,
+            description: "The Artificial Intelligence and Data Act, proposed as Part 3 of Bill C-27, died on the order paper when Parliament was prorogued in Jan 2025. Canada has no federal AI-specific legislation in force as of this check; a successor bill is expected but had not been introduced.".to_string(),
             region: "Canada".to_string(),
         },
     ];
 
     let thresholds = ComplianceThresholds {
-        high_risk_gflops: 300.0,
+        systemic_risk_training_flops: 1e25,
         carbon_report_tonnes: 50.0,
-        dsa_disclosure_flops: 1e25,
         cost_review_usd: 100_000.0,
     };
 
     let recommendations = vec![
-        "Monitor EU AI Act Phase 1 compliance for models exceeding 300 GFLOPs/request".to_string(),
-        "Prepare CSRD carbon reporting for training runs exceeding 50 tonnes CO₂e/year".to_string(),
-        "Consider FP8 or INT8 quantization to reduce inference compute below regulatory thresholds"
-            .to_string(),
-        "Document all training compute for models above 10²⁵ FLOPs (US EO requirement)".to_string(),
-        "Implement energy monitoring for GPU clusters to track real-time carbon footprint"
-            .to_string(),
+        "Check cumulative training compute against the EU AI Act's 10²⁵ FLOPs systemic-risk threshold — it is a training-time total, not a per-request figure".to_string(),
+        "The EU AI Act high-risk (Annex III) deadline was formally deferred to 2 Dec 2027 by the Digital Omnibus on AI (Regulation (EU) 2026/1744, in force since 27 Jul 2026) — the original 2 Aug 2026 date no longer applies".to_string(),
+        "Confirm CSRD scope under the post-Omnibus thresholds (>1,000 employees and >€450M turnover) before preparing carbon disclosure".to_string(),
+        "The US EO 14110 training-compute reporting requirement was repealed Jan 2025 — do not plan around it".to_string(),
+        "FP8/INT8 quantization lowers serving compute and cost regardless of which compliance regime applies".to_string(),
     ];
 
     ComplianceConfig {
         regulations,
         thresholds,
         recommendations,
+        verified_as_of: COMPLIANCE_VERIFIED_AS_OF.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod compliance_tests {
+    use super::*;
+
+    /// This data was previously years out of date in a way that would
+    /// actively mislead a compliance decision: the EU AI Act's real 10²⁵-FLOP
+    /// systemic-risk threshold measures cumulative *training* compute, and no
+    /// version of the Act sets a per-request GFLOPs limit at all — verified
+    /// against EU AI Act Article 55 guidance, August 2025. Nothing here should
+    /// mention a per-request figure again.
+    #[test]
+    fn no_regulation_cites_a_per_request_gflops_limit() {
+        let config = get_compliance_data();
+        for reg in &config.regulations {
+            let unit = reg.unit.as_deref().unwrap_or("");
+            assert!(
+                !unit.to_lowercase().contains("request"),
+                "{} cites a per-request unit ({unit:?}) — the Act has no such limit",
+                reg.name,
+            );
+        }
+    }
+
+    /// A rule that stopped applying must say so, not sit alongside active
+    /// ones with no visible difference. EO 14110 was revoked 20 Jan 2025;
+    /// Bill C-27 / AIDA died at prorogation the same month — verified against
+    /// Federal Register and LEGISinfo records.
+    #[test]
+    fn repealed_rules_are_marked_repealed_not_active() {
+        let config = get_compliance_data();
+        for name in ["US AI Executive Order 14110", "Canada AIDA (Bill C-27)"] {
+            let reg = config
+                .regulations
+                .iter()
+                .find(|r| r.name == name)
+                .unwrap_or_else(|| panic!("expected a regulation named {name}"));
+            assert_eq!(
+                reg.status,
+                ComplianceStatus::Repealed,
+                "{name} should be marked repealed"
+            );
+        }
+    }
+
+    /// The one number in this dataset with real legal weight: EU AI Act
+    /// Article 51's systemic-risk threshold is 10²⁵ FLOPs of training
+    /// compute, not the invented "300 GFLOPs" this used to carry.
+    #[test]
+    fn systemic_risk_threshold_is_the_real_ten_to_the_25() {
+        let config = get_compliance_data();
+        assert_eq!(config.thresholds.systemic_risk_training_flops, 1e25);
+    }
+
+    /// Every entry names its jurisdiction — a compliance timeline that
+    /// doesn't say which country a rule is from is not actionable.
+    #[test]
+    fn every_regulation_names_a_region() {
+        let config = get_compliance_data();
+        for reg in &config.regulations {
+            assert!(!reg.region.is_empty(), "{} has no region", reg.name);
+        }
+    }
+
+    /// A freshness date must travel with the data — regulatory text moves,
+    /// and a reader needs to know how old this check is, not just trust it.
+    #[test]
+    fn carries_a_verified_as_of_date() {
+        let config = get_compliance_data();
+        let verified = chrono::NaiveDate::parse_from_str(&config.verified_as_of, "%Y-%m-%d")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "verified_as_of {:?} is not a real date: {e}",
+                    config.verified_as_of
+                )
+            });
+        // Regulatory text moves; a dataset that hasn't been re-checked in over
+        // a year is stale enough that this should fail loudly rather than
+        // silently keep shipping last year's compliance picture.
+        let today = chrono::Utc::now().date_naive();
+        let age_days = (today - verified).num_days();
+        assert!(
+            (0..=365).contains(&age_days),
+            "compliance data was verified {age_days} days ago (on {verified}) — re-verify against \
+             primary sources and bump COMPLIANCE_VERIFIED_AS_OF",
+        );
     }
 }
 

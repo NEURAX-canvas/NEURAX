@@ -480,7 +480,15 @@ export const UNIVERSAL_PARAMS: HyperparameterDef[] = [
   ...PARALLELISM_PARAMS,
 ];
 
-export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparameterDefs> = {
+/**
+ * The eleven established families, on their own — everything except
+ * `experimental`.
+ *
+ * Kept apart from the exported `FAMILY_HYPERPARAM_DEFS` so `experimental`'s
+ * own entry can be *derived* from the other ten rather than hand-copied: see
+ * `buildExperimentalParams` below, assembled after this object closes.
+ */
+const CONCRETE_FAMILY_DEFS: Record<Exclude<ArchitectureFamily, 'experimental'>, FamilyHyperparameterDefs> = {
   transformer: {
     family: 'transformer',
     globalConstraints: TRANSFORMER_CONSTRAINTS,
@@ -1475,37 +1483,58 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
     },
   },
 
-  // experimental shares transformer params
+};
+
+/**
+ * Every parameter from every established family, in one list.
+ *
+ * `experimental` is the catch-all family for blocks that don't fit the other
+ * eleven — the palette already treats it that way — so its hyperparameters
+ * should be the same: not a copy of transformer's, but the union of what
+ * every family exposes. Someone combining an MoE router with an SSM state
+ * block needs both `numExperts` and `stateDim` on screen at once, and no
+ * single concrete family has both.
+ *
+ * Deduplicated by key, first occurrence wins — families are visited in the
+ * order `CONCRETE_FAMILY_DEFS` declares them, so the earliest, most-authoritative
+ * definition of a shared key (`batchSize`, `learningRate`, ...) is the one
+ * kept rather than the last family to happen to also mention it.
+ */
+function buildExperimentalParams(
+  families: Record<Exclude<ArchitectureFamily, 'experimental'>, FamilyHyperparameterDefs>,
+): HyperparameterDef[] {
+  const seen = new Set<string>();
+  const merged: HyperparameterDef[] = [];
+
+  for (const defs of Object.values(families)) {
+    for (const param of defs.params) {
+      const key = param.key as string;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(param);
+    }
+  }
+
+  return merged;
+}
+
+export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparameterDefs> = {
+  ...CONCRETE_FAMILY_DEFS,
   experimental: {
     family: 'experimental',
-    globalConstraints: TRANSFORMER_CONSTRAINTS,
-    params: [
-      {
-        key: 'hiddenDim',
-        label: 'Hidden Dimension',
-        description:
-          'Width of the residual stream. Drives parameter count quadratically through the projection matrices, so it is the strongest single lever on model size.',
-        type: 'int',
-        defaultValue: 768,
-        range: { min: 64, max: 16384, step: 64, gridPoints: 6 },
-        priority: 'high',
-        group: 'capacity',
-      },
-      {
-        key: 'numLayers',
-        label: 'Number of Layers',
-        description:
-          'Depth of the block stack. Parameters and FLOPs scale linearly with it, while deeper stacks are harder to keep numerically stable.',
-        type: 'int',
-        defaultValue: 6,
-        range: { min: 1, max: 128, step: 1, gridPoints: 5 },
-        priority: 'high',
-        group: 'capacity',
-      },
-      // batchSize and learningRate come from UNIVERSAL_PARAMS, which documents
-      // them properly; redefining them here only shadowed the better entries.
-          ...UNIVERSAL_PARAMS,
-    ],
+    // Every family's own constraints apply to at least the blocks it
+    // contributed; unioning them the same way as the params keeps a
+    // MoE-shaped constraint from silently vanishing just because the design
+    // also has an SSM block in it. Derived from CONCRETE_FAMILY_DEFS itself
+    // (not a hand-picked list of the families that happen to declare
+    // constraints today) so a constraint added to any family later — rnn,
+    // gan, snn and rl currently declare none — reaches experimental too,
+    // instead of silently not applying there until someone remembers to
+    // update this list by hand.
+    globalConstraints: Object.values(CONCRETE_FAMILY_DEFS).flatMap(
+      (defs) => defs.globalConstraints ?? [],
+    ),
+    params: buildExperimentalParams(CONCRETE_FAMILY_DEFS),
     defaultSearchSpace: {
       hiddenDim: { min: 128, max: 2048, step: 128 },
       numLayers: { min: 2, max: 24 },

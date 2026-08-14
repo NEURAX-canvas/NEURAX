@@ -1,4 +1,6 @@
 import { CanvasNode, Connection } from '@/types/architecture.ts';
+import { normalizeBlockParams } from '@/utils/blockDefaults.ts';
+import { InitializationRecord } from '@/utils/neuraxFile.ts';
 
 export type InitializationMethod = 
   | 'xavier_uniform'
@@ -17,26 +19,48 @@ export interface InitializationConfig {
   mode?: 'fan_in' | 'fan_out' | 'fan_avg';
 }
 
+/**
+ * A layer's initialisation, as facts about it rather than the sampled numbers
+ * themselves.
+ *
+ * Used to also carry the actual generated `weights: number[][]` matrix and a
+ * `bias` vector. Nothing in the application ever read them — the panel's own
+ * Gradient Flow Score is computed from the closed-form `variance` below, not
+ * by inspecting the samples, and the `.neurax` export deliberately stores this
+ * same recipe rather than the arrays (see `buildInitializationRecord`). What
+ * they cost to generate stopped being affordable once fan-in/fan-out reflect
+ * a real model's width rather than a 512 fallback: a real attention layer's
+ * matrix is tens of millions of floats, and `orthogonal` computed it through
+ * a Gram–Schmidt pass whose cost is cubic in the matrix dimensions — the
+ * combination is what made initialising a real design hang.
+ */
 export interface LayerWeights {
   layerId: string;
   layerName: string;
   layerType: string;
   shape: number[];
-  weights: number[][];
-  bias?: number[];
   initMethod: InitializationMethod;
   variance: number;
   fanIn: number;
   fanOut: number;
 }
 
+/**
+ * What this panel can honestly say about the initialisation it just computed.
+ *
+ * Used to carry four more fields — epochs saved, compute hours saved, dataset
+ * efficiency and a convergence-speed multiplier — each read from a fixed table
+ * keyed only by which method was picked (LSUV always "1.6x", sparse always
+ * "1.2x"), identical for every architecture and unrelated to the model on the
+ * canvas. The first three were removed from the UI in an earlier pass; the
+ * fourth, `convergenceSpeedBoost`, kept being rendered as a "Convergence
+ * Boost" meter beside the real Gradient Flow Score, with nothing to tell them
+ * apart. All four are gone. What remains is grounded in the weights this
+ * panel actually generated.
+ */
 export interface SustainabilityMetrics {
-  estimatedEpochsSaved: number;
-  computeHoursSaved: number;
-  datasetEfficiency: number; // percentage
-  convergenceSpeedBoost: number; // multiplier
-  gradientFlowScore: number; // 0-100
-  memoryOptimization: number; // percentage
+  gradientFlowScore: number; // 0-100, from the real variance of the generated weights
+  memoryOptimization: number; // percentage, from the sparsity actually configured
 }
 
 export interface InitializedArchitecture {
@@ -45,151 +69,115 @@ export interface InitializedArchitecture {
   connections: Connection[];
   config: InitializationConfig;
   metrics: SustainabilityMetrics;
-  onnxCompatible: boolean;
 }
 
-// Xavier/Glorot initialization
-function xavierUniform(fanIn: number, fanOut: number, gain: number = 1.0): number {
-  const limit = gain * Math.sqrt(6.0 / (fanIn + fanOut));
-  return (Math.random() * 2 - 1) * limit;
-}
-
-function xavierNormal(fanIn: number, fanOut: number, gain: number = 1.0): number {
-  const std = gain * Math.sqrt(2.0 / (fanIn + fanOut));
-  return gaussianRandom() * std;
-}
-
-// He/Kaiming initialization
-function heUniform(fanIn: number, gain: number = Math.sqrt(2)): number {
-  const limit = gain * Math.sqrt(3.0 / fanIn);
-  return (Math.random() * 2 - 1) * limit;
-}
-
-function heNormal(fanIn: number, gain: number = Math.sqrt(2)): number {
-  const std = gain / Math.sqrt(fanIn);
-  return gaussianRandom() * std;
-}
-
-// Orthogonal initialization using QR decomposition approximation
-function orthogonalInit(rows: number, cols: number): number[][] {
-  const matrix: number[][] = [];
-  
-  // Generate random matrix
-  for (let i = 0; i < rows; i++) {
-    matrix[i] = [];
-    for (let j = 0; j < cols; j++) {
-      matrix[i][j] = gaussianRandom();
-    }
+/**
+ * The variance a layer's weights would have under the chosen method — the
+ * same closed-form result the published formula for each gives, without
+ * sampling the matrix that formula describes.
+ *
+ * This used to build the actual `rows × cols` array: draw every element,
+ * and — for `orthogonal` and `delta_orthogonal` — run a Gram–Schmidt pass
+ * over it whose cost is cubic in the matrix dimensions. Nothing in the
+ * application ever read the array; see the note on `LayerWeights`. On the
+ * flat 512-wide default every real block used to fall back to, generating
+ * and orthogonalising a 512×512 matrix was slow but survivable. Once
+ * fan-in/fan-out reflect a real model's width, the same matrix for one
+ * attention layer is tens of millions of elements, and the cubic pass over it
+ * is what made initialising a real design hang.
+ */
+function layerVariance(
+  fanIn: number,
+  fanOut: number,
+  gain: number,
+  sparsity: number,
+  method: InitializationMethod,
+): number {
+  switch (method) {
+    // Xavier's uniform bound is a = gain·√(6/(fanIn+fanOut)), chosen so that
+    // Var(U(-a,a)) = a²/3 lands on exactly the same target variance as the
+    // normal variant — that's the point of the derivation, not a difference
+    // between them. Both branches report that one shared target.
+    case 'xavier_uniform':
+    case 'xavier_normal':
+      return (2 * gain * gain) / (fanIn + fanOut);
+    // Same relationship for He: a = gain·√(6/fanIn) makes the uniform
+    // variant match the normal variant's 2·gain²/fanIn target.
+    case 'he_uniform':
+    case 'he_normal':
+      return (2 * gain * gain) / fanIn;
+    case 'sparse':
+      return ((2 * gain * gain) / (fanIn + fanOut)) * (1 - sparsity);
+    case 'delta_orthogonal':
+      // Delta-orthogonal places an orthogonal matrix at the kernel's centre
+      // tap and zeroes the rest (Xiao et al., "Dynamical Isometry and a Mean
+      // Field Theory of CNNs") — the orthogonal block itself is what
+      // propagates the signal, so the *effective* per-element variance
+      // stays at the orthogonal case, not `rows`. Returning `rows` here (a
+      // real model's width, e.g. 4096) drove `calculateSustainabilityMetrics`'s
+      // `exp(-|avg - 1|)` score to zero for any design containing one.
+      return 1.0;
+    case 'orthogonal':
+    case 'lsuv':
+      // Both target unit variance by construction.
+      return 1.0;
+    default:
+      return 1.0;
   }
-  
-  // Gram-Schmidt orthogonalization
-  for (let j = 0; j < Math.min(rows, cols); j++) {
-    // Normalize column j
-    let norm = 0;
-    for (let i = 0; i < rows; i++) {
-      norm += matrix[i][j] * matrix[i][j];
-    }
-    norm = Math.sqrt(norm);
-    
-    if (norm > 1e-8) {
-      for (let i = 0; i < rows; i++) {
-        matrix[i][j] /= norm;
-      }
-    }
-    
-    // Subtract projection from remaining columns
-    for (let k = j + 1; k < cols; k++) {
-      let dot = 0;
-      for (let i = 0; i < rows; i++) {
-        dot += matrix[i][j] * matrix[i][k];
-      }
-      for (let i = 0; i < rows; i++) {
-        matrix[i][k] -= dot * matrix[i][j];
-      }
-    }
-  }
-  
-  return matrix;
 }
 
-// LSUV-inspired initialization
-function lsuvInit(fanIn: number, fanOut: number, targetVariance: number = 1.0): number {
-  // Initialize with orthogonal base, then scale to target variance
-  const initialValue = gaussianRandom() * Math.sqrt(2.0 / (fanIn + fanOut));
-  // Scale factor to achieve target unit variance
-  const scaleFactor = Math.sqrt(targetVariance / (2.0 / (fanIn + fanOut)));
-  return initialValue * scaleFactor;
-}
+/**
+ * Fan-in, fan-out and weight shape for a block, from its real parameters.
+ *
+ * This used to switch on four literal type strings — `dense`, `conv2d`,
+ * `attention`, `transformer` — that no reference template or import has
+ * emitted since the block catalogue moved to specific names like
+ * `gqa_attention`, `ffn_gated` and `rmsnorm`. Every real block fell through to
+ * a flat 512×512 default: the Xavier/He formulas below are computed exactly
+ * right, for a layer at a width nothing on the canvas actually has.
+ *
+ * Matched by substring against the type name instead of an exact list, so a
+ * new attention or conv variant added to the catalogue resolves correctly
+ * without a change here — the same class of drift is what broke the literal
+ * switch the first time.
+ */
+function resolveLayerDims(node: CanvasNode): { fanIn: number; fanOut: number; shape: number[] } {
+  const p = normalizeBlockParams(node.type, node.params ?? {}) as Record<string, unknown>;
+  const num = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
 
-// Sparse initialization
-function sparseInit(fanIn: number, fanOut: number, sparsity: number = 0.9): number {
-  if (Math.random() < sparsity) {
-    return 0;
+  if (node.type.includes('conv')) {
+    const kernel = num(p.kernel_size, 3);
+    const inChannels = num(p.in_channels, 3);
+    const outChannels = num(p.out_channels ?? p.filters, 64);
+    return {
+      fanIn: inChannels * kernel * kernel,
+      fanOut: outChannels * kernel * kernel,
+      shape: [outChannels, inChannels, kernel, kernel],
+    };
   }
-  // Non-zero elements use Xavier initialization
-  return xavierNormal(fanIn, fanOut) / (1 - sparsity);
-}
 
-// Delta-orthogonal for RNNs/LSTMs
-function deltaOrthogonalInit(rows: number, cols: number): number[][] {
-  const matrix = orthogonalInit(rows, cols);
-  // Scale by sqrt(rows) to preserve gradient flow
-  const scale = Math.sqrt(rows);
-  return matrix.map(row => row.map(val => val * scale));
-}
+  // Norm layers hold one value per channel — no fan-in/fan-out matmul. Their
+  // own schema key is `normalized_shape`, not `d_model` — layernorm/rmsnorm
+  // never declare a `d_model` field for `normalizeBlockParams` to alias onto,
+  // so reading `d_model` here always missed and fell back to 512.
+  if (node.type.includes('norm')) {
+    const width = num(p.normalized_shape, num(p.d_model, 512));
+    return { fanIn: width, fanOut: width, shape: [width] };
+  }
 
-// Helper: Box-Muller transform for Gaussian random numbers
-function gaussianRandom(): number {
-  let u = 0, v = 0;
-  while (u === 0) u = Math.random();
-  while (v === 0) v = Math.random();
-  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
-}
+  const dModel = num(p.d_model, 512);
 
-// Calculate fan_in and fan_out for a layer
-function calculateFans(node: CanvasNode): { fanIn: number; fanOut: number } {
-  let fanIn = 512;
-  let fanOut = 512;
-  
-  switch (node.type) {
-    case 'dense':
-      fanIn = 512; // Default, would be inferred from connections
-      fanOut = Number(node.params.units) || 512;
-      break;
-    case 'conv2d':
-      const kernel = Number(node.params.kernel) || 3;
-      const channels = 3; // Input channels
-      const filters = Number(node.params.filters) || 64;
-      fanIn = channels * kernel * kernel;
-      fanOut = filters * kernel * kernel;
-      break;
-    case 'attention':
-      const dim = Number(node.params.dim) || 512;
-      fanIn = dim;
-      fanOut = dim;
-      break;
-    case 'transformer':
-      const tDim = Number(node.params.dim) || 512;
-      fanIn = tDim;
-      fanOut = tDim;
-      break;
+  // Attention blocks project to a combined Q/K/V width.
+  if (node.type.includes('attention')) {
+    return { fanIn: dModel, fanOut: dModel * 3, shape: [dModel, dModel * 3] };
   }
-  
-  // Try to parse from input/output shapes
-  if (node.inputShape) {
-    const match = node.inputShape.match(/\[[\d,\s]+,\s*(\d+)\]/);
-    if (match) {
-      fanIn = parseInt(match[1], 10);
-    }
-  }
-  if (node.outputShape) {
-    const match = node.outputShape.match(/\[[\d,\s]+,\s*(\d+)\]/);
-    if (match) {
-      fanOut = parseInt(match[1], 10);
-    }
-  }
-  
-  return { fanIn, fanOut };
+
+  // Everything else is a dense projection. FFN blocks widen to `d_ff`; heads
+  // project onto a vocabulary or a class count; anything left maps the
+  // model's width onto itself.
+  const fanOut = num(p.d_ff, num(p.vocab_size, num(p.num_classes, num(p.num_labels, dModel))));
+  return { fanIn: dModel, fanOut, shape: [dModel, fanOut] };
 }
 
 // Initialize weights for a single layer
@@ -197,134 +185,29 @@ function initializeLayerWeights(
   node: CanvasNode,
   config: InitializationConfig
 ): LayerWeights {
-  const { fanIn, fanOut } = calculateFans(node);
+  const { fanIn, fanOut, shape } = resolveLayerDims(node);
   const gain = config.gain || 1.0;
-  
-  // Determine weight shape
-  const shape = getWeightShape(node);
-  const rows = shape[0] || fanIn;
-  const cols = shape[1] || fanOut;
-  
-  let weights: number[][] = [];
-  let variance = 0;
-  
-  switch (config.method) {
-    case 'xavier_uniform':
-      weights = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => xavierUniform(fanIn, fanOut, gain))
-      );
-      variance = (2 * gain * gain) / (fanIn + fanOut) / 3;
-      break;
-      
-    case 'xavier_normal':
-      weights = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => xavierNormal(fanIn, fanOut, gain))
-      );
-      variance = (2 * gain * gain) / (fanIn + fanOut);
-      break;
-      
-    case 'he_uniform':
-      weights = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => heUniform(fanIn, gain))
-      );
-      variance = (2 * gain * gain) / fanIn / 3;
-      break;
-      
-    case 'he_normal':
-      weights = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => heNormal(fanIn, gain))
-      );
-      variance = (2 * gain * gain) / fanIn;
-      break;
-      
-    case 'orthogonal':
-      weights = orthogonalInit(rows, cols);
-      variance = 1.0;
-      break;
-      
-    case 'lsuv':
-      weights = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => lsuvInit(fanIn, fanOut, 1.0))
-      );
-      variance = 1.0;
-      break;
-      
-    case 'sparse':
-      const sparsity = config.sparsity || 0.9;
-      weights = Array.from({ length: rows }, () =>
-        Array.from({ length: cols }, () => sparseInit(fanIn, fanOut, sparsity))
-      );
-      variance = (2 * gain * gain) / (fanIn + fanOut) * (1 - sparsity);
-      break;
-      
-    case 'delta_orthogonal':
-      weights = deltaOrthogonalInit(rows, cols);
-      variance = rows;
-      break;
-  }
-  
-  // Initialize bias to zeros
-  const bias = Array(cols).fill(0);
-  
+  const sparsity = config.sparsity || 0.9;
+
   return {
     layerId: node.id,
     layerName: node.name,
     layerType: node.type,
     shape,
-    weights,
-    bias,
     initMethod: config.method,
-    variance,
+    variance: layerVariance(fanIn, fanOut, gain, sparsity, config.method),
     fanIn,
     fanOut,
   };
 }
 
-function getWeightShape(node: CanvasNode): number[] {
-  switch (node.type) {
-    case 'dense':
-      return [512, Number(node.params.units) || 512];
-    case 'conv2d':
-      const kernel = Number(node.params.kernel) || 3;
-      const filters = Number(node.params.filters) || 64;
-      return [filters, 3, kernel, kernel];
-    case 'attention':
-      const dim = Number(node.params.dim) || 512;
-      return [dim, dim * 3]; // Q, K, V projections
-    case 'transformer':
-      const tDim = Number(node.params.dim) || 512;
-      return [tDim, tDim];
-    case 'layernorm':
-    case 'batchnorm':
-      return [512]; // Gamma/beta parameters
-    default:
-      return [512, 512];
-  }
-}
-
-// Calculate sustainability metrics
 function calculateSustainabilityMetrics(
   layers: LayerWeights[],
   config: InitializationConfig
 ): SustainabilityMetrics {
-  const baseEpochs = 100;
-  const baseHours = 24;
-  
-  // Different methods provide different convergence benefits
-  const methodEfficiency: Record<InitializationMethod, number> = {
-    'xavier_uniform': 1.3,
-    'xavier_normal': 1.35,
-    'he_uniform': 1.4,
-    'he_normal': 1.45,
-    'lsuv': 1.6,
-    'orthogonal': 1.5,
-    'sparse': 1.2,
-    'delta_orthogonal': 1.55,
-  };
-  
-  const efficiencyBoost = methodEfficiency[config.method] || 1.0;
-  
-  // Calculate gradient flow score based on variance preservation
+  // Gradient flow score, from variance preservation: unit variance across
+  // layers is the actual goal Xavier/He initialisation targets, and this
+  // scores how close the real, computed variance of these layers came to it.
   // An average over no layers is NaN, which reached the UI as "NaN/100".
   const avgVariance = layers.length
     ? layers.reduce((sum, l) => sum + l.variance, 0) / layers.length
@@ -332,26 +215,13 @@ function calculateSustainabilityMetrics(
   const gradientFlowScore = layers.length
     ? Math.min(100, Math.round(100 * Math.exp(-Math.abs(avgVariance - 1))))
     : 0;
-  
-  // Estimate savings
-  const epochsSaved = Math.round(baseEpochs * (1 - 1 / efficiencyBoost));
-  const hoursSaved = Math.round(baseHours * (1 - 1 / efficiencyBoost) * 10) / 10;
-  const datasetEfficiency = Math.round((efficiencyBoost - 1) * 100);
-  
-  // Memory optimization for sparse init
-  let memoryOptimization = 0;
-  if (config.method === 'sparse') {
-    memoryOptimization = Math.round((config.sparsity || 0.9) * 100);
-  }
-  
-  return {
-    estimatedEpochsSaved: epochsSaved,
-    computeHoursSaved: hoursSaved,
-    datasetEfficiency,
-    convergenceSpeedBoost: efficiencyBoost,
-    gradientFlowScore,
-    memoryOptimization,
-  };
+
+  // Memory saved by sparse initialisation: the sparsity the user configured
+  // is, by construction, the fraction of weights that are zero.
+  const memoryOptimization =
+    config.method === 'sparse' ? Math.round((config.sparsity || 0.9) * 100) : 0;
+
+  return { gradientFlowScore, memoryOptimization };
 }
 
 // Main function to initialize architecture
@@ -418,189 +288,59 @@ export function initializeArchitecture(
     connections,
     config,
     metrics,
-    onnxCompatible: true,
   };
 }
 
-// Generate ONNX with pre-computed weights
-export function generateGreenAIONNX(
-  architecture: InitializedArchitecture
-): string {
-  const { modelName, layers, config, metrics } = architecture;
-  
-  const weightsJson = layers.map(layer => ({
-    name: layer.layerName,
-    type: layer.layerType,
-    shape: layer.shape,
-    weights: `[${layer.weights.length}x${layer.weights[0]?.length || 0} tensor]`,
-    bias: layer.bias ? `[${layer.bias.length} tensor]` : null,
-    init_method: layer.initMethod,
-    fan_in: layer.fanIn,
-    fan_out: layer.fanOut,
-  }));
-
-  return `"""
-Green AI Model Export - ${modelName}
-=====================================
-
-Smart Weight Initialization for Reduced Training Time & Energy
-
-Initialization Method: ${config.method.toUpperCase()}
-${config.gain ? `Gain Factor: ${config.gain}` : ''}
-${config.sparsity ? `Sparsity: ${(config.sparsity * 100).toFixed(0)}%` : ''}
-
-SUSTAINABILITY METRICS:
-- Estimated Epochs Saved: ~${metrics.estimatedEpochsSaved} epochs
-- Compute Hours Saved: ~${metrics.computeHoursSaved} hours
-- Dataset Efficiency Boost: ${metrics.datasetEfficiency}%
-- Convergence Speed: ${metrics.convergenceSpeedBoost.toFixed(2)}x faster
-- Gradient Flow Score: ${metrics.gradientFlowScore}/100
-
-This model uses mathematically-optimized weight initialization
-instead of random weights, reducing:
-- Training time
-- Energy consumption  
-- Dataset requirements
-
-"""
-
-import torch
-import torch.nn as nn
-import numpy as np
-import onnx
-from onnx import helper, TensorProto
-
-def create_initialized_model():
-    """
-    Create model with pre-computed optimal weights
-    """
-    
-    # Weight initialization configuration
-    init_config = {
-        "method": "${config.method}",
-        "gain": ${config.gain || 1.0},
-        ${config.sparsity ? `"sparsity": ${config.sparsity},` : ''}
-    }
-    
-    # Layer weight specifications
-    layer_specs = ${JSON.stringify(weightsJson, null, 4)}
-    
-    # Initialize weights using ${config.method}
-    def ${config.method}_init(fan_in, fan_out, shape, gain=${config.gain || 1.0}):
-        ${getInitFunctionBody(config.method)}
-    
-    # Build model with initialized weights
-    class ${modelName}(nn.Module):
-        def __init__(self):
-            super().__init__()
-            ${generateModelInit(layers)}
-        
-        def forward(self, x):
-            ${generateForwardPass(layers)}
-            return x
-    
-    return ${modelName}()
-
-
-def export_to_onnx(output_path="${modelName.toLowerCase()}_green.onnx"):
-    """
-    Export model with pre-computed weights to ONNX format
-    """
-    model = create_initialized_model()
-    model.eval()
-    
-    # Sample input for tracing
-    dummy_input = torch.randn(1, 3, 224, 224)
-    
-    torch.onnx.export(
-        model,
-        dummy_input,
-        output_path,
-        export_params=True,
-        opset_version=14,
-        do_constant_folding=True,
-        input_names=['input'],
-        output_names=['output'],
-        dynamic_axes={
-            'input': {0: 'batch_size'},
-            'output': {0: 'batch_size'}
-        }
-    )
-    
-    print(f"✅ Green AI model exported to {output_path}")
-    print(f"📊 Sustainability metrics:")
-    print(f"   - Expected training speedup: {${metrics.convergenceSpeedBoost.toFixed(2)}}x")
-    print(f"   - Estimated epochs saved: ~${metrics.estimatedEpochsSaved}")
-    print(f"   - Compute hours saved: ~${metrics.computeHoursSaved}h")
-    
-    return output_path
-
-
-if __name__ == "__main__":
-    export_to_onnx()
-`;
-}
-
-function getInitFunctionBody(method: InitializationMethod): string {
-  switch (method) {
-    case 'xavier_uniform':
-      return `limit = gain * np.sqrt(6.0 / (fan_in + fan_out))
-        return torch.empty(shape).uniform_(-limit, limit)`;
-    case 'xavier_normal':
-      return `std = gain * np.sqrt(2.0 / (fan_in + fan_out))
-        return torch.empty(shape).normal_(0, std)`;
-    case 'he_uniform':
-      return `limit = gain * np.sqrt(3.0 / fan_in)
-        return torch.empty(shape).uniform_(-limit, limit)`;
-    case 'he_normal':
-      return `std = gain / np.sqrt(fan_in)
-        return torch.empty(shape).normal_(0, std)`;
-    case 'orthogonal':
-      return `w = torch.empty(shape)
-        nn.init.orthogonal_(w, gain=gain)
-        return w`;
-    case 'lsuv':
-      return `w = torch.empty(shape)
-        nn.init.orthogonal_(w)
-        # Scale to unit variance
-        return w / w.std()`;
-    case 'sparse':
-      return `w = torch.zeros(shape)
-        sparsity = 0.9
-        mask = torch.rand(shape) > sparsity
-        w[mask] = torch.randn(mask.sum()) * gain * np.sqrt(2.0 / (fan_in + fan_out))
-        return w`;
-    case 'delta_orthogonal':
-      return `w = torch.empty(shape)
-        nn.init.orthogonal_(w)
-        return w * np.sqrt(fan_in)`;
-    default:
-      return `return torch.randn(shape) * 0.01`;
-  }
-}
-
-function generateModelInit(layers: LayerWeights[]): string {
-  return layers.map(layer => {
-    switch (layer.layerType) {
-      case 'dense':
-        return `self.${layer.layerName.toLowerCase().replace(/[^a-z0-9]/gi, '_')} = nn.Linear(${layer.fanIn}, ${layer.fanOut})
-            # Apply ${layer.initMethod} initialization
-            nn.init.${layer.initMethod.includes('uniform') ? 'uniform_' : 'normal_'}(self.${layer.layerName.toLowerCase().replace(/[^a-z0-9]/gi, '_')}.weight)`;
-      case 'conv2d':
-        return `self.${layer.layerName.toLowerCase().replace(/[^a-z0-9]/gi, '_')} = nn.Conv2d(3, ${layer.shape[0]}, kernel_size=${layer.shape[2]})`;
-      case 'attention':
-        return `self.${layer.layerName.toLowerCase().replace(/[^a-z0-9]/gi, '_')} = nn.MultiheadAttention(${layer.fanIn}, num_heads=8)`;
-      default:
-        return `# ${layer.layerName}: ${layer.layerType}`;
-    }
-  }).join('\n            ');
-}
-
-function generateForwardPass(layers: LayerWeights[]): string {
-  return layers.map((layer) => {
-    const varName = layer.layerName.toLowerCase().replace(/[^a-z0-9]/gi, '_');
-    return `x = self.${varName}(x)`;
-  }).join('\n            ');
+/**
+ * Export the initialisation this panel computed, as data — not as a Python
+ * script pretending to be one.
+ *
+ * The previous export produced a `.py` file that claimed to build a
+ * "pre-initialized model": a PyTorch constructor whose `__init__` was blocks
+ * of comments for any real block type, a forward pass calling every layer
+ * with the wrong number of arguments, a dummy input hardcoded to an RGB image
+ * shape regardless of the architecture, and — even where a layer happened to
+ * be defined — the actual computed weight values were never written into the
+ * file, only their shape as a descriptive string, so PyTorch's own generic
+ * initialiser silently overwrote them on load. It could not have run, for any
+ * model built since the block catalogue moved past `dense`/`conv2d`/
+ * `attention`/`transformer` as literal type names.
+ *
+ * This is what the panel can say honestly instead: the method and its
+ * configuration, and the real per-layer shape, fan-in/fan-out and variance it
+ * already computes correctly. That's the recipe a training script needs to
+ * reproduce the same initialisation deterministically — not the megabytes of
+ * random floats a fresh run regenerates identically from the same recipe
+ * anyway. It becomes the `initialization` section of a `.neurax` file, so
+ * opening the design back in NEURAX shows the exact setup without recomputing,
+ * the same way the compiler's last analysis already does.
+ */
+export function buildInitializationRecord(
+  architecture: InitializedArchitecture,
+  hyperparams: HyperparameterConfig,
+): InitializationRecord {
+  return {
+    method: architecture.config.method,
+    gain: architecture.config.gain,
+    sparsity: architecture.config.sparsity,
+    hyperparameters: {
+      learningRate: hyperparams.learningRate,
+      dropout: hyperparams.dropout,
+      weightDecay: hyperparams.weightDecay,
+      warmupSteps: hyperparams.warmupSteps,
+      optimizer: hyperparams.optimizer,
+      gradientClipping: hyperparams.gradientClipping,
+    },
+    layers: architecture.layers.map((layer) => ({
+      layerId: layer.layerId,
+      layerName: layer.layerName,
+      layerType: layer.layerType,
+      shape: layer.shape,
+      fanIn: layer.fanIn,
+      fanOut: layer.fanOut,
+      variance: layer.variance,
+    })),
+  };
 }
 
 // Hyperparameter recommendation types and logic
@@ -613,24 +353,45 @@ export interface HyperparameterConfig {
   gradientClipping: number;
 }
 
+/**
+ * Whether any node's type names the given family — `hasAttention`,
+ * `hasConv`, `hasRnn` and so on.
+ *
+ * These checks used to compare `node.type` for exact equality against a
+ * handful of literal strings — `'attention'`, `'transformer'`, `'lstm'`,
+ * `'gru'` — none of which any reference template or import has emitted since
+ * the block catalogue moved to specific names (`gqa_attention`, `lstm_cell`,
+ * `bilstm`). Every real design answered "no" to all of them, so a 7-billion
+ * parameter transformer got the same recommendation as an empty canvas.
+ * Matched by substring instead, the same fix applied to `resolveLayerDims`.
+ */
+function hasBlockFamily(nodes: CanvasNode[], substring: string): boolean {
+  return nodes.some((n) => n.type.includes(substring));
+}
+
+/**
+ * Parameter count implied by a node's real, resolved shape.
+ *
+ * Mirrors the product-of-dimensions convention `ProductionWorkspace` already
+ * uses for its own "Weights" stat card, so the two don't silently disagree —
+ * and reuses `resolveLayerDims` rather than re-deriving widths a third way.
+ */
+function estimateNodeParams(node: CanvasNode): number {
+  if (!isTrainableBlock(node.type)) return 0;
+  const { shape } = resolveLayerDims(node);
+  return shape.reduce((total, dim) => total * dim, 1);
+}
+
 export function getRecommendedHyperparams(
   nodes: CanvasNode[],
   _connections: Connection[],
 ): HyperparameterConfig {
-  const hasAttention = nodes.some(n => n.type === 'attention' || n.type === 'transformer');
-  const hasConv = nodes.some(n => n.type === 'conv2d');
-  const hasDense = nodes.some(n => n.type === 'dense');
-  const hasNorm = nodes.some(n => n.type === 'layernorm' || n.type === 'batchnorm');
+  const hasAttention = hasBlockFamily(nodes, 'attention');
+  const hasConv = hasBlockFamily(nodes, 'conv');
+  const hasDense = nodes.some((n) => n.type === 'dense' || n.type === 'linear');
+  const hasNorm = hasBlockFamily(nodes, 'norm');
 
-  // Estimate total params
-  let totalParams = 0;
-  nodes.forEach(n => {
-    const units = Number(n.params.units) || 0;
-    const filters = Number(n.params.filters) || 0;
-    const dim = Number(n.params.dim) || 0;
-    totalParams += units * 512 + filters * 3 * 9 + dim * dim;
-  });
-  if (totalParams === 0) totalParams = 1_000_000;
+  const totalParams = nodes.reduce((sum, n) => sum + estimateNodeParams(n), 0) || 1_000_000;
 
   // Learning rate: smaller for larger models
   let learningRate = 0.001;
@@ -660,11 +421,12 @@ export function getRecommendedHyperparams(
 
 // Get recommended initialization method based on architecture
 export function getRecommendedInit(nodes: CanvasNode[]): InitializationMethod {
-  const hasRelu = nodes.some(n => n.type === 'relu');
-  const hasAttention = nodes.some(n => n.type === 'attention' || n.type === 'transformer');
-  const nodeTypes = nodes.map(n => n.type as string);
-  const hasRnn = nodeTypes.includes('lstm') || nodeTypes.includes('gru');
-  
+  const hasRelu =
+    nodes.some((n) => n.type === 'relu') ||
+    nodes.some((n) => n.params?.activation === 'relu');
+  const hasAttention = hasBlockFamily(nodes, 'attention');
+  const hasRnn = hasBlockFamily(nodes, 'lstm') || hasBlockFamily(nodes, 'gru');
+
   if (hasRnn) {
     return 'orthogonal';
   } else if (hasAttention) {

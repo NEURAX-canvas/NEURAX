@@ -259,6 +259,43 @@ export interface InferenceParams {
 export type StabilityLevel = 'stable' | 'drift' | 'unstable' | 'chaotic';
 export type InferenceRiskLevel = 'low' | 'medium' | 'high';
 
+/**
+ * What the compiler knew about the model a report was computed for.
+ *
+ * Every field is optional: a report simulating sampling behaviour alone (no
+ * design connected) carries no profile at all. When it does, this is the
+ * evidence that `hallucination_risk`, `context_degradation`, `router_stability`
+ * and `kv_cache` describe *this* design rather than an assumed default.
+ */
+export interface ModelProfile {
+  total_parameters?: number;
+  num_layers?: number;
+  hidden_size?: number;
+  num_heads?: number;
+  num_kv_heads?: number;
+  /** Context length the model was built for, in tokens. */
+  trained_context?: number;
+  num_experts?: number;
+  top_k?: number;
+  state_dim?: number;
+  dtype_bytes?: number;
+}
+
+/**
+ * Cost of the key/value cache for the simulated request.
+ *
+ * The one widget in this report that is pure arithmetic rather than a
+ * heuristic: bytes per token and bytes total follow directly from the model's
+ * real layer count, KV head count and head dimension, with no coefficient
+ * anywhere in the formula.
+ */
+export interface KvCacheCost {
+  bytes_per_token: number;
+  bytes_total: number;
+  /** How much smaller grouped-query attention makes it than full multi-head. */
+  gqa_savings_factor: number;
+}
+
 export interface InferenceReport {
   stability_index: { score: number; level: StabilityLevel };
   entropy_evolution: number[];
@@ -275,6 +312,10 @@ export interface InferenceReport {
     collapse: InferenceRiskLevel;
     degeneration: InferenceRiskLevel;
   };
+  /** `undefined` when no design was supplied — sampling behaviour alone. */
+  kv_cache?: KvCacheCost;
+  /** Echo of the model this report was computed for; see {@link ModelProfile}. */
+  model_profile?: ModelProfile;
 }
 
 export interface InferenceSimulateRequest {
@@ -723,20 +764,35 @@ export async function getCredits(): Promise<CreditsResponse> {
 
 // ─── Compliance Config ────────────────────────────────────────────────
 
+/**
+ * `active` | `upcoming` (agreed and dated, not yet in force) | `uncertain`
+ * (proposed, not yet formally adopted) | `repealed` (used to apply, does
+ * not any more — kept rather than removed, so a reader who expects it finds
+ * out it lapsed instead of finding nothing).
+ *
+ * The service only ever emits one of these four (`ComplianceStatus` is a
+ * Rust enum, not a free string), but the union is written out here too
+ * rather than trusted implicitly: a value this type doesn't recognise is a
+ * real signal — an older/newer service build out of sync with this
+ * client — and should read as "unrecognised", not silently render as
+ * whichever branch a naive fallback happens to pick.
+ */
+export type ComplianceStatus = 'active' | 'upcoming' | 'uncertain' | 'repealed';
+
 export interface ComplianceRegulation {
   name: string;
   year: number;
   limit: number | null;
   unit: string | null;
-  status: string;
+  status: ComplianceStatus;
   description: string;
   region: string;
 }
 
 export interface ComplianceThresholds {
-  high_risk_gflops: number;
+  /** Cumulative training FLOPs — EU AI Act Article 51 systemic-risk threshold. */
+  systemic_risk_training_flops: number;
   carbon_report_tonnes: number;
-  dsa_disclosure_flops: number;
   cost_review_usd: number;
 }
 
@@ -744,6 +800,8 @@ export interface ComplianceConfig {
   regulations: ComplianceRegulation[];
   thresholds: ComplianceThresholds;
   recommendations: string[];
+  /** Date this dataset was last checked against primary sources (ISO). */
+  verified_as_of: string;
 }
 
 /** GET /compliance/config — Get compliance configuration and regulations */

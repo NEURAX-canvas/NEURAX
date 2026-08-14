@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Clock, TrendingUp, DollarSign, Leaf, Shield, SlidersHorizontal,
-  AlertTriangle, Zap, Award, Info, Loader2
+  AlertTriangle, Zap, Award, Info, Loader2, RefreshCw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
+import { Button } from '@/components/ui/button.tsx';
 import { Slider } from '@/components/ui/slider.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
 import { TooltipProvider } from '@/components/ui/tooltip.tsx';
@@ -450,17 +451,43 @@ function CarbonView({ data }: { data: CarbonPoint[] }) {
   );
 }
 
+/** How each status reads: word, badge treatment, and the Shield's tint. */
+const STATUS_PRESENTATION: Record<string, { label: string; badge: 'default' | 'secondary' | 'outline'; icon: string }> = {
+  active: { label: 'Active', badge: 'default', icon: 'text-primary' },
+  uncertain: { label: 'Change pending', badge: 'secondary', icon: 'text-yellow-500' },
+  upcoming: { label: 'Upcoming', badge: 'secondary', icon: 'text-yellow-500' },
+  proposed: { label: 'Proposed', badge: 'secondary', icon: 'text-yellow-500' },
+  // A repealed rule is not "upcoming" — reusing that color would say a dead
+  // rule is on its way, the opposite of what happened.
+  repealed: { label: 'Repealed', badge: 'outline', icon: 'text-muted-foreground' },
+};
+
+/**
+ * A status the client doesn't recognise — a service running ahead of or
+ * behind this build — is a real signal, not something to paper over.
+ * Falling back to `upcoming` would tell the reader a rule is on its way when
+ * it might just as easily be one that lapsed; this says plainly that the
+ * label wasn't understood instead of guessing.
+ */
+const UNKNOWN_STATUS_PRESENTATION = { label: 'Unrecognised status', badge: 'outline' as const, icon: 'text-muted-foreground' };
+
 function ComplianceView({ horizon }: { horizon: number }) {
   const [config, setConfig] = useState<ComplianceConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  // Bumping this re-runs the load effect below — the retry button's entire
+  // job. Not folded into `loadError` itself so a retry can't be mistaken for
+  // the error clearing on its own.
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     setLoading(true);
+    setLoadError(false);
     getComplianceConfig()
       .then((data) => setConfig(data))
-      .catch(() => setConfig(null))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [retryToken]);
 
   if (loading) {
     return (
@@ -471,49 +498,69 @@ function ComplianceView({ horizon }: { horizon: number }) {
     );
   }
 
-  const regulations = config?.regulations ?? [
-    { name: 'EU AI Act Phase 1', year: 2027, limit: 300, unit: 'GFLOPs/req', status: 'upcoming', description: 'General-purpose AI models trained with >10²⁵ FLOPs must comply with transparency and safety obligations.', region: 'EU' },
-    { name: 'EU AI Act Phase 2', year: 2028, limit: 150, unit: 'GFLOPs/req', status: 'upcoming', description: 'Stricter limits for high-risk AI applications in critical infrastructure, law enforcement, and biometrics.', region: 'EU' },
-    { name: 'Carbon Reporting (CSRD)', year: 2026, limit: null, unit: null, status: 'active', description: 'Corporate Sustainability Reporting Directive requires disclosure of energy consumption and CO₂ emissions for large companies.', region: 'EU' },
-    { name: 'Digital Services Act', year: 2026, limit: null, unit: null, status: 'active', description: 'Requires transparency reporting for very large online platforms using AI, including compute disclosure.', region: 'EU' },
-  ];
+  // No hardcoded fallback data here on purpose. Regulatory text moves — three
+  // of these entries changed within the year before this was written — and a
+  // silently-stale copy baked into the client is exactly how a repealed rule
+  // keeps looking active forever. Report that it couldn't load, not a guess.
+  if (loadError || !config) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+        <AlertTriangle className="w-6 h-6 text-destructive" />
+        <p className="text-sm font-medium text-foreground">Compliance data unavailable</p>
+        <p className="text-xs text-muted-foreground max-w-xs">
+          Couldn't reach the compliance service. Showing stale regulatory dates would be worse
+          than showing nothing.
+        </p>
+        <Button variant="outline" size="sm" className="mt-1" onClick={() => setRetryToken((t) => t + 1)}>
+          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+          Retry
+        </Button>
+      </div>
+    );
+  }
 
-  const thresholds = config?.thresholds ?? {
-    high_risk_gflops: 300,
-    carbon_report_tonnes: 50,
-    dsa_disclosure_flops: 1e25,
-    cost_review_usd: 100000,
-  };
-
-  const recommendations = config?.recommendations ?? [
-    'Monitor EU AI Act Phase 1 compliance for models exceeding 300 GFLOPs/request',
-    'Prepare CSRD carbon reporting for training runs exceeding 50 tonnes CO₂e/year',
-  ];
+  const { regulations, thresholds, recommendations, verified_as_of: verifiedAsOf } = config;
+  // Read the year straight out of the "YYYY-MM-DD" string rather than through
+  // `new Date(...).getFullYear()`: the Date constructor parses that string as
+  // UTC midnight, but `getFullYear()` reads it back in the browser's local
+  // timezone — anywhere west of UTC, that silently reports the previous year.
+  const verifiedYear = parseInt(verifiedAsOf.slice(0, 4), 10);
+  const nowYear = Number.isFinite(verifiedYear) ? verifiedYear : new Date().getFullYear();
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-foreground">Regulatory Compliance Timeline</h3>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <h3 className="text-sm font-semibold text-foreground">Regulatory Compliance Timeline</h3>
+        <span className="text-[10px] text-muted-foreground font-mono">Verified as of {verifiedAsOf}</span>
+      </div>
       <div className="space-y-3">
         {regulations.map((reg: ComplianceRegulation, i: number) => {
-          const inScope = reg.year <= 2026 + horizon;
+          const inScope = reg.year <= nowYear + horizon;
+          const presentation = STATUS_PRESENTATION[reg.status] ?? UNKNOWN_STATUS_PRESENTATION;
+          const yearsAway = reg.year - nowYear;
           return (
-            <Card key={i} className={`bg-card ${!inScope ? 'opacity-50' : ''}`}>
-              <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Shield className={`w-5 h-5 ${reg.status === 'active' ? 'text-primary' : 'text-yellow-500'}`} />
-                  <div>
+            <Card key={i} className={`bg-card ${!inScope && reg.status !== 'repealed' ? 'opacity-50' : ''}`}>
+              <CardContent className="p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Shield className={`w-5 h-5 shrink-0 ${presentation.icon}`} />
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{reg.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      Effective: {reg.year} {reg.limit ? `· Limit: ${reg.limit} ${reg.unit}` : '· Disclosure required'}
+                      {reg.status === 'repealed' ? 'Repealed' : 'Effective'}: {reg.year}{' '}
+                      {reg.limit ? `· Limit: ${reg.limit.toExponential(0)}${reg.unit ? ` ${reg.unit}` : ''}` : ''}
                       {reg.region && ` · ${reg.region}`}
                     </p>
                     {reg.description && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{reg.description}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{reg.description}</p>
                     )}
                   </div>
                 </div>
-                <Badge variant={reg.status === 'active' ? 'default' : 'secondary'} className="text-[10px]">
-                  {reg.status === 'active' ? 'Active' : reg.status === 'proposed' ? 'Proposed' : `${reg.year - 2026} yr away`}
+                <Badge variant={presentation.badge} className="text-[10px] shrink-0">
+                  {reg.status === 'active' || reg.status === 'repealed'
+                    ? presentation.label
+                    : yearsAway > 0
+                      ? `${yearsAway} yr away`
+                      : presentation.label}
                 </Badge>
               </CardContent>
             </Card>
@@ -527,19 +574,15 @@ function ComplianceView({ horizon }: { horizon: number }) {
           <h4 className="text-xs font-semibold text-foreground mb-2">Compliance Thresholds</h4>
           <div className="grid grid-cols-2 gap-2 text-[11px]">
             <div>
-              <span className="text-muted-foreground">High-risk threshold:</span>{' '}
-              <span className="font-mono font-bold text-primary">{thresholds.high_risk_gflops} GFLOPs</span>
+              <span className="text-muted-foreground">EU AI Act systemic risk:</span>{' '}
+              <span className="font-mono font-bold text-primary">{thresholds.systemic_risk_training_flops.toExponential(0)} FLOPs (training, cumulative)</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Carbon report:</span>{' '}
+              <span className="text-muted-foreground">Carbon report guidance:</span>{' '}
               <span className="font-mono font-bold text-primary">{thresholds.carbon_report_tonnes}t CO₂e/yr</span>
             </div>
             <div>
-              <span className="text-muted-foreground">DSA disclosure:</span>{' '}
-              <span className="font-mono font-bold text-primary">{thresholds.dsa_disclosure_flops.toExponential(0)} FLOPs</span>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Cost review:</span>{' '}
+              <span className="text-muted-foreground">Cost review guidance:</span>{' '}
               <span className="font-mono font-bold text-primary">${(thresholds.cost_review_usd / 1000).toFixed(0)}k</span>
             </div>
           </div>
@@ -568,8 +611,10 @@ function ComplianceView({ horizon }: { horizon: number }) {
           <div className="flex items-start gap-3">
             <Info className="w-4 h-4 text-primary mt-0.5" />
             <div className="text-xs text-muted-foreground space-y-1">
-              <p className="font-medium text-foreground">Compliance analysis is based on current regulatory proposals.</p>
-              <p>Actual limits and timelines may change. NEURAX will update projections as regulations are finalized.</p>
+              <p className="font-medium text-foreground">
+                Verified against primary sources as of {verifiedAsOf} — not a live feed.
+              </p>
+              <p>Regulatory text moves. Confirm anything decision-relevant against the current text before relying on it.</p>
             </div>
           </div>
         </CardContent>
