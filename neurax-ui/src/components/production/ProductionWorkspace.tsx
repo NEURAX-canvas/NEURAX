@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Leaf, Database, Activity, Info, Check, Copy, Download, Sparkles, ChevronDown, ChevronRight, Settings2, GraduationCap, Layers3 } from 'lucide-react';
+import { Leaf, Database, Activity, Info, Check, Copy, Save, Sparkles, ChevronDown, ChevronRight, Settings2, GraduationCap, Layers3 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Slider } from '@/components/ui/slider.tsx';
@@ -11,22 +11,35 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
 import { cn } from '@/lib/utils.ts';
-import { CanvasNode, Connection } from '@/types/architecture.ts';
+import { AnalysisResult, CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
+import { ArchitectureFamily } from '@/types/plugins.ts';
+import { HardwareConfig } from '@/contexts/HardwareContext.tsx';
 import {
   InitializationMethod,
   InitializationConfig,
   INITIALIZATION_METHODS,
   initializeArchitecture,
-  generateGreenAIONNX,
+  buildInitializationRecord,
   getRecommendedInit,
   getRecommendedHyperparams,
   HyperparameterConfig,
 } from '@/utils/weightInitialization.ts';
+import { serializeDesign, suggestedFileName } from '@/utils/neuraxFile.ts';
+import { saveTextFile } from '@/services/desktopRuntime.ts';
 
 interface ProductionWorkspaceProps {
   nodes: CanvasNode[];
   connections: Connection[];
   modelName: string;
+  /**
+   * The rest of the design, so Save writes a complete `.neurax` document.
+   * Named `architectureFamily` rather than `architecture` — that name is
+   * already the computed, initialised weights below.
+   */
+  architectureFamily: ArchitectureFamily;
+  groups?: NodeGroup[];
+  hardware?: Partial<HardwareConfig>;
+  analysis?: AnalysisResult | null;
 }
 
 /** Compact count: 1.2M rather than 1200000. */
@@ -38,7 +51,15 @@ function formatCompact(value: number): string {
   return String(Math.round(value));
 }
 
-export function ProductionWorkspace({ nodes, connections, modelName }: ProductionWorkspaceProps) {
+export function ProductionWorkspace({
+  nodes,
+  connections,
+  modelName,
+  architectureFamily,
+  groups = [],
+  hardware = {},
+  analysis = null,
+}: ProductionWorkspaceProps) {
   const { toast } = useToast();
   const [selectedMethod, setSelectedMethod] = useState<InitializationMethod>('xavier_normal');
   const [gain, setGain] = useState([1.0]);
@@ -67,29 +88,65 @@ export function ProductionWorkspace({ nodes, connections, modelName }: Productio
     return initializeArchitecture(nodes, connections, config, modelName);
   }, [nodes, connections, selectedMethod, gain, sparsity, modelName]);
 
-  const handleExportONNX = () => {
+  /**
+   * Save the design as a `.neurax` file, carrying this initialisation as its
+   * `initialization` section.
+   *
+   * Replaces the old ONNX/Python export, which could not run: its constructor
+   * was comments for any real block, its forward pass called every layer with
+   * the wrong signature, and it never wrote the computed weights into the file
+   * at all. This writes what the panel can actually stand behind — the real
+   * per-layer shape and variance it computed, and the recipe to reproduce the
+   * weights deterministically — through the same serialiser Save already uses
+   * on the Architecture tab.
+   */
+  const handleSaveDesign = async () => {
     if (!architecture) {
       toast({ title: "No Architecture", description: "Add layers to the canvas first", variant: "destructive" });
       return;
     }
-    const code = generateGreenAIONNX(architecture);
-    const blob = new Blob([code], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${modelName.toLowerCase()}_green_ai.py`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast({ title: "Green AI Export Complete", description: "Pre-initialized model exported successfully" });
+    const contents = serializeDesign(
+      {
+        name: modelName,
+        architecture: architectureFamily,
+        nodes,
+        connections,
+        groups,
+        hardware,
+        analysis,
+        initialization: buildInitializationRecord(architecture, hyperparams),
+      },
+      { generator: 'NEURAX Production' },
+    );
+
+    const result = await saveTextFile(contents, suggestedFileName(modelName), 'application/json');
+    if (!result.saved) return; // The user dismissed the dialog.
+
+    toast({
+      title: "Design saved",
+      description: result.path ?? suggestedFileName(modelName),
+    });
   };
 
-  const handleCopyCode = () => {
+  const handleCopyJSON = () => {
     if (!architecture) return;
-    const code = generateGreenAIONNX(architecture);
-    navigator.clipboard.writeText(code);
+    const contents = serializeDesign(
+      {
+        name: modelName,
+        architecture: architectureFamily,
+        nodes,
+        connections,
+        groups,
+        hardware,
+        analysis,
+        initialization: buildInitializationRecord(architecture, hyperparams),
+      },
+      { generator: 'NEURAX Production' },
+    );
+    navigator.clipboard.writeText(contents);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    toast({ title: "Copied", description: "Green AI code copied to clipboard" });
+    toast({ title: "Copied", description: "Design copied to clipboard as .neurax JSON" });
   };
 
   const trainableLayers = nodes.filter(n =>
@@ -113,13 +170,13 @@ export function ProductionWorkspace({ nodes, connections, modelName }: Productio
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" className="text-xs h-7 sm:h-8" onClick={handleCopyCode} disabled={!architecture}>
+          <Button variant="outline" size="sm" className="text-xs h-7 sm:h-8" onClick={handleCopyJSON} disabled={!architecture}>
             {copied ? <Check className="w-3.5 h-3.5 sm:mr-1.5" /> : <Copy className="w-3.5 h-3.5 sm:mr-1.5" />}
-            <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy Code'}</span>
+            <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy JSON'}</span>
           </Button>
-          <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground text-xs h-7 sm:h-8" onClick={handleExportONNX} disabled={!architecture}>
-            <Download className="w-3.5 h-3.5 sm:mr-1.5" />
-            <span className="hidden sm:inline">Export ONNX</span>
+          <Button size="sm" className="bg-success hover:bg-success/90 text-success-foreground text-xs h-7 sm:h-8" onClick={() => void handleSaveDesign()} disabled={!architecture}>
+            <Save className="w-3.5 h-3.5 sm:mr-1.5" />
+            <span className="hidden sm:inline">Save Design</span>
           </Button>
         </div>
       </div>
@@ -275,9 +332,12 @@ export function ProductionWorkspace({ nodes, connections, modelName }: Productio
                   <Activity className="w-4 h-4 text-success" />
                   <span className="text-sm font-medium">Sustainability Impact</span>
                 </div>
+                {/* Both meters here read a real, computed property of the
+                    generated weights. A "Convergence Boost" card used to sit
+                    between them, reading a fixed per-method constant with no
+                    relationship to this model — removed rather than relabelled. */}
                 <div className="space-y-3">
                   <SustainabilityMeter label="Gradient Flow Score" value={architecture.metrics.gradientFlowScore} max={100} color="success" />
-                  <SustainabilityMeter label="Convergence Boost" value={Math.round((architecture.metrics.convergenceSpeedBoost - 1) * 100)} max={100} suffix="%" color="info" />
                   {architecture.metrics.memoryOptimization > 0 && (
                     <SustainabilityMeter label="Memory Saved (Sparse)" value={architecture.metrics.memoryOptimization} max={100} suffix="%" color="warning" />
                   )}

@@ -1,14 +1,17 @@
-import { 
-  Activity, 
-  AlertTriangle, 
-  Brain, 
+import {
+  Activity,
+  AlertTriangle,
+  Brain,
   CircleDot,
+  Database,
   Eye,
   Gauge,
   LineChart,
+  Link2,
   Sparkles,
   Target,
   TrendingDown,
+  Unlink,
   Zap
 } from 'lucide-react';
 import { cn } from '@/lib/utils.ts';
@@ -17,6 +20,27 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Progress } from '@/components/ui/progress.tsx';
 
 import { InferenceReport, StabilityLevel, InferenceRiskLevel } from '@/services/neuraxApi.ts';
+
+/** Compact byte formatting, matching the convention used across the app. */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
+}
+
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  if (value >= 1e9) return `${(value / 1e9).toFixed(1)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(1)}M`;
+  if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
+  return String(Math.round(value));
+}
 
 interface BehaviorDashboardProps {
   architectureType: ArchitectureFamily;
@@ -377,6 +401,80 @@ function RouterStabilityCard({ stability, distribution }: { stability: number; d
   );
 }
 
+/**
+ * Widget 11 — KV Cache Cost.
+ *
+ * The one card in this dashboard that is pure arithmetic rather than a
+ * heuristic: bytes per token and total follow directly from the design's real
+ * layer count, KV head count and head dimension. It existed on the compiler's
+ * side since this endpoint shipped and was never rendered — the most
+ * trustworthy number in the report was also the only invisible one.
+ */
+function KvCacheCard({ bytesPerToken, bytesTotal, gqaSavingsFactor }: {
+  bytesPerToken: number; bytesTotal: number; gqaSavingsFactor: number;
+}) {
+  const isGrouped = gqaSavingsFactor > 1.01;
+  return (
+    <div className="inference-card">
+      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
+        <Database className="w-4 h-4 text-primary" />
+        KV Cache Cost
+      </h3>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="text-center p-3 bg-secondary/50 rounded-lg">
+          <div className="text-2xl font-bold text-primary">{formatBytes(bytesTotal)}</div>
+          <div className="text-[10px] text-muted-foreground">for this request</div>
+        </div>
+        <div className="text-center p-3 bg-secondary/50 rounded-lg">
+          <div className="text-2xl font-bold text-primary">{formatBytes(bytesPerToken)}</div>
+          <div className="text-[10px] text-muted-foreground">per token</div>
+        </div>
+      </div>
+
+      {isGrouped && (
+        <p className="text-xs text-muted-foreground leading-relaxed mt-3">
+          Grouped-query attention makes this <strong className="text-foreground">{gqaSavingsFactor.toFixed(1)}&times;</strong> smaller
+          than full multi-head attention would cost at the same context length.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Says which mode produced this report — grounded in the real design, or
+ * sampling behaviour simulated with no model attached.
+ *
+ * Without this, two reports that differ only because one had a design
+ * connected and the other didn't look identical in shape and different only in
+ * their numbers, with nothing on screen explaining why.
+ */
+function ModelGroundingBanner({ profile }: {
+  profile?: InferenceReport['model_profile'];
+}) {
+  if (profile && (profile.total_parameters || profile.num_layers)) {
+    const parts = [
+      profile.total_parameters ? `${formatCompactNumber(profile.total_parameters)} params` : null,
+      profile.num_layers ? `${profile.num_layers} layers` : null,
+      profile.hidden_size ? `width ${profile.hidden_size}` : null,
+    ].filter(Boolean);
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-success/10 border border-success/20 text-xs text-success">
+        <Link2 className="w-3.5 h-3.5 shrink-0" />
+        <span>Grounded in your design — {parts.join(', ')}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/40 border border-border text-xs text-muted-foreground">
+      <Unlink className="w-3.5 h-3.5 shrink-0" />
+      <span>Sampling behaviour only — connect a design on the Architecture tab for model-specific figures</span>
+    </div>
+  );
+}
+
 function InferenceRiskOverview({ risks }: { risks: Record<string, InferenceRiskLevel> }) {
   const riskLabels: Record<string, { label: string; tooltip: string }> = {
     coherence: { 
@@ -464,6 +562,9 @@ export function BehaviorDashboard({ architectureType, report, loading, error }: 
 
         {/* ── Real data ── */}
         {report && (
+          <>
+            <ModelGroundingBanner profile={report.model_profile} />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             {/* Widget 1 — Generation Stability Index */}
             <StabilityGauge level={report.stability_index.level} />
@@ -505,7 +606,18 @@ export function BehaviorDashboard({ architectureType, report, loading, error }: 
 
             {/* Widget 10 — Inference Risk Overview */}
             <InferenceRiskOverview risks={report.risk_overview as Record<string, InferenceRiskLevel>} />
+
+            {/* Widget 11 — KV Cache Cost. The most trustworthy card here: pure
+                arithmetic over the design's real dimensions, no coefficient. */}
+            {report.kv_cache && (
+              <KvCacheCard
+                bytesPerToken={report.kv_cache.bytes_per_token}
+                bytesTotal={report.kv_cache.bytes_total}
+                gqaSavingsFactor={report.kv_cache.gqa_savings_factor}
+              />
+            )}
           </div>
+          </>
         )}
       </div>
     </div>

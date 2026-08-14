@@ -47,6 +47,43 @@ export const NEURAX_FORMAT_VERSION = 1;
 /** Conventional extension. `.neurax.json` also opens, and editors highlight it. */
 export const NEURAX_EXTENSION = 'neurax';
 
+/**
+ * The initialisation Production computed for this design, as a recipe rather
+ * than a result.
+ *
+ * Deliberately not the generated weight arrays themselves — a git diff of a
+ * few million random floats is noise, not information, and the point of this
+ * format is to store the input a result can be regenerated from, not the
+ * output. `method` plus `gain`/`sparsity` is that input: given the same
+ * design, it reproduces the same distribution deterministically. What's real
+ * and worth keeping alongside it is what Production already computes
+ * correctly per layer — its resolved shape and the fan-in/fan-out/variance
+ * that shape implies — so reopening the file shows the same numbers without
+ * recomputing, the same way `analysis` does for the compiler's report.
+ */
+export interface InitializationRecord {
+  method: string;
+  gain?: number;
+  sparsity?: number;
+  hyperparameters: {
+    learningRate: number;
+    dropout: number;
+    weightDecay: number;
+    warmupSteps: number;
+    optimizer: string;
+    gradientClipping: number;
+  };
+  layers: Array<{
+    layerId: string;
+    layerName: string;
+    layerType: string;
+    shape: number[];
+    fanIn: number;
+    fanOut: number;
+    variance: number;
+  }>;
+}
+
 /** A design, as it exists in a file. */
 export interface NeuraxDocument {
   format: typeof NEURAX_FORMAT;
@@ -69,6 +106,9 @@ export interface NeuraxDocument {
 
   /** Output, not input: the last analysis, kept for reference. */
   analysis?: AnalysisResult | null;
+
+  /** The weight-initialisation recipe from Production, when one was computed. */
+  initialization?: InitializationRecord | null;
 }
 
 /** What the application hands over to be written. */
@@ -80,6 +120,7 @@ export interface DesignSnapshot {
   groups: NodeGroup[];
   hardware: Partial<HardwareConfig>;
   analysis?: AnalysisResult | null;
+  initialization?: InitializationRecord | null;
 }
 
 /**
@@ -131,6 +172,7 @@ export function serializeDesign(
     },
     hardware: snapshot.hardware,
     analysis: snapshot.analysis ?? null,
+    initialization: snapshot.initialization ?? null,
   };
 
   // The header keys stay in written order — they are the first thing a human
@@ -146,6 +188,7 @@ export function serializeDesign(
     design: withSortedKeys(document.design),
     hardware: withSortedKeys(document.hardware),
     analysis: withSortedKeys(document.analysis),
+    initialization: withSortedKeys(document.initialization),
   };
 
   return `${JSON.stringify(ordered, null, 2)}\n`;
@@ -256,6 +299,12 @@ export function parseNeuraxFile(text: string): ParsedDocument {
     },
     hardware: isRecord(parsed.hardware) ? (parsed.hardware as Partial<HardwareConfig>) : {},
     analysis: isRecord(parsed.analysis) ? (parsed.analysis as unknown as AnalysisResult) : null,
+    initialization:
+      isRecord(parsed.initialization) &&
+      typeof parsed.initialization.method === 'string' &&
+      Array.isArray(parsed.initialization.layers)
+        ? (parsed.initialization as unknown as InitializationRecord)
+        : null,
   };
 
   return { ok: true, document, warnings };
