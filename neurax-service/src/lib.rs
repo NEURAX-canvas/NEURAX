@@ -3608,7 +3608,11 @@ mod compliance_tests {
                 .iter()
                 .find(|r| r.name == name)
                 .unwrap_or_else(|| panic!("expected a regulation named {name}"));
-            assert_eq!(reg.status, ComplianceStatus::Repealed, "{name} should be marked repealed");
+            assert_eq!(
+                reg.status,
+                ComplianceStatus::Repealed,
+                "{name} should be marked repealed"
+            );
         }
     }
 
@@ -3637,7 +3641,12 @@ mod compliance_tests {
     fn carries_a_verified_as_of_date() {
         let config = get_compliance_data();
         let verified = chrono::NaiveDate::parse_from_str(&config.verified_as_of, "%Y-%m-%d")
-            .unwrap_or_else(|e| panic!("verified_as_of {:?} is not a real date: {e}", config.verified_as_of));
+            .unwrap_or_else(|e| {
+                panic!(
+                    "verified_as_of {:?} is not a real date: {e}",
+                    config.verified_as_of
+                )
+            });
         // Regulatory text moves; a dataset that hasn't been re-checked in over
         // a year is stale enough that this should fail loudly rather than
         // silently keep shipping last year's compliance picture.
