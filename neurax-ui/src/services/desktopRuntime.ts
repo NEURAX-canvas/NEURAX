@@ -145,13 +145,22 @@ export interface OpenedFile {
  *
  * Returns `null` when the user dismisses the picker — a cancellation, not a
  * failure, so callers should stay silent rather than reporting an error.
+ *
+ * `writable` says whether this open begins an editing session on the file, and
+ * so whether a later [`writeTextFile`] may save back to it without asking
+ * again. It defaults to false, because most opens are not that: importing a
+ * `config.json` out of a model directory is a read, and must not leave that
+ * file overwritable. Pass true only when opening a NEURAX document.
  */
-export async function openTextFile(extensions: string[]): Promise<OpenedFile | null> {
+export async function openTextFile(
+  extensions: string[],
+  options: { writable?: boolean } = {},
+): Promise<OpenedFile | null> {
   if (isDesktop()) {
     const { invoke } = await import('@tauri-apps/api/core');
     const picked = await invoke<{ name: string; path: string; contents: string } | null>(
       'open_text_file',
-      { extensions },
+      { extensions, writable: options.writable === true },
     );
     return picked ? { name: picked.name, path: picked.path, contents: picked.contents } : null;
   }

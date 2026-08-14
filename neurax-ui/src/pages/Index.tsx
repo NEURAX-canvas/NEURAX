@@ -52,7 +52,8 @@ import {
 import { getBlockDefaults, normalizeBlockParams } from '@/utils/blockDefaults.ts';
 import { DEFAULT_HARDWARE_CONFIG, HardwareConfig, useHardware, validateHardwareConfig, ArchitectureFamily as HwFamily } from '@/contexts/HardwareContext.tsx';
 import { useAuth } from '@/contexts/AuthContext.tsx';
-import { analyze, analyzeStream, NeuraxApiError, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo } from '@/services/neuraxApi.ts';
+import { explainAnalysisFailure, failureAsWarnings } from '@/services/compilerErrors.ts';
+import { analyze, analyzeStream, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo } from '@/services/neuraxApi.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 import { getPluginLayers } from '@/plugins/registry.ts';
 
@@ -955,14 +956,39 @@ const Index = () => {
   } = useDesignHistory(designSnapshot, applyDesign);
 
   // Any change to the design is a change not yet in the file.
-  const isFirstDesignRender = useRef(true);
+  //
+  // Opening a file, loading a template or clearing the canvas also changes the
+  // design, and this effect runs *after* those handlers have already set the
+  // flag — so without a way to exempt them, a freshly opened document would
+  // show as unsaved the instant it appeared. `cleanDesign` records the design
+  // that is currently on disk; a change away from it is what makes the document
+  // dirty, and a change back to it does not.
+  //
+  // Compared by the three inner references rather than by the snapshot object,
+  // which `useMemo` rebuilds whenever any of them changes: every handler here
+  // replaces an array instead of mutating it, so an unchanged reference means
+  // genuinely no change.
+  const cleanDesign = useRef(designSnapshot);
   useEffect(() => {
-    if (isFirstDesignRender.current) {
-      isFirstDesignRender.current = false;
+    const clean = cleanDesign.current;
+    if (
+      designSnapshot.nodes === clean.nodes &&
+      designSnapshot.connections === clean.connections &&
+      designSnapshot.groups === clean.groups
+    ) {
       return;
     }
     setIsDirty(true);
   }, [designSnapshot]);
+
+  /** Mark the design now on screen as the one the file holds. */
+  const markSaved = useCallback(
+    (snapshot: { nodes: CanvasNode[]; connections: Connection[]; groups: NodeGroup[] }) => {
+      cleanDesign.current = snapshot;
+      setIsDirty(false);
+    },
+    [],
+  );
 
   const resetWorkspace = useCallback(() => {
     const empty = { nodes: [], connections: [], groups: [] };
@@ -982,8 +1008,8 @@ const Index = () => {
     resetHistory(empty);
     setDocumentName(undefined);
     setDocumentPath(undefined);
-    setIsDirty(false);
-  }, [resetHistory]);
+    markSaved(empty);
+  }, [resetHistory, markSaved]);
 
   const downloadCanvasSnapshot = useCallback(() => {
     if (!hasCanvasContent) return null;
@@ -1440,144 +1466,49 @@ params: params as Record<string, ParameterValue>,
     } catch (err) {
       console.error('[neurax] Analysis failed:', err);
 
-      let skipToast = false;
+      // Everything the compiler said reaches the user, translated into
+      // something actionable where it is recognised and shown verbatim where it
+      // is not. See `explainAnalysisFailure`.
+      const failure = explainAnalysisFailure(err);
 
-      // Handle Authentication / Authorization
-      if (err instanceof NeuraxApiError && (err.status === 401 || err.status === 403)) {
-        const bodyStr = typeof err.body === 'string' ? err.body : '';
-        const bodyLower = bodyStr.toLowerCase();
-        const isEmailNotVerified = err.status === 403
-          && bodyLower.includes('verify')
-          && bodyLower.includes('email');
+      // A failed analysis has no numbers. Leaving the previous run's figures on
+      // screen beside an error is how someone ends up quoting a stale cost.
+      setAnalysis(initialAnalysis);
+      setPerLayer([]);
 
-        const msg = err.status === 401
-          ? 'Please sign in to run analysis.'
-          : isEmailNotVerified
-            ? 'Please verify your email (check your inbox) to run analysis.'
-            : 'Your plan does not allow this analysis.';
-
-        setWarnings([
-          { id: 'auth', type: 'error', message: msg },
-        ]);
-
-        toast({
-          title: err.status === 401
-            ? 'Authentication required'
-            : isEmailNotVerified
-              ? 'Email verification required'
-              : 'Upgrade required',
-          description: msg,
-          variant: 'destructive',
-        });
-
-        return;
-      }
-
-      // Handle 400 Bad Request (Compilation Errors/Warnings)
-      if (err instanceof NeuraxApiError && err.status === 400) {
-        // Reset metrics to zero — analysis failed, no valid data
-        setAnalysis(initialAnalysis);
-        setPerLayer([]);
-
-        // Attempt to parse diagnostics from the error body
-        if (err.body && typeof err.body === 'string') {
-          try {
-            const bodyJson = JSON.parse(err.body);
-            const rpt = (bodyJson?.report ?? bodyJson) as Record<string, unknown>;
-
-            if (Array.isArray(rpt?.diagnostics)) {
-              const parsedDiagnostics = rpt.diagnostics.map((diag: any) => ({
-                category: typeof diag?.category === 'string' ? diag.category.toLowerCase() : 'compiler',
-                severity: typeof diag?.severity === 'string' ? diag.severity.toLowerCase() : 'error',
-                code: typeof diag?.code === 'string' ? diag.code : 'E_COMPILE',
-                message: typeof diag?.message === 'string' ? diag.message : 'Unknown compilation error',
-                layer_id: typeof diag?.layer_id === 'string' ? diag.layer_id : undefined,
-                suggestion: typeof diag?.suggestion === 'string' ? diag.suggestion : undefined,
-                precision_impact: typeof diag?.precision_impact === 'number' ? diag.precision_impact : undefined,
-              }));
-
-              const errors = parsedDiagnostics.filter(d => d.severity === 'critical' || d.severity === 'error');
-              const warnings = parsedDiagnostics.filter(d => d.severity === 'warning');
-
-              // Use these diagnostics as warnings so they show up in the issues panel
-              setWarnings(parsedDiagnostics.map((d: any, idx: number) => ({
-                id: `diag-${idx}`,
-                type: d.severity === 'info' ? 'warning' : 'error',
-                message: d.message,
-                code: d.code,
-              })));
-
-              // Also update analysis to show these diagnostics in the dedicated panel
-              setAnalysis(prev => ({
-                ...prev,
-                diagnostics: parsedDiagnostics,
-                diagnosticCount: parsedDiagnostics.length,
-              }));
-
-              // Show a toast with the error count so the user knows the analysis failed
-              toast({
-                title: errors.length > 0
-                  ? `Compilation failed — ${errors.length} error${errors.length > 1 ? 's' : ''}`
-                  : `Analysis completed with ${warnings.length} warning${warnings.length > 1 ? 's' : ''}`,
-                description: errors.length > 0
-                  ? errors[0].message
-                  : warnings.length > 0
-                    ? warnings[0].message
-                    : 'Check the diagnostics panel for details.',
-                variant: errors.length > 0 ? 'destructive' : 'default',
-              });
-            } else {
-              setWarnings([{ id: 'compile-fail', type: 'error', message: 'Architecture compilation failed. Please check the block connections.' }]);
-              toast({
-                title: 'Compilation failed',
-                description: 'Architecture compilation failed. Please check the block connections.',
-                variant: 'destructive',
-              });
-            }
-          } catch (e) {
-            setWarnings([{ id: 'bad-request', type: 'error', message: 'The compiler rejected the current topology (400).' }]);
-            toast({
-              title: 'Analysis failed',
-              description: 'The backend rejected the current topology (400).',
-              variant: 'destructive',
-            });
-          }
-        } else {
-          toast({
-            title: 'Analysis failed',
-            description: 'The backend rejected the current topology (400).',
-            variant: 'destructive',
-          });
-        }
-        return; // Skip the generic error handling below
-      }
-
-      if (!skipToast) {
-        setAnalysis(initialAnalysis);
-        setPerLayer([]);
-
-        // Local validation warnings
-        const localWarnings: Warning[] = [];
-        if (!nodes.some(n => n.type === 'input')) {
-          localWarnings.push({ id: 'no-input', type: 'error', message: 'Missing Input layer.' });
-        }
-        if (!nodes.some(n => n.type === 'output')) {
-          localWarnings.push({ id: 'no-output', type: 'error', message: 'Missing Output layer.' });
-        }
-        setWarnings(localWarnings.length > 0 ? localWarnings : [
-          { id: 'offline', type: 'warning', message: 'Backend unreachable — metrics unavailable.' },
-        ]);
-
-        const errorMsg = err instanceof NeuraxApiError
-          ? `Server returned ${err.status}`
-          : 'Backend unreachable';
-
-        toast({
-          title: "Analysis (offline mode)",
-          description: `${errorMsg} — metrics unavailable`,
-          variant: "destructive",
+      // Local checks add the causes the compiler never gets to see, because a
+      // design missing an input never reaches it.
+      const localWarnings: Warning[] = [];
+      if (!nodes.some((n) => n.type === 'input')) {
+        localWarnings.push({
+          id: 'no-input',
+          type: 'error',
+          message: 'Missing Input block — nothing marks where data enters the model.',
         });
       }
+      if (!nodes.some((n) => n.type === 'output')) {
+        localWarnings.push({
+          id: 'no-output',
+          type: 'error',
+          message: 'Missing Output block — nothing marks where the model produces its result.',
+        });
+      }
+
+      setWarnings([...failureAsWarnings(failure), ...localWarnings]);
+
+      if (failure.diagnostics.length > 0) {
+        setAnalysis((prev) => ({
+          ...prev,
+          diagnostics: failure.diagnostics,
+          diagnosticCount: failure.diagnostics.length,
+        }));
+      }
+
+      toast({
+        title: failure.title,
+        description: failure.hint ? `${failure.detail} ${failure.hint}` : failure.detail,
+        variant: 'destructive',
+      });
     } finally {
       setIsAnalyzing(false);
     }
@@ -1979,7 +1910,7 @@ params: params as Record<string, ParameterValue>,
         // stays pathless and the next save asks again.
         setDocumentName(suggestedFileName(snapshot.name));
       }
-      setIsDirty(false);
+      markSaved({ nodes: snapshot.nodes, connections: snapshot.connections, groups: snapshot.groups });
 
       toast({
         title: 'Design saved',
@@ -1988,7 +1919,7 @@ params: params as Record<string, ParameterValue>,
     } catch (err) {
       toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
     }
-  }, [currentDesignSnapshot, toast]);
+  }, [currentDesignSnapshot, markSaved, toast]);
 
   /**
    * Save to the file this design came from.
@@ -2005,7 +1936,7 @@ params: params as Record<string, ParameterValue>,
     const contents = serializeDesign(currentDesignSnapshot(), { generator: 'NEURAX Studio' });
     try {
       await writeTextFile(documentPath, contents);
-      setIsDirty(false);
+      markSaved({ nodes, connections, groups });
       toast({ title: 'Saved', description: documentPath });
     } catch (err) {
       // The path may have been removed or made read-only since it was chosen;
@@ -2017,11 +1948,19 @@ params: params as Record<string, ParameterValue>,
       });
       await handleSaveDesignAs();
     }
-  }, [documentPath, currentDesignSnapshot, handleSaveDesignAs, toast]);
+  }, [documentPath, currentDesignSnapshot, handleSaveDesignAs, nodes, connections, groups, markSaved, toast]);
 
   /** Open a `.neurax` design from disk, replacing what is on the canvas. */
   const handleOpenDesign = useCallback(async () => {
-    const picked = await openTextFile([NEURAX_EXTENSION, 'json']);
+    // `writable`: this open starts an editing session on the document, so a
+    // later Ctrl+S may write back to it without asking for the name again.
+    let picked;
+    try {
+      picked = await openTextFile([NEURAX_EXTENSION, 'json'], { writable: true });
+    } catch (err) {
+      toast({ title: 'Could not read that file', description: String(err), variant: 'destructive' });
+      return;
+    }
     if (!picked) return; // Dismissed.
 
     const parsed = parseNeuraxFile(picked.contents);
@@ -2038,7 +1977,12 @@ params: params as Record<string, ParameterValue>,
     setGroups(design.groups);
     setSelectedArchitecture(doc.architecture);
     if (doc.hardware && Object.keys(doc.hardware).length > 0) {
-      setHwConfig(doc.hardware as HardwareConfig);
+      // Merged over the defaults rather than assigned. A file written by an
+      // older build, or hand-edited down to the fields someone cared about,
+      // carries only part of the configuration — assigning it would leave the
+      // rest `undefined`, and the analysis would run against a config with
+      // holes in it rather than against the defaults.
+      setHwConfig({ ...DEFAULT_HARDWARE_CONFIG, ...doc.hardware } as HardwareConfig);
     }
     setSelectedNodeId(null);
     setCurrentPresetId(null);
@@ -2052,7 +1996,7 @@ params: params as Record<string, ParameterValue>,
     resetHistory(design);
     setDocumentName(picked.name);
     setDocumentPath(picked.path);
-    setIsDirty(false);
+    markSaved(design);
 
     toast({
       title: `Opened ${doc.name}`,
@@ -2061,7 +2005,7 @@ params: params as Record<string, ParameterValue>,
         : `${design.nodes.length} blocks. Run an analysis to compute its metrics.`,
       variant: fileWarnings.length ? 'destructive' : undefined,
     });
-  }, [resetHistory, setHwConfig, toast]);
+  }, [resetHistory, setHwConfig, markSaved, toast]);
 
   // ─── Project Save/Load ──────────────────────────────────────────────
 

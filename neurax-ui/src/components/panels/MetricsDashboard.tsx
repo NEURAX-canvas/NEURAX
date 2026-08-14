@@ -21,9 +21,26 @@ import {
   Database,
   AlertCircle,
   BookOpen,
+  ArrowRight,
 } from 'lucide-react';
 import { AnalysisResult, CanvasNode, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
 import { cn } from '@/lib/utils.ts';
+import {
+  normalizeDiagnostics,
+  normalizeRecommendations,
+  countDiagnostics,
+  summariseDiagnostics,
+  severityPresentation,
+} from '@/utils/diagnostics.ts';
+
+/**
+ * How many diagnostics the panel lists before deferring to the report.
+ *
+ * They are sorted with the blocking ones first, so a truncated list never hides
+ * something that stops the model running — and the count of what was left out
+ * is always shown.
+ */
+const DIAGNOSTIC_LIMIT = 15;
 
 
 interface MetricsDashboardProps {
@@ -220,6 +237,7 @@ export function MetricsDashboard({
   jumpToIssuesSignal = 0,
 }: MetricsDashboardProps) {
   const hasData = !!analysis && (analysis.totalParams > 0 || analysis.totalFlops > 0 || analysis.peakVramBytes > 0);
+
   const totalVram = analysis?.peakVramBytes ?? 0;
 
   const perLayerFlopsRows = useMemo(() => {
@@ -353,6 +371,22 @@ function ArchitectureCategory({
   warnings: Warning[];
   jumpToIssuesSignal: number;
 }) {
+  // Normalised once here rather than at each use: the compiler's severities are
+  // PascalCase (`Critical`, `Hint`) and its categories are too, and reading
+  // them raw is what once turned every optimisation hint into a red error row.
+  const normalizedDiagnostics = useMemo(
+    () => normalizeDiagnostics(analysis?.diagnostics),
+    [analysis?.diagnostics],
+  );
+  const diagnosticCounts = useMemo(
+    () => countDiagnostics(normalizedDiagnostics),
+    [normalizedDiagnostics],
+  );
+  const normalizedRecommendations = useMemo(
+    () => normalizeRecommendations(analysis?.recommendations),
+    [analysis?.recommendations],
+  );
+
   return (
     <div className="space-y-4">
       {/* ════ Model Structure ════ */}
@@ -466,53 +500,108 @@ function ArchitectureCategory({
       {/* ════ Issues, Warnings & Diagnostics (merged from old Issues tab) ════ */}
       <IssuesBlock warnings={warnings} jumpToIssuesSignal={jumpToIssuesSignal} />
 
-      {/* ════ Diagnostics from analysis ════ */}
-      {(analysis.diagnostics?.length ?? 0) > 0 && (
+      {/* ════ Diagnostics from the compiler ════ */}
+      {normalizedDiagnostics.length > 0 && (
         <div>
-          <SectionIcon icon={AlertTriangle} label={`Compiler Diagnostics (${analysis.diagnostics!.length})`} />
+          <SectionIcon
+            icon={AlertTriangle}
+            label={`Compiler Diagnostics (${normalizedDiagnostics.length})`}
+          />
+          {/* What was found, most consequential first. */}
+          <p className="text-[10px] text-muted-foreground mb-1.5 px-0.5">
+            {summariseDiagnostics(diagnosticCounts)}
+          </p>
           <div className="space-y-1.5">
-            {analysis.diagnostics!.slice(0, 15).map((d, i) => {
-              const sev = d.severity.toLowerCase();
-              const cls = sev === 'error' || sev === 'critical'
-                ? 'border-destructive/30 bg-destructive/5'
-                : sev === 'warning' ? 'border-warning/30 bg-warning/5' : 'border-border/50 bg-secondary/10';
-              const Icon = sev === 'error' || sev === 'critical' ? XCircle
-                : sev === 'warning' ? AlertTriangle : Info;
-              const iconCls = sev === 'error' || sev === 'critical' ? 'text-destructive'
-                : sev === 'warning' ? 'text-warning' : 'text-muted-foreground';
+            {normalizedDiagnostics.slice(0, DIAGNOSTIC_LIMIT).map((d, i) => {
+              const look = severityPresentation(d.severity);
+              // Red stops you, amber warns you, green is a way to improve the
+              // model. The icon carries the same distinction as the colour, so
+              // the row still reads without it.
+              const Icon =
+                d.severity === 'critical'
+                  ? XCircle
+                  : d.severity === 'warning'
+                    ? AlertTriangle
+                    : d.severity === 'hint'
+                      ? Lightbulb
+                      : Info;
+
               return (
-                <div key={i} className={`rounded-lg border px-2.5 py-2 ${cls}`}>
+                <div key={`${d.code ?? 'diag'}-${i}`} className={`rounded-lg border px-2.5 py-2 ${look.colors.container}`}>
                   <div className="flex items-start gap-1.5">
-                    <Icon className={`w-3 h-3 mt-0.5 shrink-0 ${iconCls}`} />
-                    <div className="min-w-0">
+                    <Icon className={`w-3 h-3 mt-0.5 shrink-0 ${look.colors.accent}`} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                        <span className={`text-[8px] uppercase font-bold tracking-wide ${look.colors.accent}`}>
+                          {look.label}
+                        </span>
+                        <span className="text-[8px] uppercase tracking-wide text-muted-foreground/70">
+                          {d.categoryLabel}
+                        </span>
+                        {d.code && (
+                          <span className="text-[8px] font-mono text-muted-foreground/50">{d.code}</span>
+                        )}
+                      </div>
                       <div className="text-[10px] font-medium leading-snug">{d.message}</div>
-                      {d.suggestion && <div className="text-[9px] text-muted-foreground mt-0.5">{d.suggestion}</div>}
-                      {d.layer_id && <div className="text-[9px] text-muted-foreground/60 mt-0.5">Layer: {d.layer_id}</div>}
+                      {/* The suggestion is the reason this row exists: it is
+                          what the reader can actually do. */}
+                      {d.suggestion && (
+                        <div className="text-[9px] text-muted-foreground mt-1 flex items-start gap-1">
+                          <ArrowRight className="w-2.5 h-2.5 mt-[0.15rem] shrink-0" />
+                          <span>{d.suggestion}</span>
+                        </div>
+                      )}
+                      {d.layerId && (
+                        <div className="text-[9px] text-muted-foreground/60 mt-0.5">Block: {d.layerId}</div>
+                      )}
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
+          {/* Never truncate silently — a hidden blocking issue is the one that
+              costs a training run. */}
+          {normalizedDiagnostics.length > DIAGNOSTIC_LIMIT && (
+            <p className="text-[9px] text-muted-foreground/70 mt-1.5 px-0.5">
+              {normalizedDiagnostics.length - DIAGNOSTIC_LIMIT} more, in the exported report.
+            </p>
+          )}
         </div>
       )}
 
       {/* ════ Recommendations ════ */}
-      {(analysis.recommendations?.length ?? 0) > 0 && (
+      {normalizedRecommendations.length > 0 && (
         <div>
-          <SectionIcon icon={Lightbulb} label={`Recommendations (${analysis.recommendations!.length})`} />
+          <SectionIcon icon={Lightbulb} label={`Recommendations (${normalizedRecommendations.length})`} />
           <div className="space-y-1.5">
-            {analysis.recommendations!.slice(0, 8).map((rec, i) => {
-              const prio = rec.priority.toLowerCase();
-              const prioCls = prio === 'high' ? 'text-orange-400' : prio === 'medium' ? 'text-yellow-400' : 'text-muted-foreground';
+            {normalizedRecommendations.slice(0, 8).map((rec, i) => {
+              // A recommendation is always an improvement, so it is always
+              // green; priority varies its weight, not its meaning.
+              const prioCls =
+                rec.priority === 'high'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : rec.priority === 'medium'
+                    ? 'text-emerald-600/70 dark:text-emerald-400/70'
+                    : 'text-muted-foreground';
               return (
-                <div key={i} className="rounded-lg border border-border/50 bg-secondary/10 px-2.5 py-2">
-                  <div className="flex items-center justify-between mb-1">
+                <div
+                  key={`${rec.title}-${i}`}
+                  className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.07] px-2.5 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-[10px] font-semibold">{rec.title}</span>
-                    <span className={`text-[8px] uppercase font-bold ${prioCls}`}>{rec.priority}</span>
+                    <span className={`text-[8px] uppercase font-bold shrink-0 ${prioCls}`}>
+                      {rec.priority}
+                    </span>
                   </div>
                   <div className="text-[9px] text-muted-foreground leading-snug">{rec.description}</div>
-                  {rec.impact && <div className="text-[9px] text-primary/70 mt-0.5">Impact: {rec.impact}</div>}
+                  {/* The quantified gain — the reason to act on this at all. */}
+                  {rec.impact && (
+                    <div className="text-[9px] font-medium text-emerald-600 dark:text-emerald-400 mt-1">
+                      {rec.impact}
+                    </div>
+                  )}
                 </div>
               );
             })}

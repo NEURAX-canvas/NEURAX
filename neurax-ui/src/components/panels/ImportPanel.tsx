@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Upload, FileJson, AlertCircle, CheckCircle2, Copy, Info } from 'lucide-react';
 import {
   Dialog,
@@ -54,7 +54,14 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
 
   // Shown live under the textarea, before validation, so the user knows the
   // dialog recognised the file rather than wondering which parser will run.
-  const liveSource = jsonInput.trim() ? detectImportSource(jsonInput) : 'unknown';
+  //
+  // Memoised because detection parses the whole text: this box also accepts a
+  // NEURAX design export, which is far larger than a config, and re-parsing it
+  // on every keystroke makes typing stutter.
+  const liveSource = useMemo(
+    () => (jsonInput.trim() ? detectImportSource(jsonInput) : 'unknown'),
+    [jsonInput],
+  );
 
   const handleValidate = () => {
     setIsValidating(true);
@@ -66,13 +73,13 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
 
       if (result.error) {
         toast({
-          title: 'Validation Failed',
+          title: 'Could not read this file',
           description: result.error,
           variant: 'destructive',
         });
       } else {
         toast({
-          title: 'Validation Successful',
+          title: 'File read',
           description: `Found ${result.nodes.length} nodes and ${result.connections.length} connections`,
         });
       }
@@ -83,7 +90,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     if (!previewResult || previewResult.error) {
       toast({
         title: 'Cannot Import',
-        description: 'Please validate the file first',
+        description: 'Press “Read File” first.',
         variant: 'destructive',
       });
       return;
@@ -93,7 +100,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     handleClose();
 
     toast({
-      title: 'Architecture Imported',
+      title: 'Model imported',
       description: `Imported "${previewResult.modelName}" with ${previewResult.nodes.length} nodes`,
     });
   };
@@ -119,7 +126,22 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
    * back to a file input.
    */
   const handleOpenFile = async () => {
-    const picked = await openTextFile(['json']);
+    let picked;
+    try {
+      // Reading only: importing a config.json out of a model directory must
+      // not leave that file overwritable. See `openTextFile`.
+      picked = await openTextFile(['json']);
+    } catch (err) {
+      // The native side rejects a file it cannot decode — a `config.json` that
+      // is not valid UTF-8, or one whose permissions changed since the dialog
+      // listed it. Silence here looks like the dialog did nothing.
+      toast({
+        title: 'Could not read that file',
+        description: String(err),
+        variant: 'destructive',
+      });
+      return;
+    }
     if (!picked) return;
     setJsonInput(picked.contents);
     setFileName(picked.name);

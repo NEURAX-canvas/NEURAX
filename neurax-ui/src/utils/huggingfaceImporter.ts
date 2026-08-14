@@ -338,10 +338,19 @@ function readShape(
   // most of the parameters.
   const tieWordEmbeddings = bool(config, 'tie_word_embeddings', 'tie_weights') ?? true;
 
+  // Decided from the model type first, and only then from the class name.
+  //
+  // A bare `…Model` suffix is not evidence of an encoder: `LlamaModel`,
+  // `MistralModel` and `Qwen2Model` are the base checkpoints of decoders,
+  // published without their LM head. Treating them as encoders would give them
+  // a classification head and mark their attention non-causal. Only the task
+  // suffixes that genuinely mean an encoder are read as one.
   const isEncoder =
     ENCODER_TYPES.has(modelType) ||
-    (architecture !== null && /ForMaskedLM|ForSequenceClassification|Model$/.test(architecture) &&
-      !/ForCausalLM|LMHeadModel/.test(architecture));
+    (architecture !== null &&
+      /For(MaskedLM|SequenceClassification|TokenClassification|QuestionAnswering|MultipleChoice)$/.test(
+        architecture,
+      ));
 
   const name =
     str(config, '_name_or_path', 'name_or_path') ??

@@ -139,6 +139,12 @@ export function useDesignHistory(
 
     if (sameDesign(present.current, current)) return;
 
+    // Report the pending change as undoable straight away. `undo` commits
+    // whatever is still settling before stepping back, so Ctrl+Z works during
+    // the coalescing window — and a toolbar button that stayed disabled for
+    // those 400 ms would be lying about what the keyboard can do.
+    setStatus((s) => (s.canUndo ? s : { ...s, canUndo: true }));
+
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       timer.current = null;

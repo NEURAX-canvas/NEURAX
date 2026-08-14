@@ -166,6 +166,12 @@ describe('the user guide', () => {
       const appId = persistence.match(/APP_ID: &str = "([^"]+)"/)?.[1];
       const file = persistence.match(/PROJECTS_FILE: &str = "([^"]+)"/)?.[1];
 
+      // Without these, a renamed constant makes the regex return undefined and
+      // the assertions below search the guide for the literal "undefined" —
+      // failing with a message that points nowhere near the real cause.
+      expect(appId, 'APP_ID not found in persistence.rs — has it been renamed?').toBeDefined();
+      expect(file, 'PROJECTS_FILE not found in persistence.rs — has it been renamed?').toBeDefined();
+
       const guide = JSON.stringify(DOCUMENTATION);
       expect(guide.includes(appId!), `the guide should name the profile directory ${appId}`).toBe(true);
       expect(guide.includes(file!), `the guide should name the projects file ${file}`).toBe(true);

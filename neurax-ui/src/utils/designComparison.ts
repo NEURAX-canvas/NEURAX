@@ -262,6 +262,14 @@ export function formatDelta(metric: MetricComparison): string {
     // change is still worth stating.
     if (metric.baseline === null && metric.candidate !== null) return 'new';
     if (metric.baseline !== null && metric.candidate === null) return 'gone';
+
+    // Both sides are present but the baseline was zero, so there is no
+    // percentage to give. An em dash here would read as "no change", when in
+    // fact something went from nothing to a real figure — a cost of $0 rising
+    // to $500 is the most significant change on the table, not the least.
+    if (metric.delta !== null && metric.delta !== 0) {
+      return `${metric.delta > 0 ? '+' : '−'}${formatMetric(Math.abs(metric.delta), metric.unit)}`;
+    }
     return '—';
   }
 

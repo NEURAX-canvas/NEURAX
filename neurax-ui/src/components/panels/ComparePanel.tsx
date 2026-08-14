@@ -143,6 +143,17 @@ export function ComparePanel({
                   </h3>
                   <div className="rounded-md border border-border overflow-hidden">
                     <table className="w-full text-sm">
+                      {/* Named columns: without them a screen reader reads four
+                          unlabelled cells per row and the two numbers are
+                          indistinguishable. */}
+                      <thead className="sr-only">
+                        <tr>
+                          <th scope="col">Metric</th>
+                          <th scope="col">Baseline</th>
+                          <th scope="col">Current</th>
+                          <th scope="col">Change</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {report.metrics
                           .filter((m) => m.group === group)
@@ -151,9 +162,12 @@ export function ComparePanel({
                               key={m.key}
                               className={i % 2 ? 'bg-secondary/20' : undefined}
                             >
-                              <td className="px-3 py-1.5 text-muted-foreground w-[38%]">
+                              <th
+                                scope="row"
+                                className="px-3 py-1.5 text-left font-normal text-muted-foreground w-[38%]"
+                              >
                                 {m.label}
-                              </td>
+                              </th>
                               <td className="px-3 py-1.5 text-right tabular-nums">
                                 {formatMetric(m.baseline, m.unit)}
                               </td>

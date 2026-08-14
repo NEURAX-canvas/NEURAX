@@ -254,11 +254,15 @@ export function TopNav({
             Save
             {/* A dot, not a word: the toolbar has no room and every editor
                 marks unsaved work this way. */}
+            {/* A bare span is `role="generic"` and carries no accessible name,
+                so the dot alone conveys the state by colour and shape only.
+                The text is for assistive technology; the dot is for everyone
+                else. */}
             {isDirty && (
-              <span
-                className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary"
-                aria-label="unsaved changes"
-              />
+              <>
+                <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true" />
+                <span className="sr-only">unsaved changes</span>
+              </>
             )}
           </Button>
           <Button
@@ -476,7 +480,12 @@ export function TopNav({
                 disabled={!canClearCanvas}
               >
                 <Save className="w-4 h-4 mr-2" /> Save
-                {isDirty && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" />}
+                {isDirty && (
+                  <>
+                    <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" aria-hidden="true" />
+                    <span className="sr-only">unsaved changes</span>
+                  </>
+                )}
               </Button>
               <Button
                 variant="ghost"
