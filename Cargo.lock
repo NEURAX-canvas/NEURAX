@@ -1894,7 +1894,7 @@ checksum = "e94e1e6445d314f972ff7395df2de295fe51b71821694f0b0e1e79c4f12c8577"
 
 [[package]]
 name = "neurax-core"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1922,7 +1922,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-formulas"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "approx",
  "criterion",
@@ -1933,7 +1933,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-hardware-db"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "ahash",
  "serde",
@@ -1943,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-ir"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "ahash",
  "approx",
@@ -1970,7 +1970,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-mlir"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "melior",
  "neurax-parser",
@@ -1980,7 +1980,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-parser"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "ahash",
  "approx",
@@ -1996,7 +1996,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-service"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "actix-cors",
  "actix-web",
@@ -2029,7 +2029,7 @@ dependencies = [
 
 [[package]]
 name = "neurax-tui"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "chrono",
  "color-eyre",
