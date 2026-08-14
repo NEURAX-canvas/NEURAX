@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Clock, TrendingUp, DollarSign, Leaf, Shield, SlidersHorizontal,
-  AlertTriangle, Zap, Award, Info, Loader2
+  AlertTriangle, Zap, Award, Info, Loader2, RefreshCw
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
+import { Button } from '@/components/ui/button.tsx';
 import { Slider } from '@/components/ui/slider.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
 import { TooltipProvider } from '@/components/ui/tooltip.tsx';
@@ -461,10 +462,23 @@ const STATUS_PRESENTATION: Record<string, { label: string; badge: 'default' | 's
   repealed: { label: 'Repealed', badge: 'outline', icon: 'text-muted-foreground' },
 };
 
+/**
+ * A status the client doesn't recognise — a service running ahead of or
+ * behind this build — is a real signal, not something to paper over.
+ * Falling back to `upcoming` would tell the reader a rule is on its way when
+ * it might just as easily be one that lapsed; this says plainly that the
+ * label wasn't understood instead of guessing.
+ */
+const UNKNOWN_STATUS_PRESENTATION = { label: 'Unrecognised status', badge: 'outline' as const, icon: 'text-muted-foreground' };
+
 function ComplianceView({ horizon }: { horizon: number }) {
   const [config, setConfig] = useState<ComplianceConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // Bumping this re-runs the load effect below — the retry button's entire
+  // job. Not folded into `loadError` itself so a retry can't be mistaken for
+  // the error clearing on its own.
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -473,7 +487,7 @@ function ComplianceView({ horizon }: { horizon: number }) {
       .then((data) => setConfig(data))
       .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [retryToken]);
 
   if (loading) {
     return (
@@ -495,14 +509,23 @@ function ComplianceView({ horizon }: { horizon: number }) {
         <p className="text-sm font-medium text-foreground">Compliance data unavailable</p>
         <p className="text-xs text-muted-foreground max-w-xs">
           Couldn't reach the compliance service. Showing stale regulatory dates would be worse
-          than showing nothing — try again shortly.
+          than showing nothing.
         </p>
+        <Button variant="outline" size="sm" className="mt-1" onClick={() => setRetryToken((t) => t + 1)}>
+          <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+          Retry
+        </Button>
       </div>
     );
   }
 
   const { regulations, thresholds, recommendations, verified_as_of: verifiedAsOf } = config;
-  const nowYear = new Date(verifiedAsOf).getFullYear() || new Date().getFullYear();
+  // Read the year straight out of the "YYYY-MM-DD" string rather than through
+  // `new Date(...).getFullYear()`: the Date constructor parses that string as
+  // UTC midnight, but `getFullYear()` reads it back in the browser's local
+  // timezone — anywhere west of UTC, that silently reports the previous year.
+  const verifiedYear = parseInt(verifiedAsOf.slice(0, 4), 10);
+  const nowYear = Number.isFinite(verifiedYear) ? verifiedYear : new Date().getFullYear();
 
   return (
     <div className="space-y-4">
@@ -513,7 +536,7 @@ function ComplianceView({ horizon }: { horizon: number }) {
       <div className="space-y-3">
         {regulations.map((reg: ComplianceRegulation, i: number) => {
           const inScope = reg.year <= nowYear + horizon;
-          const presentation = STATUS_PRESENTATION[reg.status] ?? STATUS_PRESENTATION.upcoming;
+          const presentation = STATUS_PRESENTATION[reg.status] ?? UNKNOWN_STATUS_PRESENTATION;
           const yearsAway = reg.year - nowYear;
           return (
             <Card key={i} className={`bg-card ${!inScope && reg.status !== 'repealed' ? 'opacity-50' : ''}`}>
@@ -524,7 +547,7 @@ function ComplianceView({ horizon }: { horizon: number }) {
                     <p className="text-sm font-medium text-foreground">{reg.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {reg.status === 'repealed' ? 'Repealed' : 'Effective'}: {reg.year}{' '}
-                      {reg.limit ? `· Limit: ${reg.limit.toExponential(0)} ${reg.unit}` : ''}
+                      {reg.limit ? `· Limit: ${reg.limit.toExponential(0)}${reg.unit ? ` ${reg.unit}` : ''}` : ''}
                       {reg.region && ` · ${reg.region}`}
                     </p>
                     {reg.description && (

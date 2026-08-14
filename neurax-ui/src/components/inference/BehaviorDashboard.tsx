@@ -453,16 +453,20 @@ function KvCacheCard({ bytesPerToken, bytesTotal, gqaSavingsFactor }: {
 function ModelGroundingBanner({ profile }: {
   profile?: InferenceReport['model_profile'];
 }) {
-  if (profile && (profile.total_parameters || profile.num_layers)) {
+  // Presence of `profile` is what "a design is connected" means — not
+  // whether any one field happens to be truthy. A field can be a real,
+  // meaningful `0` (or just absent on this architecture) without that
+  // meaning no design was attached.
+  if (profile) {
     const parts = [
-      profile.total_parameters ? `${formatCompactNumber(profile.total_parameters)} params` : null,
-      profile.num_layers ? `${profile.num_layers} layers` : null,
-      profile.hidden_size ? `width ${profile.hidden_size}` : null,
+      typeof profile.total_parameters === 'number' ? `${formatCompactNumber(profile.total_parameters)} params` : null,
+      typeof profile.num_layers === 'number' ? `${profile.num_layers} layers` : null,
+      typeof profile.hidden_size === 'number' ? `width ${profile.hidden_size}` : null,
     ].filter(Boolean);
     return (
       <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-success/10 border border-success/20 text-xs text-success">
         <Link2 className="w-3.5 h-3.5 shrink-0" />
-        <span>Grounded in your design — {parts.join(', ')}</span>
+        <span>Grounded in your design{parts.length > 0 ? ` — ${parts.join(', ')}` : ''}</span>
       </div>
     );
   }

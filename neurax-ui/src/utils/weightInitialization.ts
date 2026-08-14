@@ -87,7 +87,6 @@ export interface InitializedArchitecture {
  * is what made initialising a real design hang.
  */
 function layerVariance(
-  rows: number,
   fanIn: number,
   fanOut: number,
   gain: number,
@@ -95,20 +94,29 @@ function layerVariance(
   method: InitializationMethod,
 ): number {
   switch (method) {
+    // Xavier's uniform bound is a = gain·√(6/(fanIn+fanOut)), chosen so that
+    // Var(U(-a,a)) = a²/3 lands on exactly the same target variance as the
+    // normal variant — that's the point of the derivation, not a difference
+    // between them. Both branches report that one shared target.
     case 'xavier_uniform':
-      return (2 * gain * gain) / (fanIn + fanOut) / 3;
     case 'xavier_normal':
       return (2 * gain * gain) / (fanIn + fanOut);
+    // Same relationship for He: a = gain·√(6/fanIn) makes the uniform
+    // variant match the normal variant's 2·gain²/fanIn target.
     case 'he_uniform':
-      return (2 * gain * gain) / fanIn / 3;
     case 'he_normal':
       return (2 * gain * gain) / fanIn;
     case 'sparse':
       return ((2 * gain * gain) / (fanIn + fanOut)) * (1 - sparsity);
     case 'delta_orthogonal':
-      // Delta-orthogonal scales an orthogonal basis by √rows to preserve
-      // gradient magnitude through depth, so its variance scales with rows.
-      return rows;
+      // Delta-orthogonal places an orthogonal matrix at the kernel's centre
+      // tap and zeroes the rest (Xiao et al., "Dynamical Isometry and a Mean
+      // Field Theory of CNNs") — the orthogonal block itself is what
+      // propagates the signal, so the *effective* per-element variance
+      // stays at the orthogonal case, not `rows`. Returning `rows` here (a
+      // real model's width, e.g. 4096) drove `calculateSustainabilityMetrics`'s
+      // `exp(-|avg - 1|)` score to zero for any design containing one.
+      return 1.0;
     case 'orthogonal':
     case 'lsuv':
       // Both target unit variance by construction.
@@ -180,7 +188,6 @@ function initializeLayerWeights(
   const { fanIn, fanOut, shape } = resolveLayerDims(node);
   const gain = config.gain || 1.0;
   const sparsity = config.sparsity || 0.9;
-  const rows = shape[0];
 
   return {
     layerId: node.id,
@@ -188,7 +195,7 @@ function initializeLayerWeights(
     layerType: node.type,
     shape,
     initMethod: config.method,
-    variance: layerVariance(rows, fanIn, fanOut, gain, sparsity, config.method),
+    variance: layerVariance(fanIn, fanOut, gain, sparsity, config.method),
     fanIn,
     fanOut,
   };
@@ -416,7 +423,7 @@ export function getRecommendedHyperparams(
 export function getRecommendedInit(nodes: CanvasNode[]): InitializationMethod {
   const hasRelu =
     nodes.some((n) => n.type === 'relu') ||
-    nodes.some((n) => typeof n.params.activation === 'string' && n.params.activation === 'relu');
+    nodes.some((n) => n.params?.activation === 'relu');
   const hasAttention = hasBlockFamily(nodes, 'attention');
   const hasRnn = hasBlockFamily(nodes, 'lstm') || hasBlockFamily(nodes, 'gru');
 

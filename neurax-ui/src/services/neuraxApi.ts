@@ -764,18 +764,27 @@ export async function getCredits(): Promise<CreditsResponse> {
 
 // ─── Compliance Config ────────────────────────────────────────────────
 
+/**
+ * `active` | `upcoming` (agreed and dated, not yet in force) | `uncertain`
+ * (proposed, not yet formally adopted) | `repealed` (used to apply, does
+ * not any more — kept rather than removed, so a reader who expects it finds
+ * out it lapsed instead of finding nothing).
+ *
+ * The service only ever emits one of these four (`ComplianceStatus` is a
+ * Rust enum, not a free string), but the union is written out here too
+ * rather than trusted implicitly: a value this type doesn't recognise is a
+ * real signal — an older/newer service build out of sync with this
+ * client — and should read as "unrecognised", not silently render as
+ * whichever branch a naive fallback happens to pick.
+ */
+export type ComplianceStatus = 'active' | 'upcoming' | 'uncertain' | 'repealed';
+
 export interface ComplianceRegulation {
   name: string;
   year: number;
   limit: number | null;
   unit: string | null;
-  /**
-   * `active` | `upcoming` | `uncertain` (a change is agreed but not yet
-   * legally in force) | `repealed` (used to apply, does not any more — kept
-   * rather than removed, so a reader who expects it finds out it lapsed
-   * instead of finding nothing).
-   */
-  status: string;
+  status: ComplianceStatus;
   description: string;
   region: string;
 }

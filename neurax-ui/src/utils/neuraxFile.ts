@@ -203,6 +203,58 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+/** One `InitializationRecord.layers[]` entry, fully type- and shape-checked. */
+function isValidInitializationLayer(value: unknown): value is InitializationRecord['layers'][number] {
+  return (
+    isRecord(value) &&
+    typeof value.layerId === 'string' &&
+    typeof value.layerName === 'string' &&
+    typeof value.layerType === 'string' &&
+    Array.isArray(value.shape) &&
+    value.shape.every((n) => typeof n === 'number') &&
+    typeof value.fanIn === 'number' &&
+    typeof value.fanOut === 'number' &&
+    typeof value.variance === 'number'
+  );
+}
+
+/**
+ * Validates a parsed `initialization` block, rather than casting it through
+ * once its two most visible fields look right. A hand-edited or truncated
+ * file could carry a `layers` array where one entry is missing `shape` or
+ * has a non-numeric `variance`; blindly trusting the cast would only surface
+ * that as a crash wherever Production next reads the field, far from this
+ * file and hard to connect back to it. Malformed layer entries are dropped
+ * with a warning instead of failing the whole document, matching how a
+ * dangling connection is handled just above.
+ */
+function parseInitializationRecord(value: unknown, warnings: string[]): InitializationRecord | null {
+  if (!isRecord(value) || typeof value.method !== 'string' || !Array.isArray(value.layers)) {
+    return null;
+  }
+  if (!isRecord(value.hyperparameters)) {
+    warnings.push('The saved initialisation had no hyperparameters recorded; dropped.');
+    return null;
+  }
+  const layers = value.layers.filter(isValidInitializationLayer);
+  const dropped = value.layers.length - layers.length;
+  if (dropped > 0) {
+    warnings.push(
+      `${dropped} initialisation ${dropped === 1 ? 'layer entry was' : 'layer entries were'} malformed; dropped.`,
+    );
+  }
+  if (layers.length === 0) {
+    return null;
+  }
+  return {
+    method: value.method,
+    gain: typeof value.gain === 'number' ? value.gain : undefined,
+    sparsity: typeof value.sparsity === 'number' ? value.sparsity : undefined,
+    hyperparameters: value.hyperparameters as InitializationRecord['hyperparameters'],
+    layers,
+  };
+}
+
 /**
  * Read the text of a `.neurax` file.
  *
@@ -299,12 +351,7 @@ export function parseNeuraxFile(text: string): ParsedDocument {
     },
     hardware: isRecord(parsed.hardware) ? (parsed.hardware as Partial<HardwareConfig>) : {},
     analysis: isRecord(parsed.analysis) ? (parsed.analysis as unknown as AnalysisResult) : null,
-    initialization:
-      isRecord(parsed.initialization) &&
-      typeof parsed.initialization.method === 'string' &&
-      Array.isArray(parsed.initialization.layers)
-        ? (parsed.initialization as unknown as InitializationRecord)
-        : null,
+    initialization: parseInitializationRecord(parsed.initialization, warnings),
   };
 
   return { ok: true, document, warnings };

@@ -194,6 +194,32 @@ describe('the initialisation formulas, on the real resolved shape', () => {
     expect(layer.variance).toBeCloseTo(expected, 10);
   });
 
+  it('uniform and normal variants of the same family target the same variance', () => {
+    // Xavier's uniform bound is a = gain·√(6/(fanIn+fanOut)), chosen so that
+    // Var(U(-a,a)) = a²/3 lands on exactly the normal variant's 2·gain²/(fanIn+fanOut)
+    // target — they are two ways of hitting the same variance, not two
+    // different variances. Same relationship for He. A stray extra ÷3 on the
+    // uniform branches once made them report a third of the correct value.
+    const xavierUniform = layerFor('n5', { method: 'xavier_uniform', gain: 1.0 });
+    const xavierNormal = layerFor('n5', { method: 'xavier_normal', gain: 1.0 });
+    expect(xavierUniform.variance).toBeCloseTo(xavierNormal.variance, 10);
+
+    const heUniform = layerFor('n5', { method: 'he_uniform', gain: Math.sqrt(2) });
+    const heNormal = layerFor('n5', { method: 'he_normal', gain: Math.sqrt(2) });
+    expect(heUniform.variance).toBeCloseTo(heNormal.variance, 10);
+  });
+
+  it('delta-orthogonal reports unit variance, not the layer width', () => {
+    // Delta-orthogonal places an orthogonal matrix at the kernel's centre tap
+    // and zeroes the rest — the orthogonal block is what propagates signal,
+    // so the effective variance stays at the orthogonal case. Reporting the
+    // layer's width instead (a real model's is in the thousands) used to
+    // drive `calculateSustainabilityMetrics`'s gradient-flow score to zero
+    // for any design containing one.
+    const layer = layerFor('n3', { method: 'delta_orthogonal' }); // width 4096, 12288
+    expect(layer.variance).toBe(1.0);
+  });
+
   it('reports the real resolved shape for every method, on a 2-D layer', () => {
     const methods: InitializationConfig['method'][] = [
       'xavier_uniform', 'xavier_normal', 'he_uniform', 'he_normal',

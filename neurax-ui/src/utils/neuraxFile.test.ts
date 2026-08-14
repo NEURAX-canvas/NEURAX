@@ -358,5 +358,47 @@ describe('the .neurax document', () => {
       if (!parsed.ok) return;
       expect(parsed.document.initialization).toBeNull();
     });
+
+    it('drops one malformed layer entry rather than trusting the whole array', () => {
+      // A record only had its top-level shape checked (`method` is a string,
+      // `layers` is an array) before being cast straight through — a single
+      // entry missing `shape` reached Production's own rendering as `undefined`
+      // instead of being caught here, next to the data that was actually bad.
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: {
+          method: 'xavier_normal',
+          hyperparameters: withInit.initialization!.hyperparameters,
+          layers: [
+            withInit.initialization!.layers[0], // valid
+            { layerId: 'n4', layerName: 'broken' }, // missing shape/fanIn/fanOut/variance
+          ],
+        },
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization?.layers).toEqual([withInit.initialization!.layers[0]]);
+      expect(parsed.warnings.some((w) => w.includes('malformed'))).toBe(true);
+    });
+
+    it('drops the whole record when every layer is malformed', () => {
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: {
+          method: 'xavier_normal',
+          hyperparameters: withInit.initialization!.hyperparameters,
+          layers: [{ layerId: 'n4' }],
+        },
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toBeNull();
+    });
   });
 });

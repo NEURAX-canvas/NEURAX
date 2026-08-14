@@ -1525,15 +1525,15 @@ export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparam
     // Every family's own constraints apply to at least the blocks it
     // contributed; unioning them the same way as the params keeps a
     // MoE-shaped constraint from silently vanishing just because the design
-    // also has an SSM block in it.
-    globalConstraints: [
-      ...TRANSFORMER_CONSTRAINTS,
-      ...MOE_CONSTRAINTS,
-      ...CNN_CONSTRAINTS,
-      ...SSM_CONSTRAINTS,
-      ...DIFFUSION_CONSTRAINTS,
-      ...GNN_CONSTRAINTS,
-    ],
+    // also has an SSM block in it. Derived from CONCRETE_FAMILY_DEFS itself
+    // (not a hand-picked list of the families that happen to declare
+    // constraints today) so a constraint added to any family later — rnn,
+    // gan, snn and rl currently declare none — reaches experimental too,
+    // instead of silently not applying there until someone remembers to
+    // update this list by hand.
+    globalConstraints: Object.values(CONCRETE_FAMILY_DEFS).flatMap(
+      (defs) => defs.globalConstraints ?? [],
+    ),
     params: buildExperimentalParams(CONCRETE_FAMILY_DEFS),
     defaultSearchSpace: {
       hiddenDim: { min: 128, max: 2048, step: 128 },

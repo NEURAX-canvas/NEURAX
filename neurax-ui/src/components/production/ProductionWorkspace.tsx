@@ -24,7 +24,7 @@ import {
   getRecommendedHyperparams,
   HyperparameterConfig,
 } from '@/utils/weightInitialization.ts';
-import { serializeDesign, suggestedFileName } from '@/utils/neuraxFile.ts';
+import { serializeDesign, suggestedFileName, InitializationRecord } from '@/utils/neuraxFile.ts';
 import { saveTextFile } from '@/services/desktopRuntime.ts';
 
 interface ProductionWorkspaceProps {
@@ -40,6 +40,16 @@ interface ProductionWorkspaceProps {
   groups?: NodeGroup[];
   hardware?: Partial<HardwareConfig>;
   analysis?: AnalysisResult | null;
+  /**
+   * Called after a successful Save with the record just written. The host
+   * document isn't just this tab's concern — the studio's dirty indicator
+   * should clear the same way it does after any other save, and the record
+   * needs to be remembered outside this component or the *next* save (a
+   * plain Ctrl+S from the Architecture tab, which doesn't know this one ran)
+   * would overwrite the file without it, silently dropping what this tab
+   * just wrote.
+   */
+  onSaved?: (initialization: InitializationRecord) => void;
 }
 
 /** Compact count: 1.2M rather than 1200000. */
@@ -59,6 +69,7 @@ export function ProductionWorkspace({
   groups = [],
   hardware = {},
   analysis = null,
+  onSaved,
 }: ProductionWorkspaceProps) {
   const { toast } = useToast();
   const [selectedMethod, setSelectedMethod] = useState<InitializationMethod>('xavier_normal');
@@ -89,6 +100,32 @@ export function ProductionWorkspace({
   }, [nodes, connections, selectedMethod, gain, sparsity, modelName]);
 
   /**
+   * The `.neurax` document Save and Copy both write — one place, so a field
+   * added to it can't reach one and not the other the way `initialization`
+   * itself once didn't reach either (this whole export used to be ONNX/Python
+   * codegen instead). Returns the record alongside the serialised text so a
+   * successful save can hand it to `onSaved` without recomputing it.
+   */
+  const buildDesignDocument = () => {
+    if (!architecture) return null;
+    const initialization = buildInitializationRecord(architecture, hyperparams);
+    const contents = serializeDesign(
+      {
+        name: modelName,
+        architecture: architectureFamily,
+        nodes,
+        connections,
+        groups,
+        hardware,
+        analysis,
+        initialization,
+      },
+      { generator: 'NEURAX Production' },
+    );
+    return { contents, initialization };
+  };
+
+  /**
    * Save the design as a `.neurax` file, carrying this initialisation as its
    * `initialization` section.
    *
@@ -101,52 +138,37 @@ export function ProductionWorkspace({
    * on the Architecture tab.
    */
   const handleSaveDesign = async () => {
-    if (!architecture) {
+    const doc = buildDesignDocument();
+    if (!doc) {
       toast({ title: "No Architecture", description: "Add layers to the canvas first", variant: "destructive" });
       return;
     }
-    const contents = serializeDesign(
-      {
-        name: modelName,
-        architecture: architectureFamily,
-        nodes,
-        connections,
-        groups,
-        hardware,
-        analysis,
-        initialization: buildInitializationRecord(architecture, hyperparams),
-      },
-      { generator: 'NEURAX Production' },
-    );
+    try {
+      const result = await saveTextFile(doc.contents, suggestedFileName(modelName), 'application/json');
+      if (!result.saved) return; // The user dismissed the dialog.
 
-    const result = await saveTextFile(contents, suggestedFileName(modelName), 'application/json');
-    if (!result.saved) return; // The user dismissed the dialog.
-
-    toast({
-      title: "Design saved",
-      description: result.path ?? suggestedFileName(modelName),
-    });
+      onSaved?.(doc.initialization);
+      toast({
+        title: "Design saved",
+        description: result.path ?? suggestedFileName(modelName),
+      });
+    } catch (err) {
+      toast({ title: "Save failed", description: String(err), variant: "destructive" });
+    }
   };
 
-  const handleCopyJSON = () => {
-    if (!architecture) return;
-    const contents = serializeDesign(
-      {
-        name: modelName,
-        architecture: architectureFamily,
-        nodes,
-        connections,
-        groups,
-        hardware,
-        analysis,
-        initialization: buildInitializationRecord(architecture, hyperparams),
-      },
-      { generator: 'NEURAX Production' },
-    );
-    navigator.clipboard.writeText(contents);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-    toast({ title: "Copied", description: "Design copied to clipboard as .neurax JSON" });
+  const handleCopyJSON = async () => {
+    const doc = buildDesignDocument();
+    if (!doc) return;
+    const contents = doc.contents;
+    try {
+      await navigator.clipboard.writeText(contents);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+      toast({ title: "Copied", description: "Design copied to clipboard as .neurax JSON" });
+    } catch (err) {
+      toast({ title: "Copy failed", description: String(err), variant: "destructive" });
+    }
   };
 
   const trainableLayers = nodes.filter(n =>
@@ -170,7 +192,7 @@ export function ProductionWorkspace({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" className="text-xs h-7 sm:h-8" onClick={handleCopyJSON} disabled={!architecture}>
+          <Button variant="outline" size="sm" className="text-xs h-7 sm:h-8" onClick={() => void handleCopyJSON()} disabled={!architecture}>
             {copied ? <Check className="w-3.5 h-3.5 sm:mr-1.5" /> : <Copy className="w-3.5 h-3.5 sm:mr-1.5" />}
             <span className="hidden sm:inline">{copied ? 'Copied!' : 'Copy JSON'}</span>
           </Button>

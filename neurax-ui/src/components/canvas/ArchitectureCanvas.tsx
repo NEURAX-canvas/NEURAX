@@ -34,6 +34,19 @@ const ZOOM_SENSITIVITY = 0.002;
  * only the rendered transform — never the `offset` state itself — keeps
  * pointer math, zoom-anchoring and hit-testing exactly as precise as before;
  * it only changes what gets painted.
+ *
+ * Snapping `offset` here and each node's world position in `CanvasNode`
+ * guarantees a crisp screen pixel only where `zoom` is a whole number — most
+ * concretely 100%, the default and what "Reset View" restores. At a
+ * fractional zoom (say 125%), `offset + zoom·node.x` is still generally
+ * fractional even with both inputs snapped, exactly as it was with no
+ * snapping at all: this is strictly an improvement, never a regression, but
+ * it doesn't chase full crispness through every zoom level. Doing that
+ * would mean computing each node's screen position after the zoom
+ * multiplication — pushing `offset`/`zoom` down into `CanvasNode`/`GroupNode`
+ * and the connection SVG instead of one shared CSS transform on their
+ * parent — which is a materially larger change than the blur fix this
+ * shipped with called for.
  */
 export function snapToDevicePixel(value: number): number {
   const dpr = typeof window !== 'undefined' && window.devicePixelRatio ? window.devicePixelRatio : 1;

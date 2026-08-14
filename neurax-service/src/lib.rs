@@ -2811,17 +2811,41 @@ fn increment_credits(state: &AppState, user_id: &str, plan: &str) -> bool {
 
 // ─── Compliance Config ──────────────────────────────────────────────
 
+/// Kept as an enum rather than a free string so the compiler — not a reader
+/// of the JSON — enforces the fixed set. A typo or a new status value the
+/// frontend doesn't recognise used to fall through to the UI's "upcoming"
+/// fallback, mislabeling it as on its way rather than flagging it as
+/// unrecognised; that can no longer happen once this only serialises one of
+/// four known lowercase strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ComplianceStatus {
+    /// Legally in force today.
+    Active,
+    /// A change is agreed and dated but not yet legally in force.
+    Upcoming,
+    /// A change is proposed but not yet formally adopted.
+    ///
+    /// Not constructed by today's dataset — the one entry this used to cover
+    /// (the Annex III deferral) was formally adopted in July 2026 and is now
+    /// `Upcoming`. Kept in the enum because regulatory changes routinely
+    /// pass through this state before adoption; removing it would just mean
+    /// re-adding it the next time one does.
+    #[allow(dead_code)]
+    Uncertain,
+    /// A rule that used to apply and no longer does — kept rather than
+    /// deleted so a reader who remembers it finds out it stopped, instead of
+    /// finding nothing.
+    Repealed,
+}
+
 #[derive(Debug, serde::Serialize)]
 struct ComplianceRegulation {
     name: String,
     year: u32,
     limit: Option<f64>,
     unit: Option<String>,
-    /// `"active"`, `"upcoming"`, `"uncertain"` (a change is agreed but not yet
-    /// legally in force), or `"repealed"` — a rule that used to apply and no
-    /// longer does, kept rather than deleted so a reader who remembers it
-    /// finds out it stopped, instead of finding nothing.
-    status: String,
+    status: ComplianceStatus,
     description: String,
     region: String,
 }
@@ -3475,17 +3499,17 @@ fn get_compliance_data() -> ComplianceConfig {
             year: 2025,
             limit: Some(1e25),
             unit: Some("cumulative training FLOPs".to_string()),
-            status: "active".to_string(),
+            status: ComplianceStatus::Active,
             description: "General-purpose AI models trained with cumulative compute above 10²⁵ FLOPs are presumed to carry systemic risk: technical documentation, adversarial testing, 72-hour incident reporting and energy-efficiency disclosure became legally binding 2 Aug 2025. The AI Office's enforcement powers activated 2 Aug 2026 — both dates have now passed.".to_string(),
             region: "EU".to_string(),
         },
         ComplianceRegulation {
             name: "EU AI Act — High-Risk Systems (Annex III)".to_string(),
-            year: 2026,
+            year: 2027,
             limit: None,
             unit: None,
-            status: "uncertain".to_string(),
-            description: "Obligations for high-risk AI systems (biometrics, critical infrastructure, employment, law enforcement) are use-case based, not compute-based — there is no FLOPs threshold. The original deadline is 2 Aug 2026. A Digital Omnibus agreement would defer stand-alone Annex III systems to 2 Dec 2027, but was not yet formally adopted as of this check — treat 2 Aug 2026 as binding until confirmed otherwise.".to_string(),
+            status: ComplianceStatus::Upcoming,
+            description: "Obligations for high-risk AI systems (biometrics, critical infrastructure, employment, law enforcement) are use-case based, not compute-based — there is no FLOPs threshold. The original deadline was 2 Aug 2026. The Digital Omnibus on AI (Regulation (EU) 2026/1744), published in the Official Journal 24 Jul 2026 and in force since 27 Jul 2026, formally deferred stand-alone Annex III systems to 2 Dec 2027 — that date is now the binding one.".to_string(),
             region: "EU".to_string(),
         },
         ComplianceRegulation {
@@ -3493,8 +3517,8 @@ fn get_compliance_data() -> ComplianceConfig {
             year: 2026,
             limit: None,
             unit: None,
-            status: "active".to_string(),
-            description: "The Omnibus I simplification directive (in force 19 Mar 2026) narrowed CSRD's scope to companies with over 1,000 employees and over €450M annual turnover — roughly 90% of the companies previously in scope are now excluded. Check scope under the new thresholds before assuming a disclosure obligation applies.".to_string(),
+            status: ComplianceStatus::Active,
+            description: "The Omnibus I directive (EU 2026/470), published in the Official Journal 26 Feb 2026 and in force since 18 Mar 2026, narrowed CSRD's scope to companies with over 1,000 employees and over €450M annual turnover — roughly 90% of the companies previously in scope are now excluded. Check scope under the new thresholds before assuming a disclosure obligation applies.".to_string(),
             region: "EU".to_string(),
         },
         ComplianceRegulation {
@@ -3502,7 +3526,7 @@ fn get_compliance_data() -> ComplianceConfig {
             year: 2024,
             limit: None,
             unit: None,
-            status: "active".to_string(),
+            status: ComplianceStatus::Active,
             description: "Transparency and algorithmic-accountability obligations for large online platforms, in force for very large platforms since Feb 2023 and broadly since 17 Feb 2024. Not an AI-training-compute disclosure regime — that obligation is the EU AI Act's, not the DSA's.".to_string(),
             region: "EU".to_string(),
         },
@@ -3511,7 +3535,7 @@ fn get_compliance_data() -> ComplianceConfig {
             year: 2025,
             limit: None,
             unit: None,
-            status: "repealed".to_string(),
+            status: ComplianceStatus::Repealed,
             description: "Biden's EO 14110 (Oct 2023), which required reporting AI models trained above ~10²⁶ FLOPs to the federal government, was revoked 20 Jan 2025 and replaced by EO 14179 (\"Removing Barriers to American Leadership in AI\"). The federal reporting requirement no longer applies; no directly comparable replacement has been issued.".to_string(),
             region: "US".to_string(),
         },
@@ -3520,7 +3544,7 @@ fn get_compliance_data() -> ComplianceConfig {
             year: 2025,
             limit: None,
             unit: None,
-            status: "repealed".to_string(),
+            status: ComplianceStatus::Repealed,
             description: "The Artificial Intelligence and Data Act, proposed as Part 3 of Bill C-27, died on the order paper when Parliament was prorogued in Jan 2025. Canada has no federal AI-specific legislation in force as of this check; a successor bill is expected but had not been introduced.".to_string(),
             region: "Canada".to_string(),
         },
@@ -3534,7 +3558,7 @@ fn get_compliance_data() -> ComplianceConfig {
 
     let recommendations = vec![
         "Check cumulative training compute against the EU AI Act's 10²⁵ FLOPs systemic-risk threshold — it is a training-time total, not a per-request figure".to_string(),
-        "Track the EU AI Act high-risk (Annex III) deadline: 2 Aug 2026 is binding today, but a postponement to Dec 2027 is agreed and pending formal adoption".to_string(),
+        "The EU AI Act high-risk (Annex III) deadline was formally deferred to 2 Dec 2027 by the Digital Omnibus on AI (Regulation (EU) 2026/1744, in force since 27 Jul 2026) — the original 2 Aug 2026 date no longer applies".to_string(),
         "Confirm CSRD scope under the post-Omnibus thresholds (>1,000 employees and >€450M turnover) before preparing carbon disclosure".to_string(),
         "The US EO 14110 training-compute reporting requirement was repealed Jan 2025 — do not plan around it".to_string(),
         "FP8/INT8 quantization lowers serving compute and cost regardless of which compliance regime applies".to_string(),
@@ -3584,7 +3608,7 @@ mod compliance_tests {
                 .iter()
                 .find(|r| r.name == name)
                 .unwrap_or_else(|| panic!("expected a regulation named {name}"));
-            assert_eq!(reg.status, "repealed", "{name} should be marked repealed");
+            assert_eq!(reg.status, ComplianceStatus::Repealed, "{name} should be marked repealed");
         }
     }
 
@@ -3612,10 +3636,18 @@ mod compliance_tests {
     #[test]
     fn carries_a_verified_as_of_date() {
         let config = get_compliance_data();
-        assert!(!config.verified_as_of.is_empty());
-        // A plausible ISO date, not a placeholder — catches "TODO" or "".
-        assert_eq!(config.verified_as_of.len(), 10);
-        assert_eq!(&config.verified_as_of[4..5], "-");
+        let verified = chrono::NaiveDate::parse_from_str(&config.verified_as_of, "%Y-%m-%d")
+            .unwrap_or_else(|e| panic!("verified_as_of {:?} is not a real date: {e}", config.verified_as_of));
+        // Regulatory text moves; a dataset that hasn't been re-checked in over
+        // a year is stale enough that this should fail loudly rather than
+        // silently keep shipping last year's compliance picture.
+        let today = chrono::Utc::now().date_naive();
+        let age_days = (today - verified).num_days();
+        assert!(
+            (0..=365).contains(&age_days),
+            "compliance data was verified {age_days} days ago (on {verified}) — re-verify against \
+             primary sources and bump COMPLIANCE_VERIFIED_AS_OF",
+        );
     }
 }
 

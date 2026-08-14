@@ -99,3 +99,26 @@ describe('snapToDevicePixel', () => {
     expect(snapToDevicePixel(10.6)).toBe(11);
   });
 });
+
+describe('composed screen position (offset + zoom·node.x)', () => {
+  // Pins the documented scope of the fix in ArchitectureCanvas: snapping
+  // `offset` and each node's world position independently guarantees a
+  // crisp screen pixel at a whole-number zoom (concretely 100%, the default
+  // and what "Reset View" restores) — not at every zoom level. This isn't a
+  // gap introduced by the fix: an unsnapped canvas was exactly as fractional
+  // at 125% zoom as a snapped one is. See the comment on snapToDevicePixel.
+  it('lands on a whole screen pixel at 100% zoom', () => {
+    const zoom = 1;
+    const snappedOffset = snapToDevicePixel(37.812);
+    const snappedNodeX = Math.round(214.5501);
+    expect(snappedOffset + zoom * snappedNodeX).toBe(Math.round(snappedOffset + zoom * snappedNodeX));
+  });
+
+  it('is not guaranteed a whole screen pixel at a fractional zoom', () => {
+    const zoom = 1.25;
+    const snappedOffset = snapToDevicePixel(37.812);
+    const snappedNodeX = Math.round(214.5501);
+    const screenX = snappedOffset + zoom * snappedNodeX;
+    expect(Number.isInteger(screenX)).toBe(false);
+  });
+});
