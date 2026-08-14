@@ -769,15 +769,21 @@ export interface ComplianceRegulation {
   year: number;
   limit: number | null;
   unit: string | null;
+  /**
+   * `active` | `upcoming` | `uncertain` (a change is agreed but not yet
+   * legally in force) | `repealed` (used to apply, does not any more — kept
+   * rather than removed, so a reader who expects it finds out it lapsed
+   * instead of finding nothing).
+   */
   status: string;
   description: string;
   region: string;
 }
 
 export interface ComplianceThresholds {
-  high_risk_gflops: number;
+  /** Cumulative training FLOPs — EU AI Act Article 51 systemic-risk threshold. */
+  systemic_risk_training_flops: number;
   carbon_report_tonnes: number;
-  dsa_disclosure_flops: number;
   cost_review_usd: number;
 }
 
@@ -785,6 +791,8 @@ export interface ComplianceConfig {
   regulations: ComplianceRegulation[];
   thresholds: ComplianceThresholds;
   recommendations: string[];
+  /** Date this dataset was last checked against primary sources (ISO). */
+  verified_as_of: string;
 }
 
 /** GET /compliance/config — Get compliance configuration and regulations */
