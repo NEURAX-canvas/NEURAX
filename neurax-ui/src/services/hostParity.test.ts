@@ -32,6 +32,10 @@ const ALLOWED_HOST_CHECKS: Record<string, string> = {
   'App.tsx': 'skips the landing page once a desktop profile exists',
   'components/desktop/TitleBar.tsx':
     'window chrome, not application interface — drawn only where the platform draws none',
+  'services/compilerErrors.ts':
+    'wording only — the same failures are reported on both hosts, but "check your ' +
+    'connection" is wrong advice when the compiler is a thread in this process',
+  'services/compilerErrors.test.ts': 'tests that wording',
 };
 
 function sourceFiles(dir: string): string[] {

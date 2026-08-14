@@ -13,7 +13,7 @@
 mod commands;
 mod server;
 
-use commands::ApiBase;
+use commands::{ApiBase, AuthorizedPaths};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 use tracing_subscriber::EnvFilter;
 
@@ -73,9 +73,11 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(ApiBase(api_base.clone()))
+        .manage(AuthorizedPaths::default())
         .invoke_handler(tauri::generate_handler![
             commands::desktop_info,
             commands::save_text_file,
+            commands::write_text_file,
             commands::open_text_file,
         ])
         .setup(move |app| {

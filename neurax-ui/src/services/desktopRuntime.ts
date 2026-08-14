@@ -105,10 +105,39 @@ export async function saveTextFile(
   return { saved: true };
 }
 
+/**
+ * Overwrite a file already open, without a dialog.
+ *
+ * This is what makes Ctrl+S mean "save", rather than "save as" every time. It
+ * only works on the desktop, and only for a path the user chose earlier in the
+ * session — the native side refuses anything else. In a browser there is no
+ * such thing as a path the page may write to, so callers must fall back to
+ * `saveTextFile`; [`canWriteInPlace`] says which world they are in.
+ */
+export async function writeTextFile(path: string, contents: string): Promise<SaveResult> {
+  if (!isDesktop()) {
+    throw new Error('Writing to a path is a desktop-only capability');
+  }
+  const { invoke } = await import('@tauri-apps/api/core');
+  const written = await invoke<string>('write_text_file', { path, contents });
+  return { saved: true, path: written };
+}
+
+/** Whether this host can re-save a file in place rather than re-asking for it. */
+export function canWriteInPlace(): boolean {
+  return isDesktop();
+}
+
 /** A file the user chose to open. */
 export interface OpenedFile {
   name: string;
   contents: string;
+  /**
+   * Where the file lives. Only ever known on the desktop — a browser hands over
+   * contents without ever revealing a path, which is why the web build cannot
+   * offer a true "save" and falls back to downloading a copy.
+   */
+  path?: string;
 }
 
 /**
@@ -116,12 +145,24 @@ export interface OpenedFile {
  *
  * Returns `null` when the user dismisses the picker — a cancellation, not a
  * failure, so callers should stay silent rather than reporting an error.
+ *
+ * `writable` says whether this open begins an editing session on the file, and
+ * so whether a later [`writeTextFile`] may save back to it without asking
+ * again. It defaults to false, because most opens are not that: importing a
+ * `config.json` out of a model directory is a read, and must not leave that
+ * file overwritable. Pass true only when opening a NEURAX document.
  */
-export async function openTextFile(extensions: string[]): Promise<OpenedFile | null> {
+export async function openTextFile(
+  extensions: string[],
+  options: { writable?: boolean } = {},
+): Promise<OpenedFile | null> {
   if (isDesktop()) {
     const { invoke } = await import('@tauri-apps/api/core');
-    const picked = await invoke<[string, string] | null>('open_text_file', { extensions });
-    return picked ? { name: picked[0], contents: picked[1] } : null;
+    const picked = await invoke<{ name: string; path: string; contents: string } | null>(
+      'open_text_file',
+      { extensions, writable: options.writable === true },
+    );
+    return picked ? { name: picked.name, path: picked.path, contents: picked.contents } : null;
   }
 
   return new Promise((resolve) => {

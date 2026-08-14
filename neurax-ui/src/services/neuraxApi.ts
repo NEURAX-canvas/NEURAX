@@ -296,16 +296,13 @@ export interface InferenceSimulateResponse {
 
 // ─── Error class ──────────────────────────────────────────────────
 
-export class NeuraxApiError extends Error {
-  constructor(
-    public status: number,
-    public statusText: string,
-    public body?: unknown,
-  ) {
-    super(`Neurax API ${status}: ${statusText}`);
-    this.name = 'NeuraxApiError';
-  }
-}
+// Defined in its own module so that recognising a failed request does not mean
+// importing this whole client — and with it the Supabase client, which throws
+// at import time when its environment is not configured. Imported for use
+// below and re-exported so existing callers need not change.
+import { NeuraxApiError } from '@/services/apiError.ts';
+
+export { NeuraxApiError };
 
 // ─── HTTP helpers ─────────────────────────────────────────────────
 
