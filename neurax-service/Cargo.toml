@@ -1,6 +1,6 @@
 [package]
 name = "neurax-service"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2021"
 description = "HTTP API service for NEURAX analytical compiler"
 license = "MIT"

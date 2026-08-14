@@ -1,6 +1,6 @@
 [package]
 name = "neurax-tui"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2021"
 description = "Terminal User Interface for Neurax IR model compilation visualization"
 license = "MIT"

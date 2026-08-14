@@ -1,6 +1,6 @@
 [package]
 name = "neurax-formulas"
-version = "0.7.3"
+version = "0.7.4"
 edition = "2021"
 description = "Analytical formulas for ML operations - Hot path, maximum optimization"
 license = "MIT"
