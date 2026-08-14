@@ -21,6 +21,8 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
 import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
+import { ComparePanel } from '@/components/panels/ComparePanel.tsx';
+import { DocumentationPanel } from '@/components/panels/DocumentationPanel.tsx';
 import { SimulationTargetPanel } from '@/components/panels/SimulationTargetPanel.tsx';
 import { ModelHyperparametersDialog } from '@/components/panels/ModelHyperparametersPanel.tsx';
 import { InferenceIntelligence } from '@/components/inference';
@@ -33,6 +35,20 @@ import { VariantPreset } from '@/types/catalog.ts';
 import { AnalysisResult, CanvasNode, Connection, LayerConfig, NodeGroup, PerLayerBreakdownRow, Warning, ParameterValue } from '@/types/architecture.ts';
 import { ImportResult } from '@/utils/architectureImporter.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
+import {
+  serializeDesign,
+  parseNeuraxFile,
+  suggestedFileName,
+  NEURAX_EXTENSION,
+} from '@/utils/neuraxFile.ts';
+import { useDesignHistory } from '@/hooks/useDesignHistory.ts';
+import { DesignVariant } from '@/utils/designComparison.ts';
+import {
+  saveTextFile,
+  openTextFile,
+  writeTextFile,
+  canWriteInPlace,
+} from '@/services/desktopRuntime.ts';
 import { getBlockDefaults, normalizeBlockParams } from '@/utils/blockDefaults.ts';
 import { DEFAULT_HARDWARE_CONFIG, HardwareConfig, useHardware, validateHardwareConfig, ArchitectureFamily as HwFamily } from '@/contexts/HardwareContext.tsx';
 import { useAuth } from '@/contexts/AuthContext.tsx';
@@ -843,6 +859,22 @@ const Index = () => {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
   const [creditInfo, setCreditInfo] = useState<CreditInfo | null>(null);
+
+  // ── The open document ──────────────────────────────────────────────
+  // A design is a file, not just application state. `documentPath` is only ever
+  // known on the desktop — a browser hands over contents without revealing a
+  // path — which is why saving falls back to Save As on the web.
+  const [documentName, setDocumentName] = useState<string | undefined>(undefined);
+  const [documentPath, setDocumentPath] = useState<string | undefined>(undefined);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // ── A/B comparison ─────────────────────────────────────────────────
+  const [comparisonBaseline, setComparisonBaseline] = useState<DesignVariant | null>(null);
+  const [showComparePanel, setShowComparePanel] = useState(false);
+
+  // ── Documentation ──────────────────────────────────────────────────
+  const [showDocumentation, setShowDocumentation] = useState(false);
+  const [docSectionId, setDocSectionId] = useState<string | undefined>(undefined);
   const { toast } = useToast();
   const { config: hwConfig, setConfig: setHwConfig, updateConfig: updateHwConfig, triggerAttempt } = useHardware();
 
@@ -886,10 +918,57 @@ const Index = () => {
   const hasCanvasBlocks = nodes.length > 0 || groups.length > 0;
   const hasCanvasContent = hasCanvasBlocks || connections.length > 0;
 
+  // ─── Undo / redo ─────────────────────────────────────────────
+  //
+  // The design is three pieces of state edited from a couple of dozen call
+  // sites. Rather than route every one through a reducer, the history observes
+  // them; see `useDesignHistory`. Memoised because the hook's effect keys off
+  // this object's identity — rebuilt every render, the coalescing window would
+  // restart on every render too.
+  const designSnapshot = useMemo(
+    () => ({ nodes, connections, groups }),
+    [nodes, connections, groups],
+  );
+
+  const applyDesign = useCallback(
+    (snapshot: { nodes: CanvasNode[]; connections: Connection[]; groups: NodeGroup[] }) => {
+      setNodes(snapshot.nodes);
+      setConnections(snapshot.connections);
+      setGroups(snapshot.groups);
+      // The selected block may not exist in the restored design.
+      setSelectedNodeId((current) =>
+        current && snapshot.nodes.some((n) => n.id === current) ? current : null,
+      );
+    },
+    [],
+  );
+
+  // Destructured because the hook returns a fresh object each render, while the
+  // callbacks inside it are stable. Depending on the object would invalidate
+  // every handler below on every render.
+  const {
+    canUndo,
+    canRedo,
+    undo: undoDesign,
+    redo: redoDesign,
+    reset: resetHistory,
+  } = useDesignHistory(designSnapshot, applyDesign);
+
+  // Any change to the design is a change not yet in the file.
+  const isFirstDesignRender = useRef(true);
+  useEffect(() => {
+    if (isFirstDesignRender.current) {
+      isFirstDesignRender.current = false;
+      return;
+    }
+    setIsDirty(true);
+  }, [designSnapshot]);
+
   const resetWorkspace = useCallback(() => {
-    setNodes([]);
-    setConnections([]);
-    setGroups([]);
+    const empty = { nodes: [], connections: [], groups: [] };
+    setNodes(empty.nodes);
+    setConnections(empty.connections);
+    setGroups(empty.groups);
     setSelectedNodeId(null);
     setCurrentPresetId(null);
     setWarnings([]);
@@ -897,7 +976,14 @@ const Index = () => {
     setAnalysis(initialAnalysis);
     setActiveWorkspaceTab('architecture');
     pendingConnectionsRef.current.clear();
-  }, []);
+
+    // A blank page is a new document: undoing back into the previous one would
+    // resurrect work the user just chose to leave.
+    resetHistory(empty);
+    setDocumentName(undefined);
+    setDocumentPath(undefined);
+    setIsDirty(false);
+  }, [resetHistory]);
 
   const downloadCanvasSnapshot = useCallback(() => {
     if (!hasCanvasContent) return null;
@@ -954,11 +1040,18 @@ const Index = () => {
     setWarnings([]);
     setPerLayer([]);
     setPresetAutoAnalysisTick(tick => tick + 1);
+
+    // Loading a template starts a new document: it has a name to suggest but no
+    // file behind it, and undo must not reach back into whatever was open.
+    resetHistory({ nodes: hydratedNodes, connections: preset.connections, groups: [] });
+    setDocumentName(preset.name);
+    setDocumentPath(undefined);
+    setIsDirty(true);
     toast({
       title: "Template Loaded",
       description: `Loaded "${preset.name}" — all blocks are editable`,
     });
-  }, [hwConfig, setHwConfig, toast]);
+  }, [hwConfig, setHwConfig, toast, resetHistory]);
 
   const handleSelectNode = useCallback((id: string | null) => {
     setSelectedNodeId(id);
@@ -1843,6 +1936,133 @@ params: params as Record<string, ParameterValue>,
     });
   }, [downloadCanvasSnapshot, resetWorkspace, toast]);
 
+  // ─── The design as a file ───────────────────────────────────────────
+  //
+  // Separate from the project store below, and deliberately so. A project is
+  // application state, kept for you; a `.neurax` file is a document you own,
+  // that lives beside your training code, goes into a repository, and can be
+  // handed to someone else. Both are useful; only one of them can be reviewed
+  // in a pull request.
+
+  /** Everything that has to survive a round trip through a file. */
+  const currentDesignSnapshot = useCallback(
+    () => ({
+      name: documentName?.replace(/\.neurax(\.json)?$/i, '') ?? 'Untitled design',
+      architecture: selectedArchitecture,
+      nodes,
+      connections,
+      groups,
+      hardware: hwConfig,
+      analysis,
+    }),
+    [documentName, selectedArchitecture, nodes, connections, groups, hwConfig, analysis],
+  );
+
+  /** Write the design somewhere new, asking the user where. */
+  const handleSaveDesignAs = useCallback(async () => {
+    const snapshot = currentDesignSnapshot();
+    const contents = serializeDesign(snapshot, { generator: 'NEURAX Studio' });
+
+    try {
+      const result = await saveTextFile(
+        contents,
+        suggestedFileName(snapshot.name),
+        'application/json',
+      );
+      if (!result.saved) return; // The user dismissed the dialog.
+
+      if (result.path) {
+        setDocumentPath(result.path);
+        setDocumentName(result.path.split(/[/\\]/).pop());
+      } else {
+        // A browser never reveals where the download went, so the document
+        // stays pathless and the next save asks again.
+        setDocumentName(suggestedFileName(snapshot.name));
+      }
+      setIsDirty(false);
+
+      toast({
+        title: 'Design saved',
+        description: result.path ?? suggestedFileName(snapshot.name),
+      });
+    } catch (err) {
+      toast({ title: 'Save failed', description: String(err), variant: 'destructive' });
+    }
+  }, [currentDesignSnapshot, toast]);
+
+  /**
+   * Save to the file this design came from.
+   *
+   * Falls back to Save As when there is no such file — a design that has never
+   * been saved, or a browser, where a page cannot write to a path at all.
+   */
+  const handleSaveDesign = useCallback(async () => {
+    if (!documentPath || !canWriteInPlace()) {
+      await handleSaveDesignAs();
+      return;
+    }
+
+    const contents = serializeDesign(currentDesignSnapshot(), { generator: 'NEURAX Studio' });
+    try {
+      await writeTextFile(documentPath, contents);
+      setIsDirty(false);
+      toast({ title: 'Saved', description: documentPath });
+    } catch (err) {
+      // The path may have been removed or made read-only since it was chosen;
+      // offering the dialog is more useful than reporting a failure.
+      toast({
+        title: 'Could not save in place',
+        description: `${String(err)} — choose a new location.`,
+        variant: 'destructive',
+      });
+      await handleSaveDesignAs();
+    }
+  }, [documentPath, currentDesignSnapshot, handleSaveDesignAs, toast]);
+
+  /** Open a `.neurax` design from disk, replacing what is on the canvas. */
+  const handleOpenDesign = useCallback(async () => {
+    const picked = await openTextFile([NEURAX_EXTENSION, 'json']);
+    if (!picked) return; // Dismissed.
+
+    const parsed = parseNeuraxFile(picked.contents);
+    if (!parsed.ok) {
+      toast({ title: 'Cannot open this file', description: parsed.error, variant: 'destructive' });
+      return;
+    }
+
+    const { document: doc, warnings: fileWarnings } = parsed;
+    const design = doc.design;
+
+    setNodes(design.nodes);
+    setConnections(design.connections);
+    setGroups(design.groups);
+    setSelectedArchitecture(doc.architecture);
+    if (doc.hardware && Object.keys(doc.hardware).length > 0) {
+      setHwConfig(doc.hardware as HardwareConfig);
+    }
+    setSelectedNodeId(null);
+    setCurrentPresetId(null);
+    setWarnings([]);
+    setPerLayer([]);
+    setAnalysis(initialAnalysis);
+    pendingConnectionsRef.current.clear();
+
+    // A freshly opened file is the start of a history, not a step in the
+    // previous document's.
+    resetHistory(design);
+    setDocumentName(picked.name);
+    setDocumentPath(picked.path);
+    setIsDirty(false);
+
+    toast({
+      title: `Opened ${doc.name}`,
+      description: fileWarnings.length
+        ? fileWarnings.join(' ')
+        : `${design.nodes.length} blocks. Run an analysis to compute its metrics.`,
+      variant: fileWarnings.length ? 'destructive' : undefined,
+    });
+  }, [resetHistory, setHwConfig, toast]);
+
   // ─── Project Save/Load ──────────────────────────────────────────────
 
   const handleLoadProjects = useCallback(async () => {
@@ -2068,15 +2288,137 @@ params: params as Record<string, ParameterValue>,
 
     // 3. Replace current architecture with imported one
     const targetFamily = result.family || selectedArchitecture;
-    setNodes(hydrateNodesForFamily(targetFamily, result.nodes));
+    const importedNodes = hydrateNodesForFamily(targetFamily, result.nodes);
+    setNodes(importedNodes);
     setConnections(result.connections);
+    // An import replaces the whole design, so any groups belonged to the design
+    // that was just discarded and would now point at blocks that do not exist.
+    setGroups([]);
     setSelectedNodeId(null);
+    setCurrentPresetId(null);
 
-    // 4. Re-run analysis after import
+    // 4. An import is a new document. It has no file yet — saving it should ask
+    // where to put it rather than overwrite whatever was open before — but it
+    // does have a name, which becomes the suggested filename.
+    resetHistory({ nodes: importedNodes, connections: result.connections, groups: [] });
+    setDocumentName(result.modelName);
+    setDocumentPath(undefined);
+    setIsDirty(true);
+
+    // 5. Re-run analysis after import
     setTimeout(() => {
       handleRunAnalysis();
     }, 500);
-  }, [handleArchitectureChange, updateHwConfig, selectedArchitecture, hydrateNodesForFamily, handleRunAnalysis]);
+  }, [handleArchitectureChange, updateHwConfig, selectedArchitecture, hydrateNodesForFamily, handleRunAnalysis, resetHistory]);
+
+  // ─── A/B comparison ─────────────────────────────────────────────────
+
+  /** The design on the canvas now, as something a comparison can hold. */
+  const currentVariant = useMemo<DesignVariant | null>(() => {
+    // Only an analysed design has numbers to compare. `totalParams` at zero
+    // means the analysis has not run, and comparing against it would show a
+    // page of meaningless deltas.
+    if (!nodes.length || !analysis || !analysis.totalParams) return null;
+
+    return {
+      id: 'current',
+      name: documentName?.replace(/\.neurax(\.json)?$/i, '') ?? 'Current design',
+      capturedAt: new Date().toISOString(),
+      architecture: selectedArchitecture,
+      blockCount: nodes.length,
+      connectionCount: connections.length,
+      analysis,
+      hardware: hwConfig,
+    };
+  }, [nodes, connections, analysis, documentName, selectedArchitecture, hwConfig]);
+
+  const handleCaptureBaseline = useCallback(() => {
+    if (!currentVariant) return;
+    setComparisonBaseline({
+      ...currentVariant,
+      id: `baseline-${Date.now()}`,
+      name: `${currentVariant.name} (baseline)`,
+      capturedAt: new Date().toISOString(),
+    });
+    toast({
+      title: 'Baseline captured',
+      description: 'Change the design and reopen Compare to see what moved.',
+    });
+  }, [currentVariant, toast]);
+
+  // ─── Keyboard shortcuts ─────────────────────────────────────────────
+  //
+  // Registered here rather than on the canvas because these act on the
+  // document, not on the selection, and must work wherever focus happens to be
+  // — including the analysis panel and the inspector.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      // Help, before anything else: F1 works even while typing, because the
+      // moment you need the guide is often the moment you are staring at a
+      // field you do not understand.
+      if (event.key === 'F1') {
+        event.preventDefault();
+        setDocSectionId(undefined);
+        setShowDocumentation(true);
+        return;
+      }
+
+      const accel = event.ctrlKey || event.metaKey;
+      if (!accel) return;
+
+      // Never steal a keystroke from a field the user is typing in: Ctrl+Z in a
+      // text input means undo the typing, and the browser already does that.
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+
+      if (key === 'z' && !event.shiftKey) {
+        event.preventDefault();
+        undoDesign();
+        return;
+      }
+
+      // Both conventions for redo: Ctrl+Shift+Z everywhere, Ctrl+Y on Windows.
+      if ((key === 'z' && event.shiftKey) || key === 'y') {
+        event.preventDefault();
+        redoDesign();
+        return;
+      }
+
+      if (key === 's') {
+        event.preventDefault();
+        void (event.shiftKey ? handleSaveDesignAs() : handleSaveDesign());
+        return;
+      }
+
+      if (key === 'o') {
+        event.preventDefault();
+        void handleOpenDesign();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undoDesign, redoDesign, handleSaveDesign, handleSaveDesignAs, handleOpenDesign]);
+
+  // Warn before losing unsaved work. The browser shows its own wording; on the
+  // desktop this is what stops a quit from discarding an hour of design.
+  useEffect(() => {
+    if (!isDirty) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [isDirty]);
 
   // Architecture workspace content
   const architectureContent = (
@@ -2242,6 +2584,20 @@ params: params as Record<string, ParameterValue>,
         onSaveCanvas={handleSaveCanvas}
         onExport={() => setShowExportPanel(true)}
         onImport={() => setShowImportPanel(true)}
+        onOpenDesign={() => void handleOpenDesign()}
+        onSaveDesign={() => void handleSaveDesign()}
+        documentName={documentName}
+        isDirty={isDirty}
+        onUndo={undoDesign}
+        onRedo={redoDesign}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onCompare={() => setShowComparePanel(true)}
+        hasBaseline={comparisonBaseline !== null}
+        onOpenDocumentation={() => {
+          setDocSectionId(undefined);
+          setShowDocumentation(true);
+        }}
         onSelectTarget={() => setShowTargetPanel(true)}
         onHyperparameters={() => setShowHyperparametersPanel(true)}
         isChatOpen={isChatOpen}
@@ -2320,6 +2676,21 @@ params: params as Record<string, ParameterValue>,
         isOpen={showImportPanel}
         onClose={() => setShowImportPanel(false)}
         onImport={handleImportArchitecture}
+      />
+
+      <ComparePanel
+        isOpen={showComparePanel}
+        onClose={() => setShowComparePanel(false)}
+        baseline={comparisonBaseline}
+        candidate={currentVariant}
+        onCapture={handleCaptureBaseline}
+        onClear={() => setComparisonBaseline(null)}
+      />
+
+      <DocumentationPanel
+        isOpen={showDocumentation}
+        onClose={() => setShowDocumentation(false)}
+        initialSectionId={docSectionId}
       />
 
       <SimulationTargetPanel

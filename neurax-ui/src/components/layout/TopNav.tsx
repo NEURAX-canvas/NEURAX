@@ -13,6 +13,10 @@ import {
   CloudUpload,
   SlidersHorizontal,
   Cpu,
+  Undo2,
+  Redo2,
+  GitCompare,
+  HelpCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { ArchitectureSelector } from '@/components/architecture/ArchitectureSelector.tsx';
@@ -42,6 +46,30 @@ interface TopNavProps {
   onSaveCanvas?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+
+  // ─── Document ───────────────────────────────────────────────
+  /** Open a `.neurax` design from disk. */
+  onOpenDesign?: () => void;
+  /** Save to the design's own file, asking for a name only if it has none. */
+  onSaveDesign?: () => void;
+  /** Name of the open document, or undefined when it has never been saved. */
+  documentName?: string;
+  /** Whether there are changes not yet written to the file. */
+  isDirty?: boolean;
+
+  // ─── History ────────────────────────────────────────────────
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
+
+  /** Open the A/B comparison panel. */
+  onCompare?: () => void;
+  /** Whether a baseline has been captured, for the button's state. */
+  hasBaseline?: boolean;
+
+  /** Open the in-app guide. */
+  onOpenDocumentation?: () => void;
   isChatOpen?: boolean;
   onToggleChat?: () => void;
   selectedArchitecture: ArchitectureFamily;
@@ -70,6 +98,17 @@ export function TopNav({
   onSaveCanvas,
   onExport,
   onImport,
+  onOpenDesign,
+  onSaveDesign,
+  documentName,
+  isDirty,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
+  onCompare,
+  hasBaseline,
+  onOpenDocumentation,
   isChatOpen,
   onToggleChat,
   selectedArchitecture,
@@ -140,6 +179,34 @@ export function TopNav({
         <div className="h-6 w-px bg-border" />
 
         <nav className="flex items-center gap-1">
+          {/* Undo and redo. Icon-only: these two arrows are the most universally
+              recognised controls in any editor, and the toolbar has no room to
+              spell out what everyone already knows. */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-8 h-8 text-muted-foreground hover:text-foreground"
+            onClick={onUndo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            <Undo2 className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-8 h-8 text-muted-foreground hover:text-foreground"
+            onClick={onRedo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+            aria-label="Redo"
+          >
+            <Redo2 className="w-4 h-4" />
+          </Button>
+
+          <div className="h-6 w-px bg-border mx-1" />
+
           <Button
             variant="ghost"
             size="sm"
@@ -155,8 +222,18 @@ export function TopNav({
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
+            onClick={onOpenDesign}
+            title="Open a .neurax design (Ctrl+O)"
+          >
+            <FolderOpen className="w-4 h-4 mr-1.5" />
+            Open
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
             onClick={onImport}
-            title="Import an existing architecture from JSON"
+            title="Import a HuggingFace config.json or a NEURAX design"
           >
             <Upload className="w-4 h-4 mr-1.5" />
             Import
@@ -165,12 +242,34 @@ export function TopNav({
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
-            onClick={onSaveCanvas}
+            onClick={onSaveDesign ?? onSaveCanvas}
             disabled={!canClearCanvas}
-            title="Download the current architecture as a .neurax.json file"
+            title={
+              documentName
+                ? `Save ${documentName} (Ctrl+S)`
+                : 'Save this design to a .neurax file (Ctrl+S)'
+            }
           >
             <Save className="w-4 h-4 mr-1.5" />
             Save
+            {/* A dot, not a word: the toolbar has no room and every editor
+                marks unsaved work this way. */}
+            {isDirty && (
+              <span
+                className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary"
+                aria-label="unsaved changes"
+              />
+            )}
+          </Button>
+          <Button
+            variant={hasBaseline ? 'secondary' : 'ghost'}
+            size="sm"
+            className={hasBaseline ? '' : 'text-muted-foreground hover:text-foreground'}
+            onClick={onCompare}
+            title="Compare this design against a captured baseline"
+          >
+            <GitCompare className="w-4 h-4 mr-1.5" />
+            Compare
           </Button>
 
           <Popover>
@@ -284,6 +383,19 @@ export function TopNav({
       {/* Right - Run Analysis & Actions. Never shrinks: this is what the page
           exists to let you do. */}
       <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* The guide. Icon-only and always present: help that is hard to find
+            is help nobody uses. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="w-8 h-8 text-muted-foreground hover:text-foreground"
+          onClick={onOpenDocumentation}
+          title="Open the NEURAX guide (F1)"
+          aria-label="Open the NEURAX guide"
+        >
+          <HelpCircle className="w-4 h-4" />
+        </Button>
+
         <ThemeToggle />
 
         <Button
@@ -347,6 +459,9 @@ export function TopNav({
               >
                 <Plus className="w-4 h-4 mr-2" /> New
               </Button>
+              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onOpenDesign?.(); setMobileMenuOpen(false); }}>
+                <FolderOpen className="w-4 h-4 mr-2" /> Open
+              </Button>
               <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onImport?.(); setMobileMenuOpen(false); }}>
                 <Upload className="w-4 h-4 mr-2" /> Import
               </Button>
@@ -355,13 +470,47 @@ export function TopNav({
                 size="sm"
                 className="w-full justify-start"
                 onClick={() => {
-                  onSaveCanvas?.();
+                  (onSaveDesign ?? onSaveCanvas)?.();
                   setMobileMenuOpen(false);
                 }}
                 disabled={!canClearCanvas}
               >
                 <Save className="w-4 h-4 mr-2" /> Save
+                {isDirty && <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-primary" />}
               </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full justify-start"
+                onClick={() => {
+                  onCompare?.();
+                  setMobileMenuOpen(false);
+                }}
+              >
+                <GitCompare className="w-4 h-4 mr-2" /> Compare
+              </Button>
+              <div className="flex gap-1 py-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 justify-center"
+                  onClick={() => onUndo?.()}
+                  disabled={!canUndo}
+                  aria-label="Undo"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex-1 justify-center"
+                  onClick={() => onRedo?.()}
+                  disabled={!canRedo}
+                  aria-label="Redo"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"

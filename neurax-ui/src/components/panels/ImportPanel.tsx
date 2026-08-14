@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Upload, FileJson, AlertCircle, CheckCircle2, Copy } from 'lucide-react';
+import { Upload, FileJson, AlertCircle, CheckCircle2, Copy, Info } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,9 +9,12 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog.tsx';
 import { Button } from '@/components/ui/button.tsx';
+import { Badge } from '@/components/ui/badge.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
 import { Label } from '@/components/ui/label.tsx';
-import { parseArchitectureJSON, sampleTransformerJSON, ImportResult } from '@/utils/architectureImporter.ts';
+import { sampleTransformerJSON, ImportResult } from '@/utils/architectureImporter.ts';
+import { parseModelJSON, detectImportSource, DetectedImport } from '@/utils/modelImport.ts';
+import { openTextFile } from '@/services/desktopRuntime.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 
 interface ImportPanelProps {
@@ -20,17 +23,44 @@ interface ImportPanelProps {
   onImport: (result: ImportResult) => void;
 }
 
+/** A LLaMA-shaped config, short enough to read and real enough to try. */
+const SAMPLE_HF_CONFIG = `{
+  "architectures": ["MistralForCausalLM"],
+  "model_type": "mistral",
+  "hidden_size": 4096,
+  "intermediate_size": 14336,
+  "num_hidden_layers": 32,
+  "num_attention_heads": 32,
+  "num_key_value_heads": 8,
+  "max_position_embeddings": 32768,
+  "vocab_size": 32000,
+  "rms_norm_eps": 1e-05,
+  "rope_theta": 10000.0,
+  "hidden_act": "silu",
+  "tie_word_embeddings": false
+}`;
+
+const SOURCE_LABEL: Record<string, string> = {
+  huggingface: 'HuggingFace config.json',
+  neurax: 'NEURAX design',
+};
+
 export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
   const [jsonInput, setJsonInput] = useState('');
-  const [previewResult, setPreviewResult] = useState<ImportResult | null>(null);
+  const [fileName, setFileName] = useState<string | undefined>(undefined);
+  const [previewResult, setPreviewResult] = useState<DetectedImport | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const { toast } = useToast();
+
+  // Shown live under the textarea, before validation, so the user knows the
+  // dialog recognised the file rather than wondering which parser will run.
+  const liveSource = jsonInput.trim() ? detectImportSource(jsonInput) : 'unknown';
 
   const handleValidate = () => {
     setIsValidating(true);
 
     setTimeout(() => {
-      const result = parseArchitectureJSON(jsonInput);
+      const result = parseModelJSON(jsonInput, fileName);
       setPreviewResult(result);
       setIsValidating(false);
 
@@ -53,7 +83,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     if (!previewResult || previewResult.error) {
       toast({
         title: 'Cannot Import',
-        description: 'Please validate the JSON first',
+        description: 'Please validate the file first',
         variant: 'destructive',
       });
       return;
@@ -70,26 +100,30 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
 
   const handleClose = () => {
     setJsonInput('');
+    setFileName(undefined);
     setPreviewResult(null);
     onClose();
   };
 
-  const handleLoadSample = () => {
-    setJsonInput(sampleTransformerJSON);
+  const handleLoadSample = (which: 'hf' | 'neurax') => {
+    setJsonInput(which === 'hf' ? SAMPLE_HF_CONFIG : sampleTransformerJSON);
+    setFileName(undefined);
     setPreviewResult(null);
   };
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const content = e.target?.result as string;
-      setJsonInput(content);
-      setPreviewResult(null);
-    };
-    reader.readAsText(file);
+  /**
+   * Pick a file through the host's own dialog.
+   *
+   * On the desktop this is the native picker, which can reach anywhere on disk
+   * — including a model directory cloned from the Hub. In a browser it falls
+   * back to a file input.
+   */
+  const handleOpenFile = async () => {
+    const picked = await openTextFile(['json']);
+    if (!picked) return;
+    setJsonInput(picked.contents);
+    setFileName(picked.name);
+    setPreviewResult(null);
   };
 
   return (
@@ -98,49 +132,60 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileJson className="w-5 h-5 text-primary" />
-            Import Architecture JSON
+            Import a model
           </DialogTitle>
           <DialogDescription>
-            Paste your architecture JSON or upload a file to create a graph on the canvas.
+            Open a HuggingFace <code className="text-xs">config.json</code> or a NEURAX design.
+            The format is detected from the file.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-4">
-          {/* File Upload */}
-          <div className="flex items-center gap-2">
-            <Label
-              htmlFor="json-file"
-              className="flex items-center gap-2 px-4 py-2 bg-secondary hover:bg-secondary/80 rounded-md cursor-pointer transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              Upload JSON File
-            </Label>
-            <input
-              id="json-file"
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleFileUpload}
-            />
+          {/* File picker and samples */}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={() => void handleOpenFile()}>
+              <Upload className="w-4 h-4 mr-1.5" />
+              Open File
+            </Button>
 
-            <Button variant="outline" size="sm" onClick={handleLoadSample}>
+            <Button variant="outline" size="sm" onClick={() => handleLoadSample('hf')}>
               <Copy className="w-4 h-4 mr-1.5" />
-              Load Sample
+              Sample config.json
+            </Button>
+
+            <Button variant="outline" size="sm" onClick={() => handleLoadSample('neurax')}>
+              <Copy className="w-4 h-4 mr-1.5" />
+              Sample NEURAX
             </Button>
           </div>
 
           {/* JSON Input */}
           <div className="space-y-2">
-            <Label htmlFor="json-input">Architecture JSON</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="json-input">
+                {fileName ? fileName : 'Model file'}
+              </Label>
+              {liveSource !== 'unknown' && (
+                <Badge variant="outline" className="text-[10px]">
+                  {SOURCE_LABEL[liveSource]}
+                </Badge>
+              )}
+            </div>
             <Textarea
               id="json-input"
               value={jsonInput}
               onChange={(e) => {
                 setJsonInput(e.target.value);
+                setFileName(undefined);
                 setPreviewResult(null);
               }}
-              placeholder={`Paste your architecture JSON here...\n\nExample structure:\n{\n  "model": { "name": "my-model", "type": "transformer", "layers": [...] },\n  "training": { "batch_size": 64, "num_epochs": 100 },\n  "hardware": { "gpus": [{"name": "A100", "count": 8}] },\n  "data": { "dataset_size": 1000000000 }\n}`}
-              className="min-h-[250px] font-mono text-xs"
+              placeholder={
+                'Paste a HuggingFace config.json here — the one beside the weights in any Hub repository:\n\n' +
+                '{\n  "model_type": "llama",\n  "hidden_size": 4096,\n  "num_hidden_layers": 32,\n' +
+                '  "num_attention_heads": 32,\n  "num_key_value_heads": 8,\n  "intermediate_size": 11008,\n' +
+                '  "vocab_size": 32000\n}'
+              }
+              className="min-h-[220px] font-mono text-xs"
             />
           </div>
 
@@ -161,21 +206,47 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
                 <div className="flex-1 min-w-0">
                   {previewResult.error ? (
                     <>
-                      <p className="font-medium text-destructive">Validation Error</p>
+                      <p className="font-medium text-destructive">Cannot import this file</p>
                       <p className="text-sm text-muted-foreground mt-1">{previewResult.error}</p>
                     </>
                   ) : (
                     <>
-                      <p className="font-medium text-foreground">
-                        Model: {previewResult.modelName}
+                      <p className="font-medium text-foreground flex items-center gap-2 flex-wrap">
+                        {previewResult.modelName}
+                        {previewResult.detail && (
+                          <Badge variant="secondary" className="text-[10px] font-normal">
+                            {previewResult.detail}
+                          </Badge>
+                        )}
                       </p>
-                      <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                        <p>• {previewResult.nodes.length} nodes will be created</p>
-                        <p>• {previewResult.connections.length} connections will be created</p>
-                        <p className="text-xs mt-2">
-                          Layers: {previewResult.nodes.map(n => n.name).join(' → ')}
-                        </p>
-                      </div>
+
+                      {/* What the importer read out of the file. */}
+                      {previewResult.notes.length > 0 && (
+                        <ul className="text-sm text-muted-foreground mt-2 space-y-0.5">
+                          {previewResult.notes.map((note, i) => (
+                            <li key={i}>• {note}</li>
+                          ))}
+                        </ul>
+                      )}
+
+                      <p className="text-sm text-muted-foreground mt-2">
+                        • {previewResult.nodes.length} blocks, {previewResult.connections.length} connections
+                      </p>
+
+                      {/* Anything the file did not say, and this had to invent. */}
+                      {previewResult.assumptions.length > 0 && (
+                        <div className="mt-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5">
+                          <p className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                            <Info className="w-3.5 h-3.5" />
+                            Not stated in the file — assumed
+                          </p>
+                          <ul className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                            {previewResult.assumptions.map((note, i) => (
+                              <li key={i}>• {note}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -193,13 +264,13 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
             onClick={handleValidate}
             disabled={!jsonInput.trim() || isValidating}
           >
-            {isValidating ? 'Validating...' : 'Validate'}
+            {isValidating ? 'Reading...' : 'Read File'}
           </Button>
           <Button
             onClick={handleImport}
             disabled={!previewResult || !!previewResult.error}
           >
-            Import Architecture
+            Import
           </Button>
         </DialogFooter>
       </DialogContent>
