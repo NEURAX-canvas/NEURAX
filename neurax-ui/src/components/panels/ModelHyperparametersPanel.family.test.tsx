@@ -73,6 +73,11 @@ describe('hyperparameters are scoped to the selected family', () => {
     // genuinely applies to both (MoE models are transformers with expert FFNs;
     // GANs and diffusion models are both image models; a spiking neuron has an
     // internal state dimension just as a state-space block does).
+    //
+    // `experimental` is deliberately exempt: it is the catch-all family, and
+    // by design mixes in every other family's parameters — see the dedicated
+    // test below. Every *concrete* family must still stay within its own
+    // boundary, which is what this test guards.
     const OWNER: Record<string, string> = {
       numHeads: 'transformer', kvHeads: 'transformer', ropeTheta: 'transformer',
       numExperts: 'moe', topK: 'moe', expertCapacity: 'moe',
@@ -91,7 +96,7 @@ describe('hyperparameters are scoped to the selected family', () => {
       'snn:dState',          // membrane state, its own meaning under the same key
     ]);
 
-    const families = ['transformer','moe','cnn','ssm','gnn','rnn','gan','snn','rl','diffusion','experimental'];
+    const families = ['transformer','moe','cnn','ssm','gnn','rnn','gan','snn','rl','diffusion'];
     const leaks: string[] = [];
     for (const family of families) {
       for (const param of getParamsForFamily(family as any)) {
@@ -103,6 +108,29 @@ describe('hyperparameters are scoped to the selected family', () => {
       }
     }
     expect(leaks).toEqual([]);
+  });
+
+  it('experimental mixes in every other family\'s distinguishing parameters', () => {
+    // The inverse of the leak check above: experimental is the one family
+    // that should show everything, so someone combining an MoE router with an
+    // SSM state block finds numExperts and stateDim on the same screen rather
+    // than having to switch families and lose the rest of their setup.
+    const experimentalKeys = new Set(
+      getParamsForFamily('experimental' as any).map((p) => String(p.key)),
+    );
+    const distinguishing = [
+      'numHeads', 'ropeTheta',      // transformer
+      'numExperts', 'topK',         // moe
+      'imgHeight', 'poolType',      // cnn
+      'dState', 'dtRank',           // ssm
+      'nodeFeatDim', 'aggrType',    // gnn
+      'isBidirectional',            // rnn
+      'timesteps', 'spikeRate',     // snn
+      'actionDim',                  // rl
+      'numDenoisingSteps', 'guidanceScale', // diffusion
+    ];
+    const missing = distinguishing.filter((key) => !experimentalKeys.has(key));
+    expect(missing, `experimental is missing: ${missing.join(', ')}`).toEqual([]);
   });
 
   it('universal training params are present in every family by design', () => {
