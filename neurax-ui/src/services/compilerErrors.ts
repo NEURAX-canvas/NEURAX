@@ -27,7 +27,7 @@
  *    is the difference between a bug report and an hour lost.
  */
 
-import { NeuraxApiError } from '@/services/neuraxApi.ts';
+import { NeuraxApiError } from '@/services/apiError.ts';
 import { isDesktop } from '@/services/desktopRuntime.ts';
 import { normalizeDiagnostics, Diagnostic } from '@/utils/diagnostics.ts';
 

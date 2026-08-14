@@ -29,14 +29,26 @@ interface DocumentationPanelProps {
 }
 
 /**
- * Render the small subset of Markdown the guide uses: `**bold**` and `` `code` ``.
+ * Render the small subset of Markdown the guide uses.
  *
- * A full Markdown renderer would be a dependency and an escaping surface for
- * two kinds of emphasis. This handles exactly what the content contains, and
- * anything it does not recognise renders as the literal text it is.
+ * Four inline forms, and no more. A full Markdown renderer would be a
+ * dependency and an escaping surface for what is really a handful of marks, and
+ * anything unrecognised here renders as the literal text it is.
+ *
+ *   `**bold**`   the word that carries the sentence
+ *   `` `code` `` a filename, a field, a key
+ *   `{+green+}`  something that works, is verified, or is a gain
+ *   `{-red-}`    a limit, a risk, or something that does not work
+ *
+ * The two colours exist because a guide read at speed is skimmed, not read, and
+ * the reader needs the consequential words to catch the eye before the sentence
+ * around them does. They are used sparingly and never decoratively: green means
+ * "you can rely on this", red means "this will cost you if you assume it". A
+ * page where everything is coloured says nothing, so most of the guide is
+ * neither.
  */
 function RichText({ text }: { text: string }) {
-  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\{\+[^}]+\+\}|\{-[^}]+-\})/g);
 
   return (
     <>
@@ -56,6 +68,29 @@ function RichText({ text }: { text: string }) {
             >
               {part.slice(1, -1)}
             </code>
+          );
+        }
+        // A tinted background rather than coloured text alone: colour is not
+        // the only signal, and the weight change keeps it legible for anyone
+        // who cannot separate red from green.
+        if (part.startsWith('{+') && part.endsWith('+}')) {
+          return (
+            <span
+              key={i}
+              className="rounded bg-emerald-500/15 px-1 font-medium text-emerald-700 dark:text-emerald-300"
+            >
+              {part.slice(2, -2)}
+            </span>
+          );
+        }
+        if (part.startsWith('{-') && part.endsWith('-}')) {
+          return (
+            <span
+              key={i}
+              className="rounded bg-rose-500/15 px-1 font-medium text-rose-700 dark:text-rose-300"
+            >
+              {part.slice(2, -2)}
+            </span>
           );
         }
         return <span key={i}>{part}</span>;

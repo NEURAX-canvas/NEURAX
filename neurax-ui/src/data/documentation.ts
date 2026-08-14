@@ -61,13 +61,13 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'text',
             text:
-              'It does this analytically. There is no GPU involved and nothing is executed. The answers come from formulas over the architecture, which is why they arrive in well under a second and why the same design always produces the same numbers.',
+              'It does this analytically. {+There is no GPU involved+} and nothing is executed. The answers come from formulas over the architecture, which is why they arrive in {+well under a second+} and why {+the same design always produces the same numbers+}.',
           },
           { kind: 'heading', text: 'What it is not' },
           {
             kind: 'list',
             items: [
-              '**Not a training framework.** NEURAX never runs your model. PyTorch and JAX do that.',
+              '**Not a training framework.** {-NEURAX never runs your model.-} PyTorch and JAX do that.',
               '**Not a runtime compiler.** IREE and OpenXLA lower a model for execution; NEURAX works at design time, before there is anything to execute.',
               '**Not a profiler.** A profiler measures a model that ran. NEURAX predicts one that has not.',
             ],
@@ -111,7 +111,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'info',
             title: 'Nothing leaves your machine',
             text:
-              'In the desktop application the compiler runs inside the process, on a loopback socket. No architecture you design is sent anywhere, and NEURAX works with no internet connection. The single exception is the AI Copilot, which calls the provider whose API key you supply.',
+              'In the desktop application the compiler runs inside the process, on a loopback socket. {+No architecture you design is sent anywhere+}, and {+NEURAX works with no internet connection+}. The single exception is the AI Copilot, which calls the provider whose API key you supply.',
           },
         ],
       },
@@ -190,7 +190,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'warning',
             title: 'The layer stack is load-bearing',
             text:
-              'If the blocks forming a layer body are not connected back to their `layer_stack`, the compiler counts them once rather than once per layer — and every memory, cost and FLOP figure downstream is wrong by that factor. When a template looks right but the parameter count is far too low, this is almost always why.',
+              'If the blocks forming a layer body are not connected back to their `layer_stack`, the compiler counts them once rather than once per layer — and {-every memory, cost and FLOP figure downstream is wrong by that factor-}. When a template looks right but the parameter count is far too low, this is almost always why.',
           },
         ],
       },
@@ -254,7 +254,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'warning',
             title: 'Precision changes every memory figure',
             text:
-              'Switching between fp32, bf16 and fp8 changes weights, activations, gradients and optimizer state at once. When comparing two designs, keep the precision the same or you are measuring the precision, not the architecture.',
+              'Switching between fp32, bf16 and fp8 changes weights, activations, gradients and optimizer state at once. When comparing two designs, {-keep the precision the same-} or you are measuring the precision, not the architecture.',
           },
         ],
       },
@@ -271,14 +271,14 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'text',
             text:
-              'It works on **your own key**, for OpenAI, Anthropic, Google or Mistral. The key is stored in your browser or desktop profile and is sent only to the provider you chose — never to NEURAX.',
+              'It works on **your own key**, for OpenAI, Anthropic, Google or Mistral. The key is stored in your browser or desktop profile and is sent only to the provider you chose — {+never to NEURAX+}.',
           },
           {
             kind: 'note',
             tone: 'info',
             title: 'Check what it builds',
             text:
-              'The Copilot is a fast way to get a first draft onto the canvas. It is not a source of truth about your model: read the blocks it produced and run the analysis before trusting the shape.',
+              'The Copilot is a fast way to get a first draft onto the canvas. {-It is not a source of truth about your model-}: read the blocks it produced and run the analysis before trusting the shape.',
           },
         ],
       },
@@ -330,7 +330,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'info',
             title: 'It tells you what it assumed',
             text:
-              'Configs vary in what they state. Where a field is missing, NEURAX picks the conventional default and lists every one of those choices in an amber box before you import — so a guess is never silent.',
+              'Configs vary in what they state. Where a field is missing, NEURAX picks the conventional default and lists every one of those choices in an amber box before you import — so {+a guess is never silent+}.',
           },
           { kind: 'heading', text: 'How accurate is it?' },
           {
@@ -353,7 +353,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'warning',
             title: 'Routed models are currently under-counted',
             text:
-              'A mixture-of-experts model imported from its config analyses to roughly 22 % below its published size — Mixtral 8x7B comes out near 36 B against a published 46.7 B. This is not an import problem: the built-in Mixtral template produces the same figure. It is how the mixture-of-experts blocks are accounted for once they reach the compiler. Treat MoE parameter counts, and the memory and cost figures derived from them, as a lower bound until this is fixed.',
+              'A mixture-of-experts model imported from its config analyses to {-roughly 22 % below its published size-} — Mixtral 8x7B comes out near 36 B against a published 46.7 B. This is not an import problem: the built-in Mixtral template produces the same figure. It is how the mixture-of-experts blocks are accounted for once they reach the compiler. {-Treat MoE parameter counts, and the memory and cost figures derived from them, as a lower bound-} until this is fixed.',
           },
         ],
       },
@@ -411,7 +411,7 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'text',
             text:
-              'Because a file can be committed next to the training code it describes, attached to a review, diffed against last week, and handed to a colleague who then opens it. The format is built for that: it is pretty-printed with a stable key order, so changing one hyperparameter changes exactly one line in `git diff` rather than rewriting the whole file.',
+              'Because a file can be committed next to the training code it describes, attached to a review, diffed against last week, and handed to a colleague who then opens it. The format is built for that: it is pretty-printed with a stable key order, so {+changing one hyperparameter changes exactly one line in `git diff`+} rather than rewriting the whole file.',
           },
           {
             kind: 'code',
@@ -440,7 +440,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'warning',
             title: 'In a browser, Save always asks',
             text:
-              'A web page cannot write to a path, so every save in the browser build downloads a fresh copy. Only the desktop application can re-save a file in place, and only for files you opened or saved during that session.',
+              '{-A web page cannot write to a path-}, so every save in the browser build downloads a fresh copy. {+Only the desktop application can re-save a file in place+}, and only for files you opened or saved during that session.',
           },
         ],
       },
@@ -486,7 +486,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'warning',
             title: 'There is no PyTorch export',
             text:
-              'There used to be framework emitters, and they were removed rather than repaired: they produced a class whose constructor was empty and whose forward pass was a chain of `x2 = x1` — an identity function under the model\'s name. Emitting nothing is better than emitting that. What leaves NEURAX today is the architecture itself, which it can describe truthfully.',
+              '{-There is no PyTorch or JAX export.-} There used to be framework emitters, and they were removed rather than repaired: they produced a class whose constructor was empty and whose forward pass was a chain of `x2 = x1` — an identity function under the model\'s name. Emitting nothing is better than emitting that. What leaves NEURAX today is {+the architecture itself, which it can describe truthfully+}.',
           },
         ],
       },
@@ -514,7 +514,7 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'text',
             text:
-              'History covers every change to the design: blocks added, moved, deleted or duplicated, connections made and broken, parameters edited, groups formed. A drag counts as one step rather than one per frame, so a single Ctrl+Z returns the block to where it started. Two hundred steps are kept.',
+              'History covers {+every change to the design+}: blocks added, moved, deleted or duplicated, connections made and broken, parameters edited, groups formed. A drag counts as one step rather than one per frame, so a single Ctrl+Z returns the block to where it started. {+Two hundred steps are kept.+}',
           },
           {
             kind: 'text',
@@ -552,7 +552,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'warning',
             title: 'It tells you when a comparison is not fair',
             text:
-              'If the two were analysed on different GPUs, at a different precision, batch size, sequence length or architecture family, an amber box lists exactly which terms differ. The comparison still works — but part of the difference is the settings, not the architecture, and reading it otherwise is a mistake worth interrupting.',
+              'If the two were analysed on different GPUs, at a different precision, batch size, sequence length or architecture family, an amber box lists exactly which terms differ. The comparison still works — but {-part of the difference is the settings, not the architecture-}, and reading it otherwise is a mistake worth interrupting.',
           },
         ],
       },
@@ -696,7 +696,7 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'text',
             text:
-              'Parameter counts for reference models are asserted against their published values by the test suite. Seven models are checked in the Rust core, and four imported configs are checked end to end through the real compiler.',
+              '{+Parameter counts for reference models are asserted against their published values+} by the test suite on every build. Seven models are checked in the Rust core, and four imported configs are checked {+end to end through the real compiler+}.',
           },
           {
             kind: 'table',
@@ -720,7 +720,7 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'list',
             items: [
-              '**Latency and throughput** are roofline estimates from the target chip\'s specifications. No measured run has been compared against them.',
+              '**Latency and throughput** are roofline estimates from the target chip\'s specifications. {-No measured run has been compared against them.-}',
               '**Training cost and time** follow from those estimates and inherit their uncertainty, plus whatever your cloud actually charges.',
               '**Energy and CO₂** rest on published chip power figures and an assumed grid intensity.',
               '**Inference Intelligence** widgets — stability, entropy, hallucination risk — are analytical indicators, not measurements of a served model.',
@@ -730,9 +730,9 @@ export const DOCUMENTATION: DocChapter[] = [
           {
             kind: 'list',
             items: [
-              '**Mixture-of-experts models imported or drawn in the studio under-count by roughly 22 %** against their published size. The compiler\'s own MoE path (the figure in the table above) is accurate; the studio path is not. Treat MoE numbers from the canvas as a lower bound.',
-              '**Multimodal models** import their language tower only. Vision and audio towers are ignored, so totals for those models are the text side alone.',
-              '**No calibration loop.** NEURAX does not learn from your measured runs. Every prediction is the formula\'s, not your cluster\'s.',
+              '**Mixture-of-experts models imported or drawn in the studio {-under-count by roughly 22 %-}** against their published size. The compiler\'s own MoE path (the figure in the table above) is accurate; the studio path is not. {-Treat MoE numbers from the canvas as a lower bound.-}',
+              '**Multimodal models** import their language tower only. {-Vision and audio towers are ignored-}, so totals for those models are the text side alone.',
+              '**No calibration loop.** {-NEURAX does not learn from your measured runs.-} Every prediction is the formula\'s, not your cluster\'s.',
             ],
           },
           {
@@ -740,7 +740,7 @@ export const DOCUMENTATION: DocChapter[] = [
             tone: 'info',
             title: 'The honest summary',
             text:
-              'Trust the structural figures — parameters, memory, FLOPs — for dense models, within a few percent. Treat latency, cost and carbon as well-founded estimates for comparing designs against each other, rather than as forecasts of your invoice.',
+              '{+Trust the structural figures — parameters, memory, FLOPs — for dense models, within a few percent.+} {-Treat latency, cost and carbon as estimates for comparing designs against each other, not as forecasts of your invoice.-}',
           },
         ],
       },

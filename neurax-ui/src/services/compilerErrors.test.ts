@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { explainAnalysisFailure, failureAsWarnings } from './compilerErrors';
-import { NeuraxApiError } from './neuraxApi';
+import { NeuraxApiError } from './apiError';
 
 /** Responses captured from a live neurax-service on a broken topology. */
 const REAL = {

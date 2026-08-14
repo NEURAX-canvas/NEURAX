@@ -72,8 +72,75 @@ describe('the user guide', () => {
             expect(bold % 2, `${section.id}: unclosed ** in "${text.slice(0, 60)}…"`).toBe(0);
             const ticks = (text.match(/`/g) ?? []).length;
             expect(ticks % 2, `${section.id}: unclosed backtick in "${text.slice(0, 60)}…"`).toBe(0);
+
+            // The colour marks. An unclosed one renders as literal `{+` in the
+            // middle of a sentence, which looks like a bug in the guide.
+            for (const [open, close, name] of [
+              ['{+', '+}', 'green'],
+              ['{-', '-}', 'red'],
+            ]) {
+              const opens = text.split(open).length - 1;
+              const closes = text.split(close).length - 1;
+              expect(
+                opens,
+                `${section.id}: ${opens} ${name} opens but ${closes} closes in "${text.slice(0, 60)}…"`,
+              ).toBe(closes);
+            }
           }
         }
+      }
+    });
+  });
+
+  describe('uses colour to mean something', () => {
+    /** Every text the panel renders through `RichText`. */
+    const prose = allSections().flatMap((section) =>
+      section.blocks.flatMap((block) => {
+        if (block.kind === 'text' || block.kind === 'heading') return [block.text];
+        if (block.kind === 'list' || block.kind === 'steps') return block.items;
+        if (block.kind === 'note') return [block.text];
+        if (block.kind === 'table') return block.rows.flat();
+        return [];
+      }),
+    );
+
+    const greens = prose.flatMap((t) => [...t.matchAll(/\{\+([^}]+)\+\}/g)].map((m) => m[1]));
+    const reds = prose.flatMap((t) => [...t.matchAll(/\{-([^}]+)-\}/g)].map((m) => m[1]));
+
+    it('marks what can be relied on, and what will cost you', () => {
+      expect(greens.length, 'nothing is marked as reliable').toBeGreaterThan(5);
+      expect(reds.length, 'nothing is marked as a limit').toBeGreaterThan(5);
+    });
+
+    it('keeps colour rare enough to mean something', () => {
+      // A page where everything is coloured says nothing. This is a ceiling on
+      // enthusiasm, not a target.
+      const marked = greens.length + reds.length;
+      expect(
+        marked / prose.length,
+        `${marked} marks across ${prose.length} passages — too much of the guide is coloured`,
+      ).toBeLessThan(0.5);
+    });
+
+    it('never marks an empty or whitespace-only span', () => {
+      for (const span of [...greens, ...reds]) {
+        expect(span.trim().length, `empty colour mark: "${span}"`).toBeGreaterThan(0);
+      }
+    });
+
+    it('marks the mixture-of-experts shortfall in red, since assuming it costs you', () => {
+      const accuracy = allSections().find((s) => s.id === 'accuracy')!;
+      const text = JSON.stringify(accuracy);
+      expect(text).toMatch(/\{-[^}]*22 %[^}]*-\}/);
+    });
+
+    it('does not colour a limit green or a strength red', () => {
+      // A cheap sanity check on the two words most likely to be miscoloured.
+      for (const span of greens) {
+        expect(span, `"${span}" is marked as a strength`).not.toMatch(/\bnot verified\b|\bcannot\b/i);
+      }
+      for (const span of reds) {
+        expect(span, `"${span}" is marked as a limit`).not.toMatch(/\bfully verified\b/i);
       }
     });
   });
