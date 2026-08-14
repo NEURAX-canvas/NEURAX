@@ -135,9 +135,15 @@ describe('the user guide', () => {
     });
 
     it('does not colour a limit green or a strength red', () => {
-      // A cheap sanity check on the two words most likely to be miscoloured.
+      // A narrow check on phrases that can only mean one thing. Deliberately
+      // not a keyword sweep: "cannot" is a limitation in "NEURAX cannot export
+      // PyTorch" and a guarantee in "switching tabs cannot change your
+      // architecture", and a test that cannot tell them apart would push the
+      // guide towards worse sentences.
       for (const span of greens) {
-        expect(span, `"${span}" is marked as a strength`).not.toMatch(/\bnot verified\b|\bcannot\b/i);
+        expect(span, `"${span}" is marked as a strength`).not.toMatch(
+          /\bnot verified\b|\bunder-count\b|\blower bound\b/i,
+        );
       }
       for (const span of reds) {
         expect(span, `"${span}" is marked as a limit`).not.toMatch(/\bfully verified\b/i);
@@ -173,6 +179,9 @@ describe('the user guide', () => {
         'Backspace': "'Backspace'",
         'Escape': "'Escape'",
         'F1': "'F1'",
+        // Canvas modifiers, bound by state rather than by a key comparison.
+        'Space': "'Space'",
+        'Shift': 'shiftKey',
       };
 
       for (const chord of documentedKeys) {
