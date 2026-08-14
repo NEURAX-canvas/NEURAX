@@ -864,6 +864,12 @@ const Index = () => {
   // it: `currentDesignSnapshot` never mentioned it, so the file it wrote
   // carried no `initialization` section at all.
   const [openedInitialization, setOpenedInitialization] = useState<InitializationRecord | null>(null);
+  // The exact `nodes`/`connections` arrays `openedInitialization` was set
+  // alongside — not their content, their reference. A later edit produces a
+  // new array either way, so comparing by reference is enough to notice the
+  // design has moved on since the recipe was captured, without a deep
+  // comparison on every keystroke. See the invalidation effect below.
+  const initializationSourceRef = useRef<{ nodes: CanvasNode[]; connections: Connection[] } | null>(null);
   const [savedProjects, setSavedProjects] = useState<Project[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
@@ -1009,6 +1015,7 @@ const Index = () => {
     setPerLayer([]);
     setAnalysis(initialAnalysis);
     setActiveWorkspaceTab('architecture');
+    initializationSourceRef.current = null;
     setOpenedInitialization(null);
     pendingConnectionsRef.current.clear();
 
@@ -1893,6 +1900,40 @@ params: params as Record<string, ParameterValue>,
     [documentName],
   );
 
+  /**
+   * Sets `openedInitialization` together with the design it was computed
+   * against, so the invalidation effect below can tell "just set alongside
+   * this exact design" apart from "the design has since moved on."
+   */
+  const setOpenedInitializationFor = useCallback(
+    (record: InitializationRecord | null, forNodes: CanvasNode[], forConnections: Connection[]) => {
+      initializationSourceRef.current = record ? { nodes: forNodes, connections: forConnections } : null;
+      setOpenedInitialization(record);
+    },
+    [],
+  );
+
+  /**
+   * A saved initialisation recipe describes one specific design's layer
+   * shapes and fan-in/fan-out — it stops being true the moment a node is
+   * added, removed, or reshaped. Rather than track every place nodes or
+   * connections can change (drag, delete, undo, import, preset load, agent
+   * edit...), this notices generically: whenever either array is no longer
+   * the exact reference `openedInitialization` was captured against, the
+   * recipe no longer describes what's on screen and is dropped. A stale
+   * recipe reaching the next save would be worse than none — it would claim
+   * to describe a design it doesn't, the same kind of drift this session's
+   * `.neurax` format was built to refuse elsewhere.
+   */
+  useEffect(() => {
+    const source = initializationSourceRef.current;
+    if (!source) return;
+    if (source.nodes !== nodes || source.connections !== connections) {
+      initializationSourceRef.current = null;
+      setOpenedInitialization(null);
+    }
+  }, [nodes, connections]);
+
   /** Everything that has to survive a round trip through a file. */
   const currentDesignSnapshot = useCallback(
     () => ({
@@ -2008,7 +2049,7 @@ params: params as Record<string, ParameterValue>,
     setWarnings([]);
     setPerLayer([]);
     setAnalysis(initialAnalysis);
-    setOpenedInitialization(doc.initialization ?? null);
+    setOpenedInitializationFor(doc.initialization ?? null, design.nodes, design.connections);
     pendingConnectionsRef.current.clear();
 
     // A freshly opened file is the start of a history, not a step in the
@@ -2025,7 +2066,7 @@ params: params as Record<string, ParameterValue>,
         : `${design.nodes.length} blocks. Run an analysis to compute its metrics.`,
       variant: fileWarnings.length ? 'destructive' : undefined,
     });
-  }, [resetHistory, setHwConfig, markSaved, toast]);
+  }, [resetHistory, setHwConfig, markSaved, toast, setOpenedInitializationFor]);
 
   // ─── Project Save/Load ──────────────────────────────────────────────
 
@@ -2086,6 +2127,7 @@ params: params as Record<string, ParameterValue>,
     // whatever a previously opened `.neurax` file left behind, or a save
     // right after loading this project would attach someone else's recipe
     // to it.
+    initializationSourceRef.current = null;
     setOpenedInitialization(null);
     toast({ title: 'Project loaded', description: `Loaded "${project.name}".` });
   }, [setNodes, setConnections, setGroups, setSelectedArchitecture, setHwConfig, toast]);
@@ -2603,7 +2645,7 @@ params: params as Record<string, ParameterValue>,
               hardware={hwConfig}
               analysis={analysis}
               onSaved={(initialization) => {
-                setOpenedInitialization(initialization);
+                setOpenedInitializationFor(initialization, nodes, connections);
                 markSaved({ nodes, connections, groups });
               }}
             />

@@ -8,7 +8,7 @@
 // painted at a whole device pixel, however fractional their stored
 // coordinates are, while the coordinates themselves stay float (drag math,
 // connection anchors and alignment guides all still need the precision).
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import { CanvasNode } from './CanvasNode';
 import { GroupNode } from './GroupNode';
@@ -37,6 +37,17 @@ const FRACTIONAL_GROUP: NodeGroup = {
 
 describe('canvas cards are painted on a whole pixel', () => {
   it('CanvasNode rounds a fractional position to whole CSS pixels', () => {
+    // Captured before rendering: the expected style comes from this
+    // snapshot, not from re-reading the fixture after render, so a future
+    // bug that mutated `node` in place couldn't drag the expectation along
+    // with it and pass anyway.
+    const originalX = FRACTIONAL_NODE.x;
+    const originalY = FRACTIONAL_NODE.y;
+    // Sanity: the fixture actually is fractional, so this test would fail
+    // without the rounding — it isn't trivially true.
+    expect(Number.isInteger(originalX)).toBe(false);
+    expect(Number.isInteger(originalY)).toBe(false);
+
     const { container } = render(
       <CanvasNode
         node={FRACTIONAL_NODE}
@@ -46,15 +57,18 @@ describe('canvas cards are painted on a whole pixel', () => {
       />,
     );
     const card = container.firstElementChild as HTMLElement;
-    expect(card.style.left).toBe(`${Math.round(FRACTIONAL_NODE.x)}px`);
-    expect(card.style.top).toBe(`${Math.round(FRACTIONAL_NODE.y)}px`);
-    // Sanity: the fixture actually is fractional, so this test would fail
-    // without the rounding — it isn't trivially true.
-    expect(Number.isInteger(FRACTIONAL_NODE.x)).toBe(false);
-    expect(Number.isInteger(FRACTIONAL_NODE.y)).toBe(false);
+    expect(card.style.left).toBe(`${Math.round(originalX)}px`);
+    expect(card.style.top).toBe(`${Math.round(originalY)}px`);
+    expect(FRACTIONAL_NODE.x).toBe(originalX);
+    expect(FRACTIONAL_NODE.y).toBe(originalY);
   });
 
   it('GroupNode rounds a fractional position to whole CSS pixels', () => {
+    const originalX = FRACTIONAL_GROUP.x;
+    const originalY = FRACTIONAL_GROUP.y;
+    expect(Number.isInteger(originalX)).toBe(false);
+    expect(Number.isInteger(originalY)).toBe(false);
+
     const { container } = render(
       <GroupNode
         group={FRACTIONAL_GROUP}
@@ -68,10 +82,10 @@ describe('canvas cards are painted on a whole pixel', () => {
       />,
     );
     const card = container.firstElementChild as HTMLElement;
-    expect(card.style.left).toBe(`${Math.round(FRACTIONAL_GROUP.x)}px`);
-    expect(card.style.top).toBe(`${Math.round(FRACTIONAL_GROUP.y)}px`);
-    expect(Number.isInteger(FRACTIONAL_GROUP.x)).toBe(false);
-    expect(Number.isInteger(FRACTIONAL_GROUP.y)).toBe(false);
+    expect(card.style.left).toBe(`${Math.round(originalX)}px`);
+    expect(card.style.top).toBe(`${Math.round(originalY)}px`);
+    expect(FRACTIONAL_GROUP.x).toBe(originalX);
+    expect(FRACTIONAL_GROUP.y).toBe(originalY);
   });
 });
 
@@ -107,11 +121,23 @@ describe('composed screen position (offset + zoom·node.x)', () => {
   // and what "Reset View" restores) — not at every zoom level. This isn't a
   // gap introduced by the fix: an unsnapped canvas was exactly as fractional
   // at 125% zoom as a snapped one is. See the comment on snapToDevicePixel.
+  //
+  // `snapToDevicePixel` reads `window.devicePixelRatio`, so it's pinned to 1
+  // here rather than left to whatever the test environment happens to
+  // default to — these assertions are about the zoom arithmetic, not about
+  // jsdom's DPR.
+  beforeEach(() => {
+    vi.stubGlobal('window', { ...window, devicePixelRatio: 1 });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('lands on a whole screen pixel at 100% zoom', () => {
     const zoom = 1;
     const snappedOffset = snapToDevicePixel(37.812);
     const snappedNodeX = Math.round(214.5501);
-    expect(snappedOffset + zoom * snappedNodeX).toBe(Math.round(snappedOffset + zoom * snappedNodeX));
+    expect(Number.isInteger(snappedOffset + zoom * snappedNodeX)).toBe(true);
   });
 
   it('is not guaranteed a whole screen pixel at a fractional zoom', () => {

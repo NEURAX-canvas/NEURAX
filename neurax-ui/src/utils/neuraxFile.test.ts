@@ -22,6 +22,7 @@ import {
   NEURAX_FORMAT_VERSION,
 } from './neuraxFile';
 import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
+import { INITIALIZATION_METHODS } from './weightInitialization.ts';
 
 const nodes: CanvasNode[] = [
   { id: 'n1', type: 'input', name: 'Input', x: 50, y: 140, params: { sequence_length: 4096 } },
@@ -399,6 +400,47 @@ describe('the .neurax document', () => {
       expect(parsed.ok).toBe(true);
       if (!parsed.ok) return;
       expect(parsed.document.initialization).toBeNull();
+    });
+
+    it('accepts every real InitializationMethod and rejects an unrecognised one', () => {
+      // The accepted set here is duplicated from `InitializationMethod`
+      // rather than imported (importing it would make this module and
+      // weightInitialization.ts import each other). Driven off
+      // `INITIALIZATION_METHODS` — the same list Production's method picker
+      // renders from — so an eighth or ninth method added there is exercised
+      // here automatically instead of silently exempt from this check.
+      for (const { id } of INITIALIZATION_METHODS) {
+        const handEdited = JSON.stringify({
+          format: NEURAX_FORMAT,
+          version: 1,
+          design: { nodes, connections: [], groups: [] },
+          initialization: {
+            method: id,
+            hyperparameters: withInit.initialization!.hyperparameters,
+            layers: [withInit.initialization!.layers[0]],
+          },
+        });
+        const parsed = parseNeuraxFile(handEdited);
+        expect(parsed.ok, id).toBe(true);
+        if (!parsed.ok) continue;
+        expect(parsed.document.initialization?.method, id).toBe(id);
+      }
+
+      const bogus = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        initialization: {
+          method: 'gradient_boosted_vibes',
+          hyperparameters: withInit.initialization!.hyperparameters,
+          layers: [withInit.initialization!.layers[0]],
+        },
+      });
+      const parsed = parseNeuraxFile(bogus);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.initialization).toBeNull();
+      expect(parsed.warnings.some((w) => w.includes('unrecognised method'))).toBe(true);
     });
   });
 });

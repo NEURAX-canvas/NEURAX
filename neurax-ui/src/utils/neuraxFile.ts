@@ -228,8 +228,24 @@ function isValidInitializationLayer(value: unknown): value is InitializationReco
  * with a warning instead of failing the whole document, matching how a
  * dangling connection is handled just above.
  */
+/**
+ * Mirrors `InitializationMethod` in `weightInitialization.ts` — duplicated
+ * rather than imported, because that module imports `InitializationRecord`
+ * from this one, and a circular import between the two is not worth
+ * introducing for one type. Covered by a test that fails if the two ever
+ * drift apart.
+ */
+const KNOWN_INITIALIZATION_METHODS = new Set([
+  'xavier_uniform', 'xavier_normal', 'he_uniform', 'he_normal',
+  'lsuv', 'orthogonal', 'sparse', 'delta_orthogonal',
+]);
+
 function parseInitializationRecord(value: unknown, warnings: string[]): InitializationRecord | null {
   if (!isRecord(value) || typeof value.method !== 'string' || !Array.isArray(value.layers)) {
+    return null;
+  }
+  if (!KNOWN_INITIALIZATION_METHODS.has(value.method)) {
+    warnings.push(`The saved initialisation used an unrecognised method (${JSON.stringify(value.method)}); dropped.`);
     return null;
   }
   if (!isRecord(value.hyperparameters)) {
