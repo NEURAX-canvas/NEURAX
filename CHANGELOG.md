@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08
+
 ### Added
+- Local-only account: a name, an avatar, and an id, created automatically on
+  first launch and kept on this machine — no cloud identity provider, no
+  project to configure, for both the web and desktop builds alike. Replaces
+  the previous Supabase-backed account, whose configured project had no DNS
+  record at all (confirmed live), so every signup and signin failed by
+  default. `@supabase/supabase-js` and all `VITE_SUPABASE_*` configuration
+  are removed from the frontend entirely; the main web bundle dropped from
+  320 kB to 155 kB gzipped as a result.
 - Provider support for Google (Gemini), Mistral, Fireworks AI, DeepSeek, and
   GLM (Zhipu) in the AI agent, alongside the existing OpenAI and Anthropic —
   real brand icons in the provider picker instead of emoji.

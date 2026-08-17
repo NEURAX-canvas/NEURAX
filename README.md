@@ -274,7 +274,7 @@ real requests.
 
 | | |
 |---|---|
-| Pin a version | `curl -fsSL … \| sh -s -- --version v0.7.4` |
+| Pin a version | `curl -fsSL … \| sh -s -- --version v0.8.0` |
 | Install elsewhere | `curl -fsSL … \| sh -s -- --prefix ~/opt` |
 | Remove it | `curl -fsSL … \| sh -s -- --uninstall` |
 
