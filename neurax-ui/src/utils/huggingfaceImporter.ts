@@ -59,6 +59,10 @@ interface ModelShape {
     topK: number;
     expertIntermediateSize: number;
     sharedExperts: number;
+    /** DeepSeek-style: the model's first N layers are plain dense
+     * feed-forward, not routed — `first_k_dense_replace` in the config. 0
+     * for a model that routes from the first layer, like Mixtral. */
+    firstKDenseReplace: number;
   } | null;
 
   /** Encoder models get a classification head, decoders an LM head. */
@@ -322,6 +326,7 @@ function readShape(
             num(config, 'intermediate_size') ??
             hiddenSize * 4,
           sharedExperts: num(config, 'n_shared_experts', 'num_shared_experts') ?? 0,
+          firstKDenseReplace: num(config, 'first_k_dense_replace') ?? 0,
         }
       : null;
 
@@ -513,7 +518,11 @@ function buildGraph(
     eps: shape.normEps,
   });
 
-  let ffnTail: string;
+  // Usually one tail feeding the residual join — two only for a
+  // DeepSeek-style model, where the routed path and the dense-replacement
+  // path are two different representative blocks, never both active on the
+  // same layer, that still both need to reach the same join point.
+  const ffnTails: string[] = [];
   if (shape.moe) {
     const router = add('noisy_topk_router', `Top-${shape.moe.topK} Router`, 850, FFN, {
       num_experts: shape.moe.numExperts,
@@ -542,7 +551,7 @@ function buildGraph(
     link(preFfnNorm, router);
     link(router, experts);
     link(experts, combine);
-    ffnTail = combine;
+    ffnTails.push(combine);
 
     if (shape.moe.sharedExperts > 0) {
       // DeepSeek-style always-on experts run beside the routed ones and add
@@ -561,8 +570,30 @@ function buildGraph(
       link(preFfnNorm, shared);
       link(shared, combine);
     }
+
+    if (shape.moe.firstKDenseReplace > 0) {
+      // DeepSeek-style: the first `firstKDenseReplace` layers use a plain
+      // feed-forward, not routing at all — no router, no experts, no
+      // combine step for those layers. A separate representative node for
+      // this real (not routed) FFN, at the model's real dense width, lets
+      // the compiler scale it against exactly that many layers instead of
+      // silently treating every layer as routed from the first one.
+      const denseFfn = add(
+        traits.ffn,
+        `Dense FFN (first ${shape.moe.firstKDenseReplace} layer${shape.moe.firstKDenseReplace === 1 ? '' : 's'})`,
+        1050,
+        FFN - 80,
+        {
+          hidden_size: width,
+          intermediate_size: shape.intermediateSize,
+          activation: shape.activation,
+        },
+      );
+      link(preFfnNorm, denseFfn);
+      ffnTails.push(denseFfn);
+    }
   } else {
-    ffnTail = add(
+    const ffnTail = add(
       traits.ffn,
       traits.ffn === 'ffn_gated' ? 'Gated FFN (SwiGLU)' : 'FFN (2× Linear)',
       850,
@@ -574,10 +605,13 @@ function buildGraph(
       },
     );
     link(preFfnNorm, ffnTail);
+    ffnTails.push(ffnTail);
   }
 
   const ffnResidual = add('residual_add', 'Residual Add', 1450, FFN, {});
-  link(ffnTail, ffnResidual);
+  for (const tail of ffnTails) {
+    link(tail, ffnResidual);
+  }
   link(ffnResidual, stack);
 
   // ── Trunk again: final norm → head → output ──
@@ -636,6 +670,9 @@ function buildHardwareConfig(shape: ModelShape): Partial<HardwareConfig> {
   if (shape.moe) {
     config.numExperts = shape.moe.numExperts;
     config.topK = shape.moe.topK;
+    if (shape.moe.firstKDenseReplace > 0) {
+      config.numDenseLayers = shape.moe.firstKDenseReplace;
+    }
   }
 
   return config;

@@ -376,12 +376,48 @@ describe('HuggingFace config import', () => {
         rope_theta: 10000.0,
         hidden_act: 'silu',
       };
-      const { nodes } = parseHuggingFaceConfig(JSON.stringify(deepseek));
+      const { nodes, hardwareConfig } = parseHuggingFaceConfig(JSON.stringify(deepseek));
       expect(p(node(nodes, 'moe_layer'), 'num_experts')).toBe(64);
       expect(p(node(nodes, 'moe_layer'), 'intermediate_size')).toBe(1408);
       expect(p(node(nodes, 'moe_layer'), 'top_k')).toBe(6);
       expect(p(node(nodes, 'shared_expert'), 'num_experts')).toBe(2);
       expect(p(node(nodes, 'noisy_topk_router'), 'top_k')).toBe(6);
+      // No first_k_dense_replace stated — every layer routes, so there is no
+      // separate dense-FFN block to represent.
+      expect(node(nodes, 'ffn_gated'), 'no dense layers were declared').toBeUndefined();
+      expect(hardwareConfig?.numDenseLayers).toBeUndefined();
+    });
+
+    it("reads DeepSeek's first_k_dense_replace as a separate dense-FFN block, at the model's real dense width", () => {
+      // Real DeepSeek-MoE-16B: layer 0 is a plain dense FFN (width 10944,
+      // not the 1408 the routed experts use), the other 27 route.
+      const deepseek = {
+        model_type: 'deepseek',
+        hidden_size: 2048,
+        intermediate_size: 10944,
+        moe_intermediate_size: 1408,
+        num_hidden_layers: 28,
+        num_attention_heads: 16,
+        num_key_value_heads: 16,
+        n_routed_experts: 64,
+        n_shared_experts: 2,
+        num_experts_per_tok: 6,
+        first_k_dense_replace: 1,
+        vocab_size: 102400,
+        max_position_embeddings: 4096,
+        rms_norm_eps: 1e-6,
+        rope_theta: 10000.0,
+        hidden_act: 'silu',
+      };
+      const { nodes, hardwareConfig: hw } = parseHuggingFaceConfig(JSON.stringify(deepseek));
+      const denseFfn = node(nodes, 'ffn_gated');
+      expect(denseFfn, 'a dense-FFN block for the first_k_dense_replace layers').toBeDefined();
+      expect(p(denseFfn, 'intermediate_size')).toBe(10944);
+      expect(p(denseFfn, 'hidden_size')).toBe(2048);
+      // Still there, at the routed (much narrower) width — the two blocks
+      // are not the same node, and neither took over the other's role.
+      expect(p(node(nodes, 'moe_layer'), 'intermediate_size')).toBe(1408);
+      expect(hw?.numDenseLayers).toBe(1);
     });
 
     it('reads the text tower of a multimodal config', () => {

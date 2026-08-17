@@ -19,6 +19,8 @@ export interface NeuraxLayer {
 export interface NeuraxGlobalParams {
   hidden_size?: number;
   num_layers?: number;
+  /** How many of `num_layers` are dense (no MoE routing) — see `numDenseLayers`. */
+  num_dense_layers?: number;
   vocab_size?: number;
   sequence_length?: number;
   num_heads?: number;
@@ -1510,6 +1512,14 @@ export function compileToNeuraxIR(
     headDim?: number | null;
     ffnDim?: number | null;
     numLayers?: number | null;
+    /**
+     * DeepSeek-style MoE models keep their first few layers dense (plain
+     * feed-forward, no routing) before switching to routed experts —
+     * `first_k_dense_replace` in the config. `repeat_scale_for` on the Rust
+     * side reads this to scale the model's `mlp` and `moe` blocks against
+     * their own real share of the depth instead of the full depth each.
+     */
+    numDenseLayers?: number | null;
     kvHeads?: number | null;
     useBias?: boolean | null;
     dropout?: number | null;
@@ -1639,6 +1649,7 @@ export function compileToNeuraxIR(
     headDim = null,
     ffnDim = null,
     numLayers = null,
+    numDenseLayers = null,
     kvHeads = null,
     useBias = null,
     dropout = null,
@@ -2329,6 +2340,7 @@ export function compileToNeuraxIR(
   const global_params: NeuraxGlobalParams = {};
   if (hiddenDim != null) global_params.hidden_size = hiddenDim;
   if (numLayers != null) global_params.num_layers = numLayers;
+  if (numDenseLayers != null) global_params.num_dense_layers = numDenseLayers;
   if (vocabSize != null) global_params.vocab_size = vocabSize;
   if (resolvedSeqLen != null) global_params.sequence_length = resolvedSeqLen;
   if (numHeads != null) global_params.num_heads = numHeads;

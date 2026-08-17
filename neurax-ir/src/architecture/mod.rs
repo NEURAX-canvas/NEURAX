@@ -406,16 +406,37 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
         return 1.0;
     }
 
-    // MoE models such as DeepSeek-V3 split their depth between dense and expert
-    // blocks, so each kind scales against its own share.
+    // MoE models such as DeepSeek split their depth between early dense
+    // layers and later expert layers — only the layer's *feed-forward*
+    // sublayer changes between the two; attention, normalization and every
+    // other repeatable kind still runs in every layer regardless of which
+    // FFN a given layer uses. This block therefore only special-cases the
+    // FFN-deciding kinds and falls through to the general per-kind scaling
+    // below for everything else — an earlier version returned early for
+    // every repeatable kind here, which would have scaled attention to only
+    // `num_dense_layers` layers instead of the model's real depth the first
+    // time this branch ran on a real design.
     if num_dense_layers > 0 && json_moe_count > 0 {
-        return if layer.layer_type == LayerType::MoE {
+        let is_moe_role = matches!(
+            layer.layer_type,
+            LayerType::MoE
+                | LayerType::MoeRouter
+                | LayerType::MoeCombine
+                | LayerType::MoeSharedExpert
+        );
+        if is_moe_role {
             let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
-            num_moe_layers as f64 / json_moe_count.max(1) as f64
-        } else {
-            let dense_blocks = json_attention_count.saturating_sub(json_moe_count).max(1);
-            num_dense_layers as f64 / dense_blocks as f64
-        };
+            return num_moe_layers as f64 / json_moe_count.max(1) as f64;
+        }
+        if layer.layer_type == LayerType::Mlp {
+            // The plain feed-forward used only in the first `num_dense_layers`
+            // layers, before the model switches to routed experts.
+            let dense_blocks = count_of(&|l: &Layer| l.layer_type == LayerType::Mlp).max(1);
+            return num_dense_layers as f64 / dense_blocks as f64;
+        }
+        // Attention, normalization, ...: fall through to the general
+        // per-kind scaling below, which already scales them to the model's
+        // full depth.
     }
 
     // Each kind scales against how many of *its own* kind were listed, not
@@ -619,6 +640,58 @@ mod moe_decomposed_tests {
                 "hardware": {{"gpus": [{{"name": "A100", "count": 1}}]}}
             }}"#
         )
+    }
+
+    #[test]
+    fn a_dense_mlp_block_scales_only_against_its_own_share_of_the_depth() {
+        // The bug this guards: an earlier version of this branch returned
+        // early for every repeatable layer type once num_dense_layers was
+        // set, which would have scaled attention to only num_dense_layers
+        // layers instead of the model's real depth.
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "DenseScaleTest",
+                "type": "moe",
+                "global_params": { "num_layers": 28, "num_dense_layers": 1 },
+                "layers": [
+                    {"id": "attn", "layer_type": "attention", "params": {"hidden_size": 2048, "num_heads": 16}},
+                    {"id": "router", "layer_type": "moe_router", "params": {"hidden_size": 2048, "num_experts": 64}},
+                    {"id": "experts", "layer_type": "moe", "params": {"hidden_size": 2048, "intermediate_size": 1408, "num_experts": 64, "top_k": 6}},
+                    {"id": "combine", "layer_type": "moe_combine", "params": {"hidden_size": 2048, "top_k": 6}},
+                    {"id": "dense_ffn", "layer_type": "mlp", "params": {"hidden_size": 2048, "intermediate_size": 10944, "gated": true}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+
+        let attn_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::Attention)
+            .unwrap();
+        let dense_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::Mlp)
+            .unwrap();
+        let moe_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::MoE)
+            .unwrap();
+
+        // Attention runs in all 28 layers, dense or routed.
+        assert_eq!(repeat_scale_for(&config, attn_layer), 28.0);
+        // The dense FFN only replaces the routed one in the 1 dense layer.
+        assert_eq!(repeat_scale_for(&config, dense_layer), 1.0);
+        // The routed experts run in the other 27.
+        assert_eq!(repeat_scale_for(&config, moe_layer), 27.0);
     }
 
     #[test]

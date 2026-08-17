@@ -164,6 +164,9 @@ const MODELS = [
       n_routed_experts: 64,
       n_shared_experts: 2,
       num_experts_per_tok: 6,
+      // Real DeepSeek-MoE-16B config: layer 0 is a plain dense FFN, only
+      // the remaining 27 route.
+      first_k_dense_replace: 1,
       max_position_embeddings: 4096,
       vocab_size: 102400,
       rms_norm_eps: 1e-6,
