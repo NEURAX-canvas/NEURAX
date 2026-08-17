@@ -54,13 +54,13 @@ graph TB
         IR[neurax-ir<br/>10 IR dialects<br/>+ inference + dynamic passes]
         FORMULAS[neurax-formulas<br/>FLOPs / params / memory]
         HWDB[neurax-hardware-db<br/>20 GPUs • CPUs • interconnects]
-        MLIR[neurax-mlir<br/>13 MLIR dialects<br/>LLVM 18 • IREE]
+        MLIR[neurax-mlir<br/>14 MLIR dialects<br/>LLVM 18 • IREE]
     end
 
     subgraph "External Services"
         SUPABASE[Supabase<br/>Auth • Database • Storage]
         STRIPE[Stripe<br/>Billing • Subscriptions]
-        OPENAI[OpenAI / Anthropic<br/>LLM API]
+        OPENAI[7 LLM providers<br/>+ custom endpoint]
         GITHUB[GitHub<br/>Repository • Pull Requests]
     end
 

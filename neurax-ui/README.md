@@ -12,10 +12,9 @@ Create `neurax-ui/.env` if you do not already have it:
 cp .env.example .env
 ```
 
-For local development without Supabase, use:
+For local development:
 
 ```dotenv
-VITE_SUPABASE_DISABLED=true
 VITE_NEURAX_API_URL=http://127.0.0.1:9098
 VITE_AGENT_BASE_URL=http://127.0.0.1:8099
 ```

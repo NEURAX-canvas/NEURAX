@@ -1,117 +1,79 @@
+/**
+ * NEURAX's account: a local profile, not a cloud identity.
+ *
+ * There is no NEURAX-operated identity server. An "account" is a name, an
+ * avatar, and an id, generated on first launch and kept in this browser's
+ * (or, in the desktop build, this machine's) local storage — the same
+ * information a Supabase-backed account would have held, without a network
+ * dependency, a service to keep available, or a place outside this machine
+ * where it's ever written. This is not a fallback for when a cloud project
+ * isn't configured; it's the whole system.
+ *
+ * A user is never asked to sign up before they can use the compiler — that
+ * would be ceremony protecting nothing on a single-user local tool — so the
+ * profile is created automatically on first launch and the app opens ready
+ * to work. It's an ordinary profile: name and avatar are editable in
+ * Account, exactly as they would be on any account system.
+ */
 import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
-import type { Session } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabaseClient.ts';
 import {
   getStoredDemoUser,
   clearDemoUser,
   createDemoUser,
+  saveDemoUser,
   demoAvatarUrl,
   type DemoUser,
 } from '@/lib/demoAuth.ts';
 
-const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
-
 interface AuthContextType {
-  session: Session | null;
-  accessToken: string | null;
   isAuthenticated: boolean;
-  // Demo auth helpers
-  demoUser: DemoUser | null;
-  demoSignIn: (email: string, username?: string) => void;
-  demoSignOut: () => void;
-  demoAvatarUrl: string;
+  user: DemoUser | null;
+  signIn: (email: string, username?: string) => void;
+  signOut: () => void;
+  /** Patch the current profile's editable fields (Account settings). */
+  updateProfile: (patch: Partial<Pick<DemoUser, 'username' | 'email'>>) => void;
+  avatarUrl: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function buildDemoSession(user: DemoUser): Session {
-  return {
-    access_token: 'dev-token',
-    token_type: 'bearer',
-    expires_in: 60 * 60 * 24 * 365,
-    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
-    refresh_token: 'dev-refresh',
-    user: {
-      id: user.id,
-      aud: 'authenticated',
-      role: 'authenticated',
-      email: user.email,
-      app_metadata: {},
-      user_metadata: {
-        username: user.username,
-        avatar_url: demoAvatarUrl(user.avatarSeed),
-      },
-      created_at: user.createdAt,
-    },
-  } as unknown as Session;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [demoUser, setDemoUser] = useState<DemoUser | null>(null);
+  const [user, setUser] = useState<DemoUser | null>(null);
 
-  // On mount: check for existing demo user or Supabase session
+  // On mount: use the stored profile, or create one — there's nothing to
+  // await here, no request that could fail or leave this pending.
   useEffect(() => {
-    if (SUPABASE_DISABLED) {
-      // No authentication backend means there is nobody to authenticate
-      // against — this is the desktop application, or a local frontend with no
-      // Supabase project. Making the user invent an account before they can
-      // open the studio would be ceremony protecting nothing, so a local
-      // profile is created on first launch and the app opens ready to work.
-      // It is an ordinary profile: the name and avatar are editable in Account
-      // exactly as they are on the web.
-      const user = getStoredDemoUser() ?? createDemoUser('local@neurax', 'Explorer');
-      setDemoUser(user);
-      setSession(buildDemoSession(user));
-      return;
-    }
-
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session ?? null);
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      if (!mounted) return;
-      setSession(next);
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
+    setUser(getStoredDemoUser() ?? createDemoUser('local@neurax', 'Explorer'));
   }, []);
 
-  const demoSignIn = useCallback((email: string, username?: string) => {
-    const user = createDemoUser(email, username || email.split('@')[0] || 'Explorer');
-    setDemoUser(user);
-    setSession(buildDemoSession(user));
+  const signIn = useCallback((email: string, username?: string) => {
+    setUser(createDemoUser(email, username || email.split('@')[0] || 'Explorer'));
   }, []);
 
-  const demoSignOut = useCallback(() => {
+  const signOut = useCallback(() => {
     clearDemoUser();
-    setDemoUser(null);
-    setSession(null);
+    setUser(null);
   }, []);
 
-  const demoAvatar = useMemo(() => {
-    if (!demoUser) return '';
-    return demoAvatarUrl(demoUser.avatarSeed);
-  }, [demoUser]);
+  const updateProfile = useCallback((patch: Partial<Pick<DemoUser, 'username' | 'email'>>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, ...patch };
+      saveDemoUser(next);
+      return next;
+    });
+  }, []);
 
-  const value = useMemo<AuthContextType>(() => {
-    const accessToken = session?.access_token ?? null;
-    return {
-      session,
-      accessToken,
-      isAuthenticated: !!accessToken,
-      demoUser,
-      demoSignIn,
-      demoSignOut,
-      demoAvatarUrl: demoAvatar,
-    };
-  }, [session, demoUser, demoSignIn, demoSignOut, demoAvatar]);
+  const avatarUrl = useMemo(() => (user ? demoAvatarUrl(user.avatarSeed) : ''), [user]);
+
+  const value = useMemo<AuthContextType>(() => ({
+    isAuthenticated: user !== null,
+    user,
+    signIn,
+    signOut,
+    updateProfile,
+    avatarUrl,
+  }), [user, signIn, signOut, updateProfile, avatarUrl]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

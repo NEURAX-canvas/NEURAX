@@ -285,8 +285,9 @@ desktop app* below) or use the web interface.
 **What you get.** The same studio as the web application — same panels,
 same analyses, same numbers — with the compiler running inside the
 application on a loopback socket. Projects are kept on your machine and are
-still there next time you open it; the desktop build has no account and
-makes no network call the analysis itself depends on.
+still there next time you open it; the account is a local profile (see
+*Privacy* below), so the desktop build makes no network call the analysis
+itself depends on.
 
 Building it from source, and how it's put together, is in
 [`neurax-desktop/README.md`](neurax-desktop/README.md).
@@ -394,15 +395,16 @@ each had an explicit path.
 
 ## Privacy
 
+- **Your account is a local profile** — a name, an avatar, and an id,
+  created automatically on first launch and kept in this browser's (or, on
+  desktop, this machine's) storage. There's no identity server behind it, no
+  project to set up, and nothing about it is ever sent anywhere.
 - **API keys** live in your browser's local storage and are sent directly to
   the agent process you're running — never to a NEURAX-operated server,
-  because the desktop and self-hosted paths don't have one.
+  because there isn't one in this path.
 - **Projects and designs** are kept on your machine (the desktop app) or in
   your own deployment's storage — not uploaded anywhere by the act of using
   the compiler.
-- An optional account (email/password or a magic link) exists in the web
-  build for identity only — it never carries your projects, designs, or API
-  keys; those stay local regardless of whether you're signed in.
 
 ---
 
