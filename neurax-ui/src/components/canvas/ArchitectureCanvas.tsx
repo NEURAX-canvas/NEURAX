@@ -134,6 +134,22 @@ export function ArchitectureCanvas({
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Never steal a keystroke from a field the user is typing in — the same
+      // guard the app-level shortcuts (Ctrl+S/O/Z/Y) and this file's own
+      // Space-bar pan handler already use. Without it, correcting a typo in a
+      // node's name or a parameter value and pressing Backspace deleted the
+      // selected block instead of a character: the documentation promises
+      // "these shortcuts stand down" while typing, which this handler alone
+      // did not honour.
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return;
+      }
+
       // Select all
       if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
         e.preventDefault();
