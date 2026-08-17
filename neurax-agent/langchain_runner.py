@@ -44,6 +44,36 @@ class _FamilySelection(BaseModel):
 #: got depended on which of the two filled the blank.
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-5"
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+DEFAULT_GOOGLE_MODEL = "gemini-2.5-pro-exp-03-25"
+
+#: Providers whose API is a compatible clone of OpenAI's chat-completions
+#: shape — the same HTTP request/response format, a different base URL and
+#: model catalogue. `langchain_openai.ChatOpenAI` is a plain HTTP client for
+#: that shape, so it works against any of them unmodified; no separate
+#: package per provider, the way Anthropic and Google (whose native APIs are
+#: not OpenAI-shaped) need one.
+#:
+#: Kept in sync with `neurax-ui/src/contexts/ApiKeyContext.tsx`'s
+#: `PROVIDER_DEFAULTS` by hand — see the note on DEFAULT_ANTHROPIC_MODEL
+#: above for what happens when the two drift.
+OPENAI_COMPATIBLE_DEFAULTS: dict[str, dict[str, str]] = {
+    "mistral": {
+        "base_url": "https://api.mistral.ai/v1",
+        "model": "mistral-large-2407",
+    },
+    "fireworks": {
+        "base_url": "https://api.fireworks.ai/inference/v1",
+        "model": "accounts/fireworks/models/llama-v3p1-70b-instruct",
+    },
+    "deepseek": {
+        "base_url": "https://api.deepseek.com/v1",
+        "model": "deepseek-chat",
+    },
+    "glm": {
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4-plus",
+    },
+}
 
 
 def make_chat_model(
@@ -89,6 +119,16 @@ def make_chat_model(
                 llm_provider = "anthropic"
             elif m_lower.startswith("gpt-") or m_lower.startswith("o1-"):
                 llm_provider = "openai"
+            elif m_lower.startswith("gemini-"):
+                llm_provider = "google"
+            elif m_lower.startswith("mistral-") or m_lower.startswith("open-mistral") or m_lower.startswith("magistral"):
+                llm_provider = "mistral"
+            elif m_lower.startswith("deepseek-"):
+                llm_provider = "deepseek"
+            elif m_lower.startswith("glm-"):
+                llm_provider = "glm"
+            elif m_lower.startswith("accounts/fireworks/"):
+                llm_provider = "fireworks"
 
         if not llm_provider:
             if anthropic_api_key and not llm_api_key:
@@ -130,21 +170,58 @@ def make_chat_model(
             llm_model = DEFAULT_OPENAI_MODEL
             llm_provider = "openai"
 
-    # OpenAI-compatible provider (OpenAI or local LLM servers)
+    if llm_provider == "google":
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+
+            model = llm_model or DEFAULT_GOOGLE_MODEL
+            logger.info("Using Google provider with model: %s", model)
+            # Gemini's native API is not OpenAI-shaped (different auth, a
+            # different request/response format entirely) — routing it
+            # through ChatOpenAI, as every provider below this branch used
+            # to be, sent the caller's Google key to OpenAI's real endpoint
+            # and failed authentication on every single call.
+            return ChatGoogleGenerativeAI(
+                model=model,
+                google_api_key=llm_api_key,
+                temperature=temperature,
+                timeout=timeout,
+                max_output_tokens=max_tokens,
+            )
+        except ImportError:
+            logger.error(
+                "langchain-google-genai is not installed. "
+                "Run: pip install langchain-google-genai  "
+                "Falling back to OpenAI with gpt-4o-mini."
+            )
+            llm_model = DEFAULT_OPENAI_MODEL
+            llm_provider = "openai"
+
+    # OpenAI-compatible providers: OpenAI itself, a named clone (Mistral,
+    # Fireworks, DeepSeek, GLM/Zhipu), a caller's own gateway, or a local
+    # server — `ChatOpenAI` is a plain HTTP client for this one shared shape.
     from langchain_openai import ChatOpenAI
     llm_base_url = ((creds.get("base_url") or "") or os.getenv("LLM_BASE_URL", "")).strip()
     llama_base_url = os.getenv("LLAMA_BASE_URL", "http://127.0.0.1:8080").strip()
+    provider_defaults = OPENAI_COMPATIBLE_DEFAULTS.get(llm_provider)
 
-    # Only redirect to a custom base_url if explicitly overridden or no real key exists.
-    # Never apply the local llama URL when we have a real OpenAI API key.
+    # Resolution order: an explicit base_url always wins (a caller's own
+    # gateway or proxy in front of any of these); otherwise a named clone's
+    # real endpoint; otherwise, only for plain "openai" with no real key,
+    # the local llama-server fallback that predates named-provider support.
     base_url: Optional[str] = None
     if llm_base_url and "api.openai.com" not in llm_base_url:
         base_url = llm_base_url.rstrip("/")
+    elif provider_defaults:
+        base_url = provider_defaults["base_url"]
     elif not llm_api_key:
         base_url = llama_base_url.rstrip("/")
 
-    openai_model = llm_model or DEFAULT_OPENAI_MODEL
-    logger.info(f"Using OpenAI provider with model: {openai_model}")
+    openai_model = llm_model or (provider_defaults["model"] if provider_defaults else None) or DEFAULT_OPENAI_MODEL
+    logger.info(
+        "Using %s provider (OpenAI-compatible) with model: %s",
+        llm_provider or "openai", openai_model,
+    )
 
     return ChatOpenAI(
         model=openai_model,

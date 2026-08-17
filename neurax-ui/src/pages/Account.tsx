@@ -14,6 +14,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { useAuth } from '@/contexts/AuthContext.tsx';
 import { useApiKey, PROVIDER_DEFAULTS, type ApiProvider, type ApiKeyConfig } from '@/contexts/ApiKeyContext.tsx';
+import {
+  OpenAIIcon, AnthropicIcon, GeminiIcon, MistralIcon,
+  FireworksIcon, DeepSeekIcon, GlmIcon, CustomProviderIcon,
+} from '@/components/icons/ProviderIcons.tsx';
 
 import { supabase } from '@/lib/supabaseClient.ts';
 import { useToast } from '@/hooks/use-toast.ts';
@@ -32,12 +36,15 @@ import { Identicon } from '@/components/profile/Identicon.tsx';
 // value is now an avatar id, and legacy emoji values resolve to a stable option.
 const AVATAR_KEY = 'neurax_account_emoji';
 
-const PROVIDERS: { value: ApiProvider; label: string; icon: string }[] = [
-  { value: 'openai', label: 'OpenAI', icon: '🤖' },
-  { value: 'anthropic', label: 'Anthropic', icon: '🧠' },
-  { value: 'google', label: 'Google AI', icon: '🔬' },
-  { value: 'mistral', label: 'Mistral', icon: '🌬️' },
-  { value: 'custom', label: 'Custom (OpenAI-compatible)', icon: '⚙️' },
+const PROVIDERS: { value: ApiProvider; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: 'openai', label: 'OpenAI', icon: OpenAIIcon },
+  { value: 'anthropic', label: 'Anthropic', icon: AnthropicIcon },
+  { value: 'google', label: 'Google AI (Gemini)', icon: GeminiIcon },
+  { value: 'mistral', label: 'Mistral', icon: MistralIcon },
+  { value: 'fireworks', label: 'Fireworks AI', icon: FireworksIcon },
+  { value: 'deepseek', label: 'DeepSeek', icon: DeepSeekIcon },
+  { value: 'glm', label: 'GLM (Zhipu)', icon: GlmIcon },
+  { value: 'custom', label: 'Custom (OpenAI-compatible)', icon: CustomProviderIcon },
 ];
 
 export default function Account() {
@@ -372,7 +379,7 @@ export default function Account() {
                       {PROVIDERS.map((p) => (
                         <SelectItem key={p.value} value={p.value}>
                           <span className="flex items-center gap-2">
-                            <span>{p.icon}</span>
+                            <p.icon className="w-4 h-4 shrink-0" />
                             <span>{p.label}</span>
                           </span>
                         </SelectItem>
@@ -394,6 +401,9 @@ export default function Account() {
                             apiProvider === 'anthropic' ? 'sk-ant-...' :
                             apiProvider === 'google' ? 'AIza...' :
                             apiProvider === 'mistral' ? 'MISTRAL_...' :
+                            apiProvider === 'fireworks' ? 'fw_...' :
+                            apiProvider === 'deepseek' ? 'sk-...' :
+                            apiProvider === 'glm' ? 'GLM key' :
                             'Enter your API key'
                           }
                           value={apiKeyValue}
