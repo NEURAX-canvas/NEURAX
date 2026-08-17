@@ -738,6 +738,10 @@ export interface AnalysisResult {
   // Model stats
   modelName?: string;
   totalParams: number;
+  /** Parameters touched per token — equal to totalParams for a dense model,
+   * smaller for a mixture of experts (a token reaches only its routed
+   * subset). */
+  activeParams: number;
   numLayers: number;
   modelType: string;
   hiddenSize?: number;

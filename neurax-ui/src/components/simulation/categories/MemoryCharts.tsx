@@ -31,6 +31,41 @@ const MEMORY_COLORS = {
   backward: 'hsl(var(--chart-4))',
 };
 
+/**
+ * Bytes per parameter at each precision NEURAX can analyse — the exact
+ * values `neurax-formulas::dtype_bytes` uses, so this matches what a full
+ * analysis at that precision would report, not a separate estimate.
+ *
+ * INT4 is listed at 1 byte/parameter, the same as INT8: the compiler does
+ * not yet model sub-byte packing (two 4-bit values sharing one byte), so
+ * this shows the same conservative, honest number the rest of the app
+ * would if INT4 were selected — not the ~0.5 bytes/parameter true 4-bit
+ * packing would achieve. Real quantized runtimes (llama.cpp, bitsandbytes)
+ * do pack INT4, so treat this row as an upper bound, not GGUF-file-size
+ * parity.
+ */
+const PRECISION_BYTES: Array<{ id: string; label: string; bytes: number }> = [
+  { id: 'fp32', label: 'FP32', bytes: 4 },
+  { id: 'fp16', label: 'FP16', bytes: 2 },
+  { id: 'bf16', label: 'BF16', bytes: 2 },
+  { id: 'int8', label: 'INT8', bytes: 1 },
+  { id: 'int4', label: 'INT4', bytes: 1 },
+];
+
+/** Weight memory at every precision NEURAX supports, for a real parameter
+ * count — pulled out of the component so it's testable without rendering
+ * a chart. */
+export function computePrecisionMemory(
+  totalParams: number,
+): Array<{ id: string; label: string; bytes: number }> {
+  if (totalParams <= 0) return [];
+  return PRECISION_BYTES.map(({ id, label, bytes }) => ({
+    id,
+    label,
+    bytes: totalParams * bytes,
+  }));
+}
+
 export function MemoryCharts({ analysis }: MemoryChartsProps) {
   if (!analysis || analysis.peakVramBytes === 0) {
     return (
@@ -88,6 +123,21 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
     { name: 'Weights', value: analysis.parameterMemoryBytes, color: MEMORY_COLORS.weights },
     { name: 'Temp Buffers', value: Math.max(0, analysis.peakVramBytes - analysis.activationMemoryBytes - analysis.parameterMemoryBytes), color: MEMORY_COLORS.temp },
   ].filter(d => d.value > 0);
+
+  // 4.3b Weight memory at every precision NEURAX supports, from the one
+  // real number that doesn't change with precision: total parameters.
+  // Re-running a full analysis at each precision would also be correct, but
+  // asks the question three more times to answer it three more ways —
+  // parameter count times bytes-per-parameter is the same arithmetic the
+  // compiler itself does for whichever single precision is selected.
+  //
+  // Not marked against "the precision this analysis used": FP16 and BF16
+  // are both 2 bytes/parameter, INT8 and INT4 both 1 (see PRECISION_BYTES),
+  // so which one was actually selected can't be told apart from the
+  // resulting byte count alone — showing a specific row as "active" would
+  // be a guess dressed up as a fact for exactly the pairs a reader would
+  // most want distinguished.
+  const precisionData = computePrecisionMemory(analysis.totalParams);
 
   const supportsHeatmap = heatmapData.length > 0;
 
@@ -232,6 +282,36 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
               ))}
             </div>
           </ChartCard>
+
+          {/* ── 4.3b Weight memory at every precision ── */}
+          {precisionData.length > 0 && (
+            <ChartCard
+              title="Weight Memory by Precision"
+              badge={{ text: 'derived', variant: 'derived' }}
+            >
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={precisionData} layout="vertical" margin={CHART_MARGINS.barHorizontal}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} opacity={0.2} />
+                    <XAxis type="number" tickFormatter={(v) => formatBytes(v)} fontSize={10} />
+                    <YAxis type="category" dataKey="label" width={40} fontSize={11} />
+                    <Tooltip
+                      contentStyle={chartTooltipStyle()}
+                      formatter={(val: number) => formatBytes(val)}
+                    />
+                    <Bar dataKey="bytes" fill={MEMORY_COLORS.weights} radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
+                {analysis.totalParams.toLocaleString('en-US')} parameters × bytes/parameter at
+                each precision — weights only, not activations or KV-cache, which also shrink
+                with precision but depend on the workload, not just the model. INT4 shown at 1
+                byte/parameter: NEURAX does not yet model true 4-bit packing, so treat it as an
+                upper bound, not GGUF-file-size parity.
+              </p>
+            </ChartCard>
+          )}
 
           {/* ── 4.4 Memory Fragmentation & OOM Risk ── */}
           <ChartCard title="Memory Fragmentation & OOM Risk">

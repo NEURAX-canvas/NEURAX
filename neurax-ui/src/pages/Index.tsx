@@ -81,7 +81,7 @@ const initialConnections: Connection[] = [];
 
 const initialAnalysis: AnalysisResult = {
   modelName: undefined,
-  totalParams: 0, numLayers: 0, modelType: '', graphDepth: 0,
+  totalParams: 0, activeParams: 0, numLayers: 0, modelType: '', graphDepth: 0,
   totalOperations: 0, criticalPathLength: 0, tensorResolutionRatio: 1,
   unresolvedDimCount: 0, totalTensorCount: 0, largestTensorBytes: 0,
   opsDistribution: {},
@@ -591,6 +591,11 @@ function parseAnalysisReport(
   const analysis: AnalysisResult = {
     modelName: typeof modelSection.name === 'string' ? modelSection.name : undefined,
     totalParams: struct.total_parameters ?? 0,
+    // Parameters actually touched per token — equal to totalParams for a
+    // dense model, smaller for a mixture of experts. Falls back to
+    // totalParams if the backend didn't send one, which is the correct
+    // value for a dense model anyway.
+    activeParams: struct.active_parameters ?? struct.total_parameters ?? 0,
     numLayers: struct.num_layers ?? 0,
     modelType: struct.model_type ?? '',
     hiddenSize: struct.hidden_size ?? 0,
