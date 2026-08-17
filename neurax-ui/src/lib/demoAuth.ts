@@ -1,6 +1,8 @@
 /**
- * Demo Auth — Local authentication for development mode
- * Only active when VITE_SUPABASE_DISABLED=true
+ * The local profile NEURAX's account is built on — see AuthContext.tsx for
+ * why there's no cloud identity behind it. "Demo" in the naming here is a
+ * holdover from when this was a fallback for an unconfigured cloud project;
+ * it's the one account system now, not a stand-in for a missing one.
  */
 
 import { identiconDataUri } from '@/components/profile/Identicon.tsx';

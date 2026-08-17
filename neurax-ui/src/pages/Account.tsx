@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Check, Key, LogOut, User,
@@ -19,11 +19,7 @@ import {
   FireworksIcon, DeepSeekIcon, GlmIcon, CustomProviderIcon,
 } from '@/components/icons/ProviderIcons.tsx';
 
-import { supabase } from '@/lib/supabaseClient.ts';
 import { useToast } from '@/hooks/use-toast.ts';
-
-
-const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 
 // ─── Notionists Avatar Family ────────────────────────────────────
 import {
@@ -48,7 +44,7 @@ const PROVIDERS: { value: ApiProvider; label: string; icon: React.ComponentType<
 ];
 
 export default function Account() {
-  const { session, isAuthenticated, demoUser, demoSignOut } = useAuth();
+  const { isAuthenticated, user, signOut, updateProfile } = useAuth();
   const { config: apiKeyConfig, isConfigured: hasApiKey, setApiKey, clearApiKey } = useApiKey();
 
   const navigate = useNavigate();
@@ -57,8 +53,11 @@ export default function Account() {
   // ── Navigation tabs ──
   const [activeTab, setActiveTab] = useState('profile');
 
-  // ── Loading states ──
-  const [busy, setBusy] = useState(false);
+  // Every action on this page is a local write — nothing async to be
+  // "busy" doing, so the buttons are never disabled for it. Kept as a named
+  // constant (not deleted from every call site) so a future action that
+  // genuinely does await something has an obvious place to wire into.
+  const busy = false;
 
   // ── Émoji ──
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>(
@@ -80,22 +79,8 @@ export default function Account() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyEditMode, setApiKeyEditMode] = useState(!hasApiKey);
 
-  // ── Password ──
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPasswordForm, setShowPasswordForm] = useState(false);
-
-  const username = useMemo(() => {
-    if (SUPABASE_DISABLED && demoUser) return demoUser.username;
-    const m = (session?.user?.user_metadata ?? {}) as Record<string, unknown>;
-    return (typeof m.username === 'string' ? m.username : null) ?? session?.user?.email?.split('@')[0] ?? 'User';
-  }, [session, demoUser]);
-
-  const email = useMemo(() => {
-    if (SUPABASE_DISABLED && demoUser) return demoUser.email;
-    return session?.user?.email ?? null;
-  }, [session, demoUser]);
+  const username = user?.username ?? 'User';
+  const email = user?.email || null;
 
   // Init edit fields
   useEffect(() => {
@@ -111,36 +96,12 @@ export default function Account() {
     toast({ title: 'Emoji saved', description: 'Your account emoji has been updated.' });
   }, [selectedAvatarId, toast]);
 
-  // ── Profile ──
-  const onSaveProfile = async () => {
-    setBusy(true);
-    try {
-      if (SUPABASE_DISABLED) {
-        toast({ title: 'Profile updated (demo)' });
-        setIsEditing(false);
-        return;
-      }
-      const { error: authErr } = await supabase.auth.updateUser({
-        data: { username: editName.trim() },
-      });
-      if (authErr) throw authErr;
-
-      const userId = session?.user?.id;
-      if (userId) {
-        const { error: profErr } = await supabase
-          .from('user_profiles')
-          .update({ username: editName.trim() })
-          .eq('id', userId);
-        if (profErr) throw profErr;
-      }
-
-      toast({ title: 'Profile saved' });
-      setIsEditing(false);
-    } catch (e: any) {
-      toast({ title: 'Update failed', description: String(e?.message ?? e), variant: 'destructive' });
-    } finally {
-      setBusy(false);
-    }
+  // ── Profile ── a local write, not a network round trip: nothing here can
+  // fail the way a request can, so there's no error branch to report.
+  const onSaveProfile = () => {
+    updateProfile({ username: editName.trim(), email: editEmail.trim() });
+    toast({ title: 'Profile saved' });
+    setIsEditing(false);
   };
 
   // ── API Key ──
@@ -178,25 +139,11 @@ export default function Account() {
     if (p !== 'custom') setApiCustomEndpoint('');
   };
 
-  // ── Sign out ──
-  const onSignOut = async () => {
-    setBusy(true);
-    try {
-      if (SUPABASE_DISABLED) {
-        demoSignOut();
-        toast({ title: 'Signed out' });
-        navigate('/');
-        return;
-      }
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-      toast({ title: 'Signed out' });
-      navigate('/');
-    } catch (e: any) {
-      toast({ title: 'Sign out failed', description: String(e?.message ?? e), variant: 'destructive' });
-    } finally {
-      setBusy(false);
-    }
+  // ── Sign out ── clears the local profile; nothing to await.
+  const onSignOut = () => {
+    signOut();
+    toast({ title: 'Signed out' });
+    navigate('/');
   };
 
   // ── Not authenticated ──
@@ -323,12 +270,10 @@ export default function Account() {
                     <Label htmlFor="edit-name" className="text-xs text-muted-foreground">Username</Label>
                     <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} className="mt-1" />
                   </div>
-                  {!SUPABASE_DISABLED && (
-                    <div>
-                      <Label htmlFor="edit-email" className="text-xs text-muted-foreground">Email</Label>
-                      <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" />
-                    </div>
-                  )}
+                  <div>
+                    <Label htmlFor="edit-email" className="text-xs text-muted-foreground">Email <span className="text-muted-foreground/50">(optional)</span></Label>
+                    <Input id="edit-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} className="mt-1" />
+                  </div>
                   <div className="flex justify-end gap-2 pt-2">
                     <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>
                       <X className="w-3.5 h-3.5 mr-1" /> Cancel
@@ -498,68 +443,8 @@ export default function Account() {
 
           {/* ════════════════════════════════════════ SECURITY ════════════════════════════════════════ */}
           <TabsContent value="security" className="space-y-6">
-            {/* Password */}
-            {!SUPABASE_DISABLED && (
-              <div className="rounded-xl border bg-card p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <Shield className="w-5 h-5 text-primary" />
-                  <h2 className="text-sm font-semibold">Password</h2>
-                </div>
-
-                {showPasswordForm ? (
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Current Password</Label>
-                      <Input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">New Password</Label>
-                      <Input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="mt-1" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Confirm New Password</Label>
-                      <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="mt-1" />
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <Button variant="ghost" size="sm" onClick={() => setShowPasswordForm(false)}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={async () => {
-                        if (newPassword !== confirmPassword) {
-                          toast({ title: 'Passwords do not match', variant: 'destructive' });
-                          return;
-                        }
-                        setBusy(true);
-                        try {
-                          const { error } = await supabase.auth.updateUser({ password: newPassword });
-                          if (error) throw error;
-                          toast({ title: 'Password updated' });
-                          setShowPasswordForm(false);
-                          setCurrentPassword('');
-                          setNewPassword('');
-                          setConfirmPassword('');
-                        } catch (e: any) {
-                          toast({ title: 'Update failed', description: String(e?.message ?? e), variant: 'destructive' });
-                        } finally {
-                          setBusy(false);
-                        }
-                      }} disabled={busy || !newPassword || !currentPassword}>
-                        Update Password
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-3">
-                      Update your account password.
-                    </p>
-                    <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
-                      Change Password
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* There is no password: this account is a local profile, not a
+                credential a server checks. Nothing here to change. */}
 
             {/* Sign Out */}
             <div className="rounded-xl border bg-card p-6">

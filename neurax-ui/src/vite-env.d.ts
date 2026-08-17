@@ -2,8 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_NEURAX_API_URL?: string;
-  readonly VITE_SUPABASE_URL?: string;
-  readonly VITE_SUPABASE_ANON_KEY?: string;
+  readonly VITE_AGENT_BASE_URL?: string;
 }
 
 interface ImportMeta {

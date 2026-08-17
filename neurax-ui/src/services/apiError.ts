@@ -3,11 +3,8 @@
  *
  * Deliberately a module of its own rather than a class inside `neuraxApi.ts`.
  * Anything that wants to recognise a failed request needs only this type, but
- * importing it from the API module pulls in the whole client — and with it the
- * Supabase client, which throws at import time when `VITE_SUPABASE_URL` is
- * absent. That is fine for the application, which always has it configured, and
- * wrong for a unit test of error *wording*, which needs no network layer at all
- * and failed in CI for the lack of a variable it never uses.
+ * importing it from the API module pulls in the whole client. A unit test of
+ * error *wording* needs none of that — no network layer, no configuration.
  *
  * `neuraxApi.ts` re-exports this, so existing imports are unaffected.
  */

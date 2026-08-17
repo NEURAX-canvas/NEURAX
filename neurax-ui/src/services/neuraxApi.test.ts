@@ -8,20 +8,10 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock supabase before importing neuraxApi
-vi.mock('@/lib/supabaseClient', () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: { access_token: 'test-token' } }, error: null }),
-    },
-  },
-}));
-
 // Mock import.meta.env
 vi.stubGlobal('import.meta', {
   env: {
     VITE_NEURAX_API_URL: 'http://127.0.0.1:9098',
-    VITE_SUPABASE_DISABLED: 'true',
   },
 });
 

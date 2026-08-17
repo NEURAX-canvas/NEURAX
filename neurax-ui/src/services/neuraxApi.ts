@@ -7,10 +7,7 @@
 
 // ─── Configuration ────────────────────────────────────────────────
 
-import { supabase } from '@/lib/supabaseClient.ts';
 import { resolveApiBase } from '@/services/desktopRuntime.ts';
-
-const SUPABASE_DISABLED = import.meta.env.VITE_SUPABASE_DISABLED === 'true';
 
 function normalizeLocalApiBase(rawBase: string): string {
   try {
@@ -42,19 +39,14 @@ export function setNeuraxAccessToken(token: string | null) {
   accessToken = token;
 }
 
+// NEURAX's account is a local profile (see AuthContext), not a session
+// issued by an identity server — there's nothing real to forward here.
+// `setNeuraxAccessToken` exists for callers (tests, or a deployment with its
+// own auth in front of neurax-service) that want to override this; nothing
+// in the app itself calls it, so this fixed placeholder is what every
+// request actually sends today.
 async function getAccessToken(): Promise<string | null> {
-  if (accessToken) return accessToken;
-
-  if (SUPABASE_DISABLED) {
-    return 'dev-token';
-  }
-
-  const { data, error } = await supabase.auth.getSession();
-  if (error) return null;
-
-  const token = data.session?.access_token ?? null;
-  accessToken = token;
-  return token;
+  return accessToken ?? 'dev-token';
 }
 
 // ─── Types (from OpenAPI schemas) ─────────────────────────────────
@@ -337,10 +329,9 @@ export interface InferenceSimulateResponse {
 
 // ─── Error class ──────────────────────────────────────────────────
 
-// Defined in its own module so that recognising a failed request does not mean
-// importing this whole client — and with it the Supabase client, which throws
-// at import time when its environment is not configured. Imported for use
-// below and re-exported so existing callers need not change.
+// Defined in its own module so that recognising a failed request does not
+// mean importing this whole client. Imported for use below and re-exported
+// so existing callers need not change.
 import { NeuraxApiError } from '@/services/apiError.ts';
 
 export { NeuraxApiError };
@@ -382,13 +373,10 @@ export async function getHealth(): Promise<HealthResponse> {
 
 /** GET /me — Current user + plan */
 export async function getMe(): Promise<MeResponse> {
-  if (SUPABASE_DISABLED) {
-    return {
-      user_id: 'dev-user',
-      plan: 'elite',
-    };
-  }
-  return request<MeResponse>('/me');
+  return {
+    user_id: 'dev-user',
+    plan: 'elite',
+  };
 }
 
 /** GET /hardware — List all supported hardware with full specs */
