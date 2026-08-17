@@ -479,6 +479,42 @@ describe('HuggingFace config import', () => {
       expect(result.error).toMatch(/layer count/i);
     });
 
+    it('explains an abbreviated multimodal text_config instead of the generic "no hidden size" error', () => {
+      // A real config.json from llava-hf/llava-1.5-7b-hf: its `text_config`
+      // only overrides what differs from lmsys/vicuna-7b-v1.5, relying on
+      // that base checkpoint's own defaults for hidden_size and friends —
+      // fields this importer has no way to resolve from a name string alone.
+      // Falling through to the top level (which has no hidden_size either,
+      // for an entirely unrelated reason) used to give the same unhelpful
+      // "no hidden size in this config" message as a config missing the
+      // field outright.
+      const llava = {
+        architectures: ['LlavaForConditionalGeneration'],
+        model_type: 'llava',
+        text_config: {
+          _name_or_path: 'lmsys/vicuna-7b-v1.5',
+          architectures: ['LlamaForCausalLM'],
+          max_position_embeddings: 4096,
+          model_type: 'llama',
+          rms_norm_eps: 1e-5,
+          vocab_size: 32064,
+        },
+        vision_config: { hidden_size: 1024, model_type: 'clip_vision_model' },
+      };
+      const result = parseHuggingFaceConfig(JSON.stringify(llava));
+      expect(result.error).toMatch(/text_config/);
+      expect(result.error).toMatch(/lmsys\/vicuna-7b-v1\.5/);
+      expect(result.error).not.toMatch(/^no hidden size/i);
+    });
+
+    it('still gives the generic message when a text_config key is absent entirely', () => {
+      // No text_config at all — the ordinary "missing field" error still
+      // applies; only a *present but incomplete* one gets the specific one.
+      const result = parseHuggingFaceConfig(JSON.stringify({ model_type: 'llava' }));
+      expect(result.error).toMatch(/hidden size/i);
+      expect(result.error).not.toMatch(/text_config/);
+    });
+
     it('records the defaults it had to invent', () => {
       const sparse = {
         model_type: 'llama',

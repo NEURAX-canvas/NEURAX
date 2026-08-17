@@ -117,25 +117,50 @@ function bool(config: RawConfig, ...keys: string[]): boolean | undefined {
 }
 
 /**
+ * A `text_config` present but missing the width fields that would let it be
+ * read on its own — real ones on the Hub (LLaVA-1.5, and this pattern is
+ * common across vision-language releases) often only override the fields
+ * that differ from a named base checkpoint, leaving `hidden_size` and
+ * friends to that checkpoint's own defaults. NEURAX has no way to resolve
+ * "whatever lmsys/vicuna-7b-v1.5 defaults to" from the string alone —
+ * guessing a size from a model name would be exactly the kind of invented
+ * number this importer refuses to produce elsewhere.
+ */
+interface IncompleteNestedConfig {
+  key: string;
+  baseModel: string | null;
+}
+
+/**
  * The sub-config that actually describes the language model.
  *
  * Multimodal releases (LLaVA, Gemma 3, Qwen-VL, Idefics) put the text tower
  * under `text_config` and leave the top level holding only wiring. Reading the
  * top level there yields a model with no layers at all.
  */
-function textConfig(config: RawConfig): { config: RawConfig; nested: boolean } {
+function textConfig(
+  config: RawConfig,
+): { config: RawConfig; nested: boolean; incomplete?: IncompleteNestedConfig } {
+  let incomplete: IncompleteNestedConfig | undefined;
   for (const key of ['text_config', 'llm_config', 'language_config']) {
     const nested = config[key];
-    if (
-      nested &&
-      typeof nested === 'object' &&
-      !Array.isArray(nested) &&
-      num(nested as RawConfig, 'hidden_size', 'n_embd', 'd_model') !== undefined
-    ) {
-      return { config: nested as RawConfig, nested: true };
+    if (!nested || typeof nested !== 'object' || Array.isArray(nested)) continue;
+    const nestedConfig = nested as RawConfig;
+    if (num(nestedConfig, 'hidden_size', 'n_embd', 'd_model') !== undefined) {
+      return { config: nestedConfig, nested: true };
+    }
+    // A real nested config, just one this importer cannot resolve on its
+    // own — remember it so the caller can explain why, rather than fail
+    // with the same generic "no hidden size" error the top level would give
+    // for an entirely unrelated reason.
+    if (!incomplete) {
+      incomplete = {
+        key,
+        baseModel: str(nestedConfig, '_name_or_path', 'name_or_path') ?? null,
+      };
     }
   }
-  return { config, nested: false };
+  return { config, nested: false, incomplete };
 }
 
 /** Whether this JSON is a HuggingFace config rather than a NEURAX design. */
@@ -646,10 +671,21 @@ export function parseHuggingFaceConfig(
   }
 
   const top = parsed as RawConfig;
-  const { config, nested } = textConfig(top);
+  const { config, nested, incomplete } = textConfig(top);
 
   const read = readShape(config, fallbackName);
   if ('error' in read) {
+    if (incomplete) {
+      const base = incomplete.baseModel;
+      return {
+        ...empty,
+        modelName: fallbackName,
+        error:
+          `This is a multimodal model whose "${incomplete.key}" only overrides some fields` +
+          (base ? ` — the rest come from ${base}'s own defaults, which NEURAX has no way to look up.` : ', relying on defaults from a base checkpoint NEURAX has no way to look up.') +
+          ` Import that base model's own config.json directly (${base ? `search the Hub for "${base}"` : 'find it under "architectures" or "_name_or_path" in this file'}), or fill in hidden_size, num_hidden_layers, num_attention_heads and intermediate_size under "${incomplete.key}" yourself.`,
+      };
+    }
     return { ...empty, modelName: fallbackName, error: read.error };
   }
 
