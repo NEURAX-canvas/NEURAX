@@ -74,6 +74,11 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
             } else {
                 0
             },
+            active_parameters: if groups.structure {
+                input.arch.metrics.active_parameters
+            } else {
+                0
+            },
             num_layers: if groups.structure {
                 input.arch.metrics.num_layers
             } else {

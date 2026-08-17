@@ -226,7 +226,7 @@ function countParams(nodes: CanvasNode[]): number {
       p(experts, 'num_experts') *
       gatedExperts *
       p(experts, 'hidden_size') *
-      p(experts, 'expert_intermediate_size');
+      p(experts, 'intermediate_size');
   }
 
   const router = node(nodes, 'noisy_topk_router');
@@ -347,8 +347,14 @@ describe('HuggingFace config import', () => {
       const experts = node(nodes, 'moe_layer');
       expect(experts!.params.num_experts).toBe(8);
       // Mixtral states no `moe_intermediate_size`; the experts are the width of
-      // the ordinary `intermediate_size`.
-      expect(experts!.params.expert_intermediate_size).toBe(14336);
+      // the ordinary `intermediate_size`. The compiler reads `intermediate_size`
+      // on every FFN-shaped block, not an expert-specific alias — see the note
+      // on this key in huggingfaceImporter.ts.
+      expect(experts!.params.intermediate_size).toBe(14336);
+      // The compiler's active-parameters metric reads `top_k` off this node in
+      // isolation, with no view of the router beside it — duplicated here for
+      // the same reason `intermediate_size` is.
+      expect(experts!.params.top_k).toBe(2);
       expect(node(nodes, 'ffn_gated'), 'a routed model has no dense FFN').toBeUndefined();
     });
 
@@ -372,7 +378,8 @@ describe('HuggingFace config import', () => {
       };
       const { nodes } = parseHuggingFaceConfig(JSON.stringify(deepseek));
       expect(p(node(nodes, 'moe_layer'), 'num_experts')).toBe(64);
-      expect(p(node(nodes, 'moe_layer'), 'expert_intermediate_size')).toBe(1408);
+      expect(p(node(nodes, 'moe_layer'), 'intermediate_size')).toBe(1408);
+      expect(p(node(nodes, 'moe_layer'), 'top_k')).toBe(6);
       expect(p(node(nodes, 'shared_expert'), 'num_experts')).toBe(2);
       expect(p(node(nodes, 'noisy_topk_router'), 'top_k')).toBe(6);
     });

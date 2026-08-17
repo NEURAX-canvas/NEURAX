@@ -71,6 +71,11 @@ impl From<&Layer> for LayerDef {
 pub struct ArchitectureMetrics {
     /// Métrique 1: Nombre total de paramètres
     pub total_parameters: u64,
+    /// Parameters actually touched per token — equal to `total_parameters`
+    /// for a dense model, smaller for a mixture-of-experts model where a
+    /// token only reaches its routed subset of experts. See
+    /// `scaled_active_parameters`.
+    pub active_parameters: u64,
     /// Métrique 2: Nombre de layers
     pub num_layers: usize,
     /// Métrique 2 (type): Type de modèle

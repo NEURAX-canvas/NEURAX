@@ -83,6 +83,10 @@ impl Default for ReportMetadata {
 pub struct AllMetrics {
     // === Structure Metrics (1-5) ===
     pub total_parameters: u64,
+    /// Parameters actually touched per token — equal to `total_parameters`
+    /// for a dense model; smaller for a mixture-of-experts model, where a
+    /// token only reaches the subset of experts it was routed to.
+    pub active_parameters: u64,
     pub num_layers: usize,
     pub model_type: String,
     pub hidden_size: usize,

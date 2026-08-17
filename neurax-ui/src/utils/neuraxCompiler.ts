@@ -1218,11 +1218,41 @@ function toParserLayerType(blockType: string): string {
     return 'pooling';
   }
 
+  // A block diagram's MoE layer is one router node, one experts node, one
+  // combine node, and (for a DeepSeek-style model) one shared-expert node —
+  // four separate nodes standing in for one conceptual layer, so the diagram
+  // reads left to right instead of as a single opaque box. All four used to
+  // collapse to the same generic `moe` parser type, which the Rust side reads
+  // as "this node alone is a complete MoE layer": the router's `hidden ×
+  // num_experts` gating matrix got costed as `num_experts` full experts, and
+  // a real model's params/FLOPs came out wrong by 20-180%, confirmed against
+  // Mixtral-8x7B and DeepSeek-MoE-16B's published sizes. Splitting the three
+  // roles that have a concrete, tested real-world shape (the router, the
+  // combine step, and a DeepSeek-style shared expert) onto their own parser
+  // types fixes both the misattributed cost and — because
+  // `repeat_scale_for` counts occurrences per type — the depth multiplier
+  // that was being diluted across however many same-typed nodes one logical
+  // layer happened to use.
+  //
+  // The remaining, more exotic MoE block variants below (expert-choice
+  // routing, product-key routers, soft-MoE, ...) have no reference template
+  // or import path exercising them yet, so there is no real config to
+  // measure them against — left mapped to the generic `moe` type rather than
+  // guessed into a bucket that can't be verified.
+  if (normalized === 'noisy_topk_router') {
+    return 'moe_router';
+  }
+  if (normalized === 'expert_combine') {
+    return 'moe_combine';
+  }
+  if (normalized === 'shared_expert') {
+    return 'moe_shared_expert';
+  }
+
   if (
     normalized === 'moe_block' ||
     normalized === 'router_linear' ||
     normalized === 'router_softmax' ||
-    normalized === 'noisy_topk_router' ||
     normalized === 'expert_choice_router' ||
     normalized === 'non_trainable_router' ||
     normalized === 'product_key_router' ||
@@ -1234,11 +1264,9 @@ function toParserLayerType(blockType: string): string {
     normalized === 'expert_scalar' ||
     normalized === 'expert_memory' ||
     normalized === 'expert_dispatch' ||
-    normalized === 'expert_combine' ||
     normalized === 'output_combination' ||
     normalized === 'concat_projection' ||
     normalized === 'attention_pooling' ||
-    normalized === 'shared_expert' ||
     normalized === 'moe_layer' ||
     normalized === 'moa_block' ||
     normalized === 'fine_grained_moe' ||

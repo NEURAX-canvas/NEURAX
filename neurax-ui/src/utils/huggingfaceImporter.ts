@@ -497,7 +497,19 @@ function buildGraph(
     });
     const experts = add('moe_layer', `${shape.moe.numExperts}× Experts`, 1050, FFN, {
       num_experts: shape.moe.numExperts,
-      expert_intermediate_size: shape.moe.expertIntermediateSize,
+      // Duplicated from the router node above: the compiler's active-params
+      // metric (how many parameters a token actually touches, not how many
+      // the model owns) reads `top_k` off this node specifically, since it
+      // computes each node's contribution in isolation with no view of the
+      // router beside it. Left absent, it silently fell back to a default
+      // of 2 — correct for Mixtral only because Mixtral's real top-k
+      // happens to also be 2; DeepSeek's real 6 was invisible to it.
+      top_k: shape.moe.topK,
+      // The compiler reads `intermediate_size` on every FFN-shaped block —
+      // an expert-specific alias here read as absent and silently fell back
+      // to 4× hidden size, which is close enough to Mixtral's real ratio to
+      // hide the bug and wildly wrong for DeepSeek's much narrower experts.
+      intermediate_size: shape.moe.expertIntermediateSize,
       hidden_size: width,
       activation: traits.ffn === 'ffn_gated' ? 'swiglu' : shape.activation,
     });

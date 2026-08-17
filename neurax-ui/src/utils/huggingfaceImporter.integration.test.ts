@@ -125,16 +125,10 @@ const MODELS = [
       activation_function: 'gelu_new',
     },
   },
-];
-
-/**
- * Mixtral, kept out of the list above on purpose. See the characterisation test
- * at the bottom of this file for why.
- */
-const MIXTRAL = {
-  name: 'Mixtral 8x7B',
-  published: 46.7e9,
-  config: {
+  {
+    name: 'Mixtral 8x7B',
+    published: 46.7e9,
+    config: {
       architectures: ['MixtralForCausalLM'],
       model_type: 'mixtral',
       hidden_size: 4096,
@@ -150,8 +144,37 @@ const MIXTRAL = {
       rope_theta: 1000000.0,
       hidden_act: 'silu',
       tie_word_embeddings: false,
+    },
   },
-};
+  {
+    // DeepSeek's own paper cites ~16.4B total, ~2.8B active — this list only
+    // checks `total_parameters`; active-parameter accuracy is checked
+    // separately below.
+    name: 'DeepSeek-MoE-16B',
+    published: 16.4e9,
+    config: {
+      architectures: ['DeepseekForCausalLM'],
+      model_type: 'deepseek',
+      hidden_size: 2048,
+      intermediate_size: 10944,
+      moe_intermediate_size: 1408,
+      num_hidden_layers: 28,
+      num_attention_heads: 16,
+      num_key_value_heads: 16,
+      n_routed_experts: 64,
+      n_shared_experts: 2,
+      num_experts_per_tok: 6,
+      max_position_embeddings: 4096,
+      vocab_size: 102400,
+      rms_norm_eps: 1e-6,
+      rope_theta: 10000,
+      hidden_act: 'silu',
+      tie_word_embeddings: false,
+    },
+  },
+];
+
+const MIXTRAL = MODELS.find((m) => m.name === 'Mixtral 8x7B')!;
 
 /**
  * Mirror what the page does between import and analysis.
@@ -260,44 +283,66 @@ describe.skipIf(!process.env.NEURAX_API && false)('the compiler understands an i
 });
 
 /**
- * A known gap, recorded rather than hidden.
+ * The gap this test file used to record rather than hide.
  *
- * A routed model imported from its config comes out about 22 % below its
- * published size — Mixtral 8x7B analyses to roughly 36 B against a published
- * 46.7 B. This is **not** an importer defect, and the evidence is that the
- * built-in `tpl-mixtral-8x7b` template, hydrated and compiled through exactly
- * the same path, returns the identical figure. Both send the compiler the same
- * graph; the shortfall is in how the mixture-of-experts blocks are accounted
- * for once they reach it.
+ * A routed model imported from its config used to come out wrong by 20-180%
+ * — Mixtral 8x7B analysed to roughly 36B against a published 46.7B;
+ * DeepSeek-MoE-16B to roughly 46B against a published 16.4B. The cause: a
+ * block diagram draws an MoE layer as separate router / experts / combine
+ * nodes, and the compiler read every one of them as if it alone were a
+ * complete MoE layer — the router's `hidden × num_experts` gating matrix
+ * costed as `num_experts` full experts, and the per-layer repeat count
+ * diluted across however many same-typed nodes one logical layer used.
  *
- * The cause is visible in the emitted IR: `noisy_topk_router` and
- * `expert_combine` each lower to a *full* `moe` layer, the second with no
- * parameters at all, so it falls back to the schema defaults of 64 experts at
- * width 768. The expert widths that result do not add up to the model's.
- *
- * Fixing that is a change to the compiler's MoE accounting, not to this
- * importer, so it is out of scope here. What is in scope is not pretending the
- * number is right. This test pins the current behaviour: when the compiler is
- * fixed it will fail, which is the point — it forces the tolerance to be
- * tightened rather than letting a silent improvement go unnoticed, and stops
- * anyone reading the suite above and concluding routed models are verified.
+ * Fixed by giving the router, the combine step, and a DeepSeek-style shared
+ * expert their own parser types (`moe_router` / `moe_combine` /
+ * `moe_shared_expert`) with their own real, much smaller formulas — see
+ * `neurax-ir/src/architecture/mod.rs`. Both models are back in the verified
+ * list above; this file now also checks the metric that gap-fix made
+ * possible to compute honestly: how many of those parameters a token
+ * actually touches.
  */
-describe('known gap: routed models under-count', () => {
-  it('Mixtral 8x7B is short of its published size by a documented margin', async () => {
+describe('mixture-of-experts: active parameters, not just total', () => {
+  it('Mixtral 8x7B: active parameters are a small, correct fraction of the total', async () => {
     if (!serviceUp) return;
 
     const report = await analyseThroughService(JSON.stringify(MIXTRAL.config), MIXTRAL.name);
-    const counted = (report.metrics as Record<string, unknown>).total_parameters as number;
-    const shortfall = (MIXTRAL.published - counted) / MIXTRAL.published;
+    const metrics = report.metrics as Record<string, unknown>;
+    const total = metrics.total_parameters as number;
+    const active = metrics.active_parameters as number;
 
+    // Published: ~12.9B active out of ~46.7B total — a token reaches 2 of 8
+    // experts, not all of them.
+    const published = 12.9e9;
+    const error = Math.abs(active - published) / published;
     expect(
-      shortfall,
-      `Mixtral now analyses to ${(counted / 1e9).toFixed(2)} B — if the MoE accounting has ` +
-        'been fixed, move this model back into the verified list above and delete this test.',
-    ).toBeGreaterThan(0.1);
+      error,
+      `Mixtral active params: compiler says ${(active / 1e9).toFixed(2)}B, published ~${(published / 1e9).toFixed(1)}B`,
+    ).toBeLessThan(0.1);
 
-    // Still the right order of magnitude: this is an accounting gap, not the
-    // compiler failing to see the experts at all.
-    expect(counted).toBeGreaterThan(30e9);
+    // The metric's entire reason to exist: active must be well below total,
+    // not a rounding difference of it.
+    expect(active).toBeLessThan(total * 0.5);
+  }, 30000);
+
+  it("DeepSeek-MoE-16B: active parameters include its always-on shared experts", async () => {
+    if (!serviceUp) return;
+
+    const deepseek = MODELS.find((m) => m.name === 'DeepSeek-MoE-16B')!;
+    const report = await analyseThroughService(JSON.stringify(deepseek.config), deepseek.name);
+    const metrics = report.metrics as Record<string, unknown>;
+    const total = metrics.total_parameters as number;
+    const active = metrics.active_parameters as number;
+
+    // Published: ~2.8B active — 6 of 64 routed experts, plus 2 shared
+    // experts that run on every token regardless of routing.
+    const published = 2.8e9;
+    const error = Math.abs(active - published) / published;
+    expect(
+      error,
+      `DeepSeek active params: compiler says ${(active / 1e9).toFixed(2)}B, published ~${(published / 1e9).toFixed(1)}B`,
+    ).toBeLessThan(0.15);
+
+    expect(active).toBeLessThan(total * 0.5);
   }, 30000);
 });
