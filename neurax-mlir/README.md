@@ -18,7 +18,7 @@ Part of [NEURAX](https://github.com/rustnew/NEURAX), the analytical compiler for
 
 ```toml
 [dependencies]
-neurax-mlir = "0.1"
+neurax-mlir = { git = "https://github.com/rustnew/NEURAX", package = "neurax-mlir" }
 ```
 
 ## Quick start
@@ -91,9 +91,9 @@ let compiled = compiler.compile(&mlir_module, target)?;
 
 | Crate | Role |
 |-------|------|
-| [`neurax-parser`](https://crates.io/crates/neurax-parser) | JSON → validated `ModelConfig` |
-| [`neurax-ir`](https://crates.io/crates/neurax-ir) | The 10-pass analytical IR |
-| [`neurax-core`](https://crates.io/crates/neurax-core) | Unified analysis engine |
+| [`neurax-parser`](../neurax-parser) | JSON → validated `ModelConfig` |
+| [`neurax-ir`](../neurax-ir) | The 10-pass analytical IR |
+| [`neurax-core`](../neurax-core) | Unified analysis engine |
 | **neurax-mlir** | **MLIR lowering (this crate)** |
 
 ## License

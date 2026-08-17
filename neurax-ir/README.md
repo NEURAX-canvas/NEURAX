@@ -39,7 +39,7 @@ flowchart LR
 
 ```toml
 [dependencies]
-neurax-ir = "0.1"
+neurax-ir = { git = "https://github.com/rustnew/NEURAX", package = "neurax-ir" }
 ```
 
 ## Quick start
@@ -92,7 +92,7 @@ Passes emit structured diagnostics (`Diagnostic` with `Severity`, `DiagnosticCod
 
 ## Using it in the pipeline
 
-For end-to-end analysis use [`neurax-core`](https://crates.io/crates/neurax-core), which orchestrates all 10 passes (with parallelism via rayon) and produces the final report:
+For end-to-end analysis use [`neurax-core`](../neurax-core), which orchestrates all 10 passes (with parallelism via rayon) and produces the final report:
 
 ```rust
 use neurax_core::analyze_json;

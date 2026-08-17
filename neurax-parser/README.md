@@ -16,7 +16,7 @@ Part of [NEURAX](https://github.com/rustnew/NEURAX), the analytical compiler for
 
 ```toml
 [dependencies]
-neurax-parser = "0.1"
+neurax-parser = { git = "https://github.com/rustnew/NEURAX", package = "neurax-parser" }
 ```
 
 ## Quick start
@@ -93,7 +93,7 @@ println!("dtype bytes: {}", grc.dtype_bytes);
 ```
 
 - **11 architecture families** supported: transformer, moe, cnn, ssm, diffusion, gnn, gan, rl, snn, rnn, experimental
-- **680+ configurable blocks** via `layer_type` + `params`
+- **208 configurable blocks** via `layer_type` + `params`
 - **88 reference templates** in the [NEURAX repo](https://github.com/rustnew/NEURAX/tree/main/examples/models) (GPT-4, LLaMA-2, Mixtral, DeepSeek-V3, SDXL...)
 
 ## API overview
@@ -108,7 +108,7 @@ println!("dtype bytes: {}", grc.dtype_bytes);
 
 ## Using it in the pipeline
 
-`neurax-parser` is the front-end of the [NEURAX ecosystem](https://github.com/rustnew/NEURAX). For end-to-end analysis use [`neurax-core`](https://crates.io/crates/neurax-core):
+`neurax-parser` is the front-end of the [NEURAX ecosystem](https://github.com/rustnew/NEURAX). For end-to-end analysis use [`neurax-core`](../neurax-core):
 
 ```rust
 use neurax_core::analyze_json;

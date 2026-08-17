@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- Provider support for Google (Gemini), Mistral, Fireworks AI, DeepSeek, and
+  GLM (Zhipu) in the AI agent, alongside the existing OpenAI and Anthropic —
+  real brand icons in the provider picker instead of emoji.
+- `active_parameters` metric: for Mixture-of-Experts models, the parameters
+  actually touched per token (routed subset + shared experts + dense layers),
+  separate from the total parameter count.
+- A multi-precision weight-memory comparison chart (FP32/FP16/BF16/INT8/INT4)
+  using the compiler's own byte-per-parameter figures.
+- Import a model directly from the HuggingFace Hub by ID or URL — fetches
+  `config.json` straight from `huggingface.co`, no copy-paste round trip.
+- Model `first_k_dense_replace` (DeepSeek-style MoE: dense layers before the
+  routed ones) parsed and compiled as its own block, at the model's real
+  dense width.
+
+### Fixed
+- Mixture-of-Experts models were mis-costed on two independent bugs: a
+  router/expert-combine decomposition that costed the router as if it held
+  full expert weights, and a depth-scaling pass that diluted per-layer
+  costs when a canvas MoE block is drawn as several nodes (router, experts,
+  combine, shared-expert) representing one logical layer. Mixtral 8x7B and
+  DeepSeek-MoE-16B now match their published sizes within about 1%, verified
+  against a live compiler and cross-checked with an independent reference
+  implementation, not just the code under test.
+- A separate MoE FLOPs bug: every argument after `hidden_size` was shifted
+  one position from the real function signature, computing a value that
+  was off by 4–9 orders of magnitude while still compiling cleanly, because
+  every argument happened to share the same Rust type.
+- Destructive canvas keyboard shortcuts (Delete, Ctrl+A, Ctrl+G, Ctrl+D)
+  no longer fire while typing in a text field.
+- HuggingFace configs with an abbreviated multimodal `text_config` (a bare
+  `{"model_type": "llama"}` with no width) now get a specific, actionable
+  error instead of a generic "no hidden size found".
+
+## [0.7.4] — 2026‑08
+Restore the Production, Inference, and Time Machine workspaces to their
+working state after the simulation-workspace rebuild.
+
+## [0.7.3] — 2026‑08
+Desktop: undo/redo, `.neurax` project documents, HuggingFace import, A/B
+architecture comparison, and an in-app guide.
+
+## [0.7.2] — 2026‑08
+Fix the architecture family name rendering as a raw code fragment in the UI.
+
+## [0.7.1] — 2026‑08
+- Remove the standalone `neurax-cli` crate — `neurax` is the desktop
+  application; there is no separate CLI binary.
+- Installer: a banner and a line stating what NEURAX is for.
+- Hyperparameter panel: a visible scrollbar, and remove the OSS plan badge.
+
+## [0.7.0] — 2026‑07
+The desktop application, and a pass through the whole product correcting
+numbers that didn't hold up:
+- NEURAX as an installable desktop app (Tauri): one-command install,
+  project persistence, CORS and window-control fixes, parity tests against
+  the web build.
+- Reference models corrected to match their published parameter counts;
+  the compile summary no longer reports two contradicting numbers; the
+  README no longer advertises figures the repository doesn't hold.
+- Bring-your-own-key path for the AI agent, with current Claude models and
+  a way to point it at a gateway.
+- Landing page rewritten from scratch; several UI defects fixed by walking
+  every workspace tab by hand.
+- Simulate the model that is actually on the canvas, not an assumed one.
+
 ## [0.6.3] — 2026‑08
 
 ### Changed

@@ -19,8 +19,7 @@ cost, memory, and performance of AI models **before training**, at design time.
 
 ## Code of Conduct
 
-Please read and follow our [Code of Conduct](CODE_OF_CONDUCT.md) in all
-interactions.
+Be respectful and assume good faith. Disagree about code, not about people.
 
 ## Project Layout
 
@@ -33,12 +32,13 @@ NEURAX is a Cargo workspace plus a React web UI and a Python agent:
 | `neurax-ir` | Intermediate representation types |
 | `neurax-formulas` | Analytical cost/memory/performance formulas |
 | `neurax-hardware-db` | Hardware database (GPUs, CPUs, interconnects) |
-| `neurax-mlir` | MLIR / LLVM 18 compiler backend (13 dialects) |
+| `neurax-mlir` | MLIR / LLVM 18 compiler backend (14 dialects) |
 | `neurax-service` | Streaming SSE analysis API |
 | `neurax-mcp` | MCP (Model Context Protocol) integration |
 | `neurax-tui` | Terminal UI (ratatui) |
 | `neurax-ui` | React 18 + TypeScript visual design canvas |
-| `neurax-agent` | Python agent for architecture planning |
+| `neurax-agent` | Python agent for architecture planning (LangChain) |
+| `neurax-desktop` | Tauri desktop application — the studio, offline |
 
 ## Prerequisites
 
@@ -117,5 +117,7 @@ Example: `feat(neurax): add Multimodal (VLM) support + build tooling`
 
 ## Publishing
 
-Releases are versioned with SemVer and tagged `vX.Y.Z`. See
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full release and deployment process.
+Releases are versioned with SemVer and tagged `vX.Y.Z`. See the
+[Deployment Guide](https://rustnew.github.io/NEURAX/DEPLOYMENT.html) (or
+[`book/src/DEPLOYMENT.md`](book/src/DEPLOYMENT.md) in a checkout) for the
+full release and deployment process.
