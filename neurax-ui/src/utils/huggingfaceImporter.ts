@@ -59,6 +59,10 @@ interface ModelShape {
     topK: number;
     expertIntermediateSize: number;
     sharedExperts: number;
+    /** DeepSeek-style: the model's first N layers are plain dense
+     * feed-forward, not routed — `first_k_dense_replace` in the config. 0
+     * for a model that routes from the first layer, like Mixtral. */
+    firstKDenseReplace: number;
   } | null;
 
   /** Encoder models get a classification head, decoders an LM head. */
@@ -117,25 +121,50 @@ function bool(config: RawConfig, ...keys: string[]): boolean | undefined {
 }
 
 /**
+ * A `text_config` present but missing the width fields that would let it be
+ * read on its own — real ones on the Hub (LLaVA-1.5, and this pattern is
+ * common across vision-language releases) often only override the fields
+ * that differ from a named base checkpoint, leaving `hidden_size` and
+ * friends to that checkpoint's own defaults. NEURAX has no way to resolve
+ * "whatever lmsys/vicuna-7b-v1.5 defaults to" from the string alone —
+ * guessing a size from a model name would be exactly the kind of invented
+ * number this importer refuses to produce elsewhere.
+ */
+interface IncompleteNestedConfig {
+  key: string;
+  baseModel: string | null;
+}
+
+/**
  * The sub-config that actually describes the language model.
  *
  * Multimodal releases (LLaVA, Gemma 3, Qwen-VL, Idefics) put the text tower
  * under `text_config` and leave the top level holding only wiring. Reading the
  * top level there yields a model with no layers at all.
  */
-function textConfig(config: RawConfig): { config: RawConfig; nested: boolean } {
+function textConfig(
+  config: RawConfig,
+): { config: RawConfig; nested: boolean; incomplete?: IncompleteNestedConfig } {
+  let incomplete: IncompleteNestedConfig | undefined;
   for (const key of ['text_config', 'llm_config', 'language_config']) {
     const nested = config[key];
-    if (
-      nested &&
-      typeof nested === 'object' &&
-      !Array.isArray(nested) &&
-      num(nested as RawConfig, 'hidden_size', 'n_embd', 'd_model') !== undefined
-    ) {
-      return { config: nested as RawConfig, nested: true };
+    if (!nested || typeof nested !== 'object' || Array.isArray(nested)) continue;
+    const nestedConfig = nested as RawConfig;
+    if (num(nestedConfig, 'hidden_size', 'n_embd', 'd_model') !== undefined) {
+      return { config: nestedConfig, nested: true };
+    }
+    // A real nested config, just one this importer cannot resolve on its
+    // own — remember it so the caller can explain why, rather than fail
+    // with the same generic "no hidden size" error the top level would give
+    // for an entirely unrelated reason.
+    if (!incomplete) {
+      incomplete = {
+        key,
+        baseModel: str(nestedConfig, '_name_or_path', 'name_or_path') ?? null,
+      };
     }
   }
-  return { config, nested: false };
+  return { config, nested: false, incomplete };
 }
 
 /** Whether this JSON is a HuggingFace config rather than a NEURAX design. */
@@ -297,6 +326,7 @@ function readShape(
             num(config, 'intermediate_size') ??
             hiddenSize * 4,
           sharedExperts: num(config, 'n_shared_experts', 'num_shared_experts') ?? 0,
+          firstKDenseReplace: num(config, 'first_k_dense_replace') ?? 0,
         }
       : null;
 
@@ -488,7 +518,11 @@ function buildGraph(
     eps: shape.normEps,
   });
 
-  let ffnTail: string;
+  // Usually one tail feeding the residual join — two only for a
+  // DeepSeek-style model, where the routed path and the dense-replacement
+  // path are two different representative blocks, never both active on the
+  // same layer, that still both need to reach the same join point.
+  const ffnTails: string[] = [];
   if (shape.moe) {
     const router = add('noisy_topk_router', `Top-${shape.moe.topK} Router`, 850, FFN, {
       num_experts: shape.moe.numExperts,
@@ -497,7 +531,19 @@ function buildGraph(
     });
     const experts = add('moe_layer', `${shape.moe.numExperts}× Experts`, 1050, FFN, {
       num_experts: shape.moe.numExperts,
-      expert_intermediate_size: shape.moe.expertIntermediateSize,
+      // Duplicated from the router node above: the compiler's active-params
+      // metric (how many parameters a token actually touches, not how many
+      // the model owns) reads `top_k` off this node specifically, since it
+      // computes each node's contribution in isolation with no view of the
+      // router beside it. Left absent, it silently fell back to a default
+      // of 2 — correct for Mixtral only because Mixtral's real top-k
+      // happens to also be 2; DeepSeek's real 6 was invisible to it.
+      top_k: shape.moe.topK,
+      // The compiler reads `intermediate_size` on every FFN-shaped block —
+      // an expert-specific alias here read as absent and silently fell back
+      // to 4× hidden size, which is close enough to Mixtral's real ratio to
+      // hide the bug and wildly wrong for DeepSeek's much narrower experts.
+      intermediate_size: shape.moe.expertIntermediateSize,
       hidden_size: width,
       activation: traits.ffn === 'ffn_gated' ? 'swiglu' : shape.activation,
     });
@@ -505,7 +551,7 @@ function buildGraph(
     link(preFfnNorm, router);
     link(router, experts);
     link(experts, combine);
-    ffnTail = combine;
+    ffnTails.push(combine);
 
     if (shape.moe.sharedExperts > 0) {
       // DeepSeek-style always-on experts run beside the routed ones and add
@@ -524,8 +570,30 @@ function buildGraph(
       link(preFfnNorm, shared);
       link(shared, combine);
     }
+
+    if (shape.moe.firstKDenseReplace > 0) {
+      // DeepSeek-style: the first `firstKDenseReplace` layers use a plain
+      // feed-forward, not routing at all — no router, no experts, no
+      // combine step for those layers. A separate representative node for
+      // this real (not routed) FFN, at the model's real dense width, lets
+      // the compiler scale it against exactly that many layers instead of
+      // silently treating every layer as routed from the first one.
+      const denseFfn = add(
+        traits.ffn,
+        `Dense FFN (first ${shape.moe.firstKDenseReplace} layer${shape.moe.firstKDenseReplace === 1 ? '' : 's'})`,
+        1050,
+        FFN - 80,
+        {
+          hidden_size: width,
+          intermediate_size: shape.intermediateSize,
+          activation: shape.activation,
+        },
+      );
+      link(preFfnNorm, denseFfn);
+      ffnTails.push(denseFfn);
+    }
   } else {
-    ffnTail = add(
+    const ffnTail = add(
       traits.ffn,
       traits.ffn === 'ffn_gated' ? 'Gated FFN (SwiGLU)' : 'FFN (2× Linear)',
       850,
@@ -537,10 +605,13 @@ function buildGraph(
       },
     );
     link(preFfnNorm, ffnTail);
+    ffnTails.push(ffnTail);
   }
 
   const ffnResidual = add('residual_add', 'Residual Add', 1450, FFN, {});
-  link(ffnTail, ffnResidual);
+  for (const tail of ffnTails) {
+    link(tail, ffnResidual);
+  }
   link(ffnResidual, stack);
 
   // ── Trunk again: final norm → head → output ──
@@ -599,6 +670,9 @@ function buildHardwareConfig(shape: ModelShape): Partial<HardwareConfig> {
   if (shape.moe) {
     config.numExperts = shape.moe.numExperts;
     config.topK = shape.moe.topK;
+    if (shape.moe.firstKDenseReplace > 0) {
+      config.numDenseLayers = shape.moe.firstKDenseReplace;
+    }
   }
 
   return config;
@@ -634,10 +708,21 @@ export function parseHuggingFaceConfig(
   }
 
   const top = parsed as RawConfig;
-  const { config, nested } = textConfig(top);
+  const { config, nested, incomplete } = textConfig(top);
 
   const read = readShape(config, fallbackName);
   if ('error' in read) {
+    if (incomplete) {
+      const base = incomplete.baseModel;
+      return {
+        ...empty,
+        modelName: fallbackName,
+        error:
+          `This is a multimodal model whose "${incomplete.key}" only overrides some fields` +
+          (base ? ` — the rest come from ${base}'s own defaults, which NEURAX has no way to look up.` : ', relying on defaults from a base checkpoint NEURAX has no way to look up.') +
+          ` Import that base model's own config.json directly (${base ? `search the Hub for "${base}"` : 'find it under "architectures" or "_name_or_path" in this file'}), or fill in hidden_size, num_hidden_layers, num_attention_heads and intermediate_size under "${incomplete.key}" yourself.`,
+      };
+    }
     return { ...empty, modelName: fallbackName, error: read.error };
   }
 

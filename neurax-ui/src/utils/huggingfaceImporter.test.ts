@@ -226,7 +226,7 @@ function countParams(nodes: CanvasNode[]): number {
       p(experts, 'num_experts') *
       gatedExperts *
       p(experts, 'hidden_size') *
-      p(experts, 'expert_intermediate_size');
+      p(experts, 'intermediate_size');
   }
 
   const router = node(nodes, 'noisy_topk_router');
@@ -347,8 +347,14 @@ describe('HuggingFace config import', () => {
       const experts = node(nodes, 'moe_layer');
       expect(experts!.params.num_experts).toBe(8);
       // Mixtral states no `moe_intermediate_size`; the experts are the width of
-      // the ordinary `intermediate_size`.
-      expect(experts!.params.expert_intermediate_size).toBe(14336);
+      // the ordinary `intermediate_size`. The compiler reads `intermediate_size`
+      // on every FFN-shaped block, not an expert-specific alias — see the note
+      // on this key in huggingfaceImporter.ts.
+      expect(experts!.params.intermediate_size).toBe(14336);
+      // The compiler's active-parameters metric reads `top_k` off this node in
+      // isolation, with no view of the router beside it — duplicated here for
+      // the same reason `intermediate_size` is.
+      expect(experts!.params.top_k).toBe(2);
       expect(node(nodes, 'ffn_gated'), 'a routed model has no dense FFN').toBeUndefined();
     });
 
@@ -370,11 +376,48 @@ describe('HuggingFace config import', () => {
         rope_theta: 10000.0,
         hidden_act: 'silu',
       };
-      const { nodes } = parseHuggingFaceConfig(JSON.stringify(deepseek));
+      const { nodes, hardwareConfig } = parseHuggingFaceConfig(JSON.stringify(deepseek));
       expect(p(node(nodes, 'moe_layer'), 'num_experts')).toBe(64);
-      expect(p(node(nodes, 'moe_layer'), 'expert_intermediate_size')).toBe(1408);
+      expect(p(node(nodes, 'moe_layer'), 'intermediate_size')).toBe(1408);
+      expect(p(node(nodes, 'moe_layer'), 'top_k')).toBe(6);
       expect(p(node(nodes, 'shared_expert'), 'num_experts')).toBe(2);
       expect(p(node(nodes, 'noisy_topk_router'), 'top_k')).toBe(6);
+      // No first_k_dense_replace stated — every layer routes, so there is no
+      // separate dense-FFN block to represent.
+      expect(node(nodes, 'ffn_gated'), 'no dense layers were declared').toBeUndefined();
+      expect(hardwareConfig?.numDenseLayers).toBeUndefined();
+    });
+
+    it("reads DeepSeek's first_k_dense_replace as a separate dense-FFN block, at the model's real dense width", () => {
+      // Real DeepSeek-MoE-16B: layer 0 is a plain dense FFN (width 10944,
+      // not the 1408 the routed experts use), the other 27 route.
+      const deepseek = {
+        model_type: 'deepseek',
+        hidden_size: 2048,
+        intermediate_size: 10944,
+        moe_intermediate_size: 1408,
+        num_hidden_layers: 28,
+        num_attention_heads: 16,
+        num_key_value_heads: 16,
+        n_routed_experts: 64,
+        n_shared_experts: 2,
+        num_experts_per_tok: 6,
+        first_k_dense_replace: 1,
+        vocab_size: 102400,
+        max_position_embeddings: 4096,
+        rms_norm_eps: 1e-6,
+        rope_theta: 10000.0,
+        hidden_act: 'silu',
+      };
+      const { nodes, hardwareConfig: hw } = parseHuggingFaceConfig(JSON.stringify(deepseek));
+      const denseFfn = node(nodes, 'ffn_gated');
+      expect(denseFfn, 'a dense-FFN block for the first_k_dense_replace layers').toBeDefined();
+      expect(p(denseFfn, 'intermediate_size')).toBe(10944);
+      expect(p(denseFfn, 'hidden_size')).toBe(2048);
+      // Still there, at the routed (much narrower) width — the two blocks
+      // are not the same node, and neither took over the other's role.
+      expect(p(node(nodes, 'moe_layer'), 'intermediate_size')).toBe(1408);
+      expect(hw?.numDenseLayers).toBe(1);
     });
 
     it('reads the text tower of a multimodal config', () => {
@@ -470,6 +513,42 @@ describe('HuggingFace config import', () => {
         JSON.stringify({ model_type: 'llama', hidden_size: 4096 }),
       );
       expect(result.error).toMatch(/layer count/i);
+    });
+
+    it('explains an abbreviated multimodal text_config instead of the generic "no hidden size" error', () => {
+      // A real config.json from llava-hf/llava-1.5-7b-hf: its `text_config`
+      // only overrides what differs from lmsys/vicuna-7b-v1.5, relying on
+      // that base checkpoint's own defaults for hidden_size and friends —
+      // fields this importer has no way to resolve from a name string alone.
+      // Falling through to the top level (which has no hidden_size either,
+      // for an entirely unrelated reason) used to give the same unhelpful
+      // "no hidden size in this config" message as a config missing the
+      // field outright.
+      const llava = {
+        architectures: ['LlavaForConditionalGeneration'],
+        model_type: 'llava',
+        text_config: {
+          _name_or_path: 'lmsys/vicuna-7b-v1.5',
+          architectures: ['LlamaForCausalLM'],
+          max_position_embeddings: 4096,
+          model_type: 'llama',
+          rms_norm_eps: 1e-5,
+          vocab_size: 32064,
+        },
+        vision_config: { hidden_size: 1024, model_type: 'clip_vision_model' },
+      };
+      const result = parseHuggingFaceConfig(JSON.stringify(llava));
+      expect(result.error).toMatch(/text_config/);
+      expect(result.error).toMatch(/lmsys\/vicuna-7b-v1\.5/);
+      expect(result.error).not.toMatch(/^no hidden size/i);
+    });
+
+    it('still gives the generic message when a text_config key is absent entirely', () => {
+      // No text_config at all — the ordinary "missing field" error still
+      // applies; only a *present but incomplete* one gets the specific one.
+      const result = parseHuggingFaceConfig(JSON.stringify({ model_type: 'llava' }));
+      expect(result.error).toMatch(/hidden size/i);
+      expect(result.error).not.toMatch(/text_config/);
     });
 
     it('records the defaults it had to invent', () => {

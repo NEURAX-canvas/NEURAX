@@ -252,8 +252,11 @@ fn propagate_shape(
             // Pooling reduces spatial dims
             Shape::known(input.to_vec())
         }
-        LayerType::MoE => {
-            // MoE preserves shape
+        LayerType::MoE
+        | LayerType::MoeRouter
+        | LayerType::MoeCombine
+        | LayerType::MoeSharedExpert => {
+            // MoE, and each of its separately-diagrammed roles, preserves shape.
             Shape::known(input.to_vec())
         }
         // CNN layer types - preserve shape for now

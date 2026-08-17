@@ -4,7 +4,14 @@ httpx==0.27.0
 pydantic>=2.10.0,<3.0.0
 python-dotenv>=1.0.0
 
-# LLM providers — versions pinned for cross-compatibility
+# LLM providers — versions pinned for cross-compatibility. Mistral, Fireworks,
+# DeepSeek and GLM all speak the OpenAI chat-completions HTTP shape natively,
+# so langchain-openai (above) talks to them directly with the right base_url
+# — no separate package needed for those four (langchain-mistralai exists but
+# is deliberately not used here). Google/Gemini's native API is not
+# OpenAI-shaped, so it needs its own client.
 langchain-core==0.2.43
 langchain-openai==0.1.22
 langchain-anthropic==0.1.23
+langchain-google-genai==1.0.10
+google-generativeai>=0.7.0,<0.8.0

@@ -51,7 +51,7 @@ export const SIMULATION_CATEGORIES = [
     label: 'Memory',
     hint: 'VRAM over time, peak breakdown and OOM risk',
     icon: HardDrive,
-    chartCount: 6,
+    chartCount: 7,
   },
   {
     id: 'training',

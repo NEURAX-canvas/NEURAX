@@ -731,7 +731,7 @@ The `compile` command generates:
 
 | File | Description |
 |---|---|
-| `model.mlir` | NEURAX MLIR with 13 custom dialects |
+| `model.mlir` | NEURAX MLIR with 14 custom dialects |
 | `llvm_ir.ll` | LLVM IR |
 | `assembly.s` | Assembly code |
 | `model.o` | Object file |

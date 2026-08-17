@@ -23,11 +23,14 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
 ## Key capabilities
 
 - **11 architecture families** — Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RL, SNN, RNN, Experimental.
-- **680+ configurable blocks** and **88 reference templates**.
-- **10-pass analytical IR pipeline** producing 55+ metrics.
-- **MLIR / LLVM 18** compiler backend with 13 custom dialects.
+- **208 configurable blocks** and **88 reference templates**, both counted
+  against the real catalogue by a test, not stated from memory.
+- **10-pass analytical IR pipeline** producing 66 metrics.
+- **MLIR / LLVM 18** compiler backend with 14 custom dialects.
 - **Visual design canvas**, **AI copilot agent**, **Inference Intelligence** and **Time Machine**.
-- **Export** to PyTorch, ONNX, Triton, MLIR, Rust/Burn, JSON and Network Graph.
+- **Export** to JSON, NEURAX IR, and GitHub — a canvas used to offer four more
+  targets (PyTorch, ONNX, Triton, Rust/Burn); their generated code didn't run,
+  so they were removed rather than left to mislead anyone who tried them.
 
 ## Documentation
 

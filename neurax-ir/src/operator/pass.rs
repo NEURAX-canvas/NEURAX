@@ -397,12 +397,88 @@ fn decompose_layer_to_ops(
             });
         }
         LayerType::MoE => {
-            // MoE: router + expert computation
+            // MoE: router + expert computation.
+            //
+            // `moe_flops`'s signature is `(batch, seq_len, hidden_size,
+            // num_experts, top_k, expert_flops)` — this used to pass
+            // `intermediate` where `num_experts` belongs, `num_experts`
+            // where `top_k` belongs, and `top_k as f64` (2.0, 6.0, ...)
+            // where `expert_flops` — the cost of one token through one
+            // expert, normally in the billions — belongs. Every argument
+            // after `hidden` was one position off; every one is `usize` or
+            // `f64` like its neighbour, so it type-checked and returned a
+            // number four to nine orders of magnitude too small without
+            // ever failing to compile.
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
             let num_experts = layer.params.num_experts.unwrap_or(8);
             let top_k = layer.params.top_k.unwrap_or(2);
-            let flops = moe::moe_flops(batch, seq, hidden, intermediate, num_experts, top_k as f64);
+            let activation = layer.params.activation.as_deref().unwrap_or("silu");
+            // One token through one gated-MLP expert — matches
+            // `calculate_layer_params`'s `gated_mlp_params`, which is what
+            // this expert's own parameter count assumes it is.
+            let expert_flops = mlp::gated_mlp_flops(1, 1, hidden, intermediate, activation);
+            let flops = moe::moe_flops(batch, seq, hidden, num_experts, top_k, expert_flops);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::MoE,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // The router: a real but tiny cost (a `hidden → num_experts`
+        // projection plus a softmax), not an expert-sized one.
+        LayerType::MoeRouter => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let num_experts = layer.params.num_experts.unwrap_or(8);
+            let flops = moe::moe_router_flops(batch, seq, hidden, num_experts);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::MoE,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // Combining top-k experts' outputs by their routing weight: a
+        // weighted sum over `top_k` tensors per token, real but small next
+        // to routing an expert's full MLP.
+        LayerType::MoeCombine => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let top_k = layer.params.top_k.unwrap_or(2);
+            let flops = 2.0 * batch as f64 * seq as f64 * top_k as f64 * hidden as f64;
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::MoE,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // A DeepSeek-style shared expert: always active for every token, no
+        // routing/top-k involved — every token pays its full cost, not a
+        // top_k-scaled fraction of it.
+        LayerType::MoeSharedExpert => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
+            let activation = layer.params.activation.as_deref().unwrap_or("silu");
+            let shared_experts = layer.params.num_experts.unwrap_or(0) as f64;
+            let per_expert_flops =
+                mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation);
+            let flops = shared_experts * per_expert_flops;
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::MoE,

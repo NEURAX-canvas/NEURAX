@@ -91,7 +91,12 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let shared_experts = layer.params.shared_experts.unwrap_or(0);
             // Each expert is a gated MLP: gate, up and down projections.
             let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
-            // Router + all experts + shared experts
+            // Router + all experts + shared experts. A block diagram that
+            // gives the router its own `MoeRouter` node (see below) pays for
+            // that router's `hidden × num_experts` gating matrix twice —
+            // once here, once there — which is a few thousand parameters
+            // against a real model's billions, negligible enough not to be
+            // worth threading graph context into a per-node function for.
             moe::moe_params_with_shared(
                 hidden,
                 intermediate,
@@ -99,6 +104,33 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
                 shared_experts,
                 expert_params,
             )
+        }
+        // The router's own weights: a `hidden × num_experts` gating matrix,
+        // nothing else — no expert-sized cost belongs here. Folding this
+        // into `MoE`'s formula (treating the router as if it were
+        // `num_experts` full experts) is the bug this variant exists to fix.
+        LayerType::MoeRouter => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let num_experts = layer.params.num_experts.unwrap_or(8);
+            moe::moe_router_params(hidden, num_experts)
+        }
+        // Combining the top-k experts' outputs by their routing weight is a
+        // weighted sum — no weights of its own to store.
+        LayerType::MoeCombine => 0,
+        // A DeepSeek-style shared expert: always active, never routed. Read
+        // off this node's own `num_experts` (how many shared experts, the
+        // name the importer and the reference templates give that count on
+        // this specific node type — not the `shared_experts` field, which
+        // belongs to a self-contained single-node `MoE` layer instead).
+        // Passed through `moe_params_with_shared` with zero routed experts
+        // so it contributes no router term of its own — the router is
+        // whatever `MoeRouter` node sits beside it in the same layer.
+        LayerType::MoeSharedExpert => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
+            let shared_experts = layer.params.num_experts.unwrap_or(0);
+            let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
+            moe::moe_params_with_shared(hidden, intermediate, 0, shared_experts, expert_params)
         }
         // CNN layer types - use dedicated formulas
         LayerType::ResidualBlock => {
@@ -355,6 +387,9 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
             | LayerType::Mlp
             | LayerType::Normalization
             | LayerType::MoE
+            | LayerType::MoeRouter
+            | LayerType::MoeCombine
+            | LayerType::MoeSharedExpert
             | LayerType::MambaBlock
             | LayerType::S4Block
             | LayerType::H3Block
@@ -371,16 +406,37 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
         return 1.0;
     }
 
-    // MoE models such as DeepSeek-V3 split their depth between dense and expert
-    // blocks, so each kind scales against its own share.
+    // MoE models such as DeepSeek split their depth between early dense
+    // layers and later expert layers — only the layer's *feed-forward*
+    // sublayer changes between the two; attention, normalization and every
+    // other repeatable kind still runs in every layer regardless of which
+    // FFN a given layer uses. This block therefore only special-cases the
+    // FFN-deciding kinds and falls through to the general per-kind scaling
+    // below for everything else — an earlier version returned early for
+    // every repeatable kind here, which would have scaled attention to only
+    // `num_dense_layers` layers instead of the model's real depth the first
+    // time this branch ran on a real design.
     if num_dense_layers > 0 && json_moe_count > 0 {
-        return if layer.layer_type == LayerType::MoE {
+        let is_moe_role = matches!(
+            layer.layer_type,
+            LayerType::MoE
+                | LayerType::MoeRouter
+                | LayerType::MoeCombine
+                | LayerType::MoeSharedExpert
+        );
+        if is_moe_role {
             let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
-            num_moe_layers as f64 / json_moe_count.max(1) as f64
-        } else {
-            let dense_blocks = json_attention_count.saturating_sub(json_moe_count).max(1);
-            num_dense_layers as f64 / dense_blocks as f64
-        };
+            return num_moe_layers as f64 / json_moe_count.max(1) as f64;
+        }
+        if layer.layer_type == LayerType::Mlp {
+            // The plain feed-forward used only in the first `num_dense_layers`
+            // layers, before the model switches to routed experts.
+            let dense_blocks = count_of(&|l: &Layer| l.layer_type == LayerType::Mlp).max(1);
+            return num_dense_layers as f64 / dense_blocks as f64;
+        }
+        // Attention, normalization, ...: fall through to the general
+        // per-kind scaling below, which already scales them to the model's
+        // full depth.
     }
 
     // Each kind scales against how many of *its own* kind were listed, not
@@ -425,6 +481,47 @@ pub fn scaled_total_parameters(config: &neurax_parser::ModelConfig) -> u64 {
             let raw = calculate_layer_params(layer);
             let scale = repeat_scale_for(config, layer);
             (raw as f64 * scale).round() as u64
+        })
+        .sum()
+}
+
+/// Parameters actually touched per token, rather than parameters the model
+/// owns.
+///
+/// For a dense model the two are the same number — every weight runs on
+/// every token. For a mixture-of-experts model they are not: Mixtral-8x7B
+/// owns 46.7B parameters but only 12.9B run on any given token, because a
+/// router sends that token to 2 of its 8 experts, not all of them. "46.7B"
+/// and "13B active" answer different real questions — the first is what has
+/// to fit in memory, the second is closer to what a dense model of
+/// comparable *speed* would need. Reporting only the first, as NEURAX did
+/// before this, understates what an MoE model actually costs to run and
+/// overstates it against a dense model of the same total size.
+pub fn scaled_active_parameters(config: &neurax_parser::ModelConfig) -> u64 {
+    config
+        .model
+        .layers
+        .iter()
+        .map(|layer| {
+            let raw = calculate_layer_params(layer);
+            let scale = repeat_scale_for(config, layer);
+            let active_fraction = match layer.layer_type {
+                // Only the routed experts a token is actually sent to are
+                // active for that token — the router picks `top_k` out of
+                // `num_experts`. The router's own gating matrix and any
+                // shared expert are excluded from this node's count already
+                // (see `calculate_layer_params`), so this fraction applies
+                // only to genuinely-routed weight.
+                LayerType::MoE => {
+                    let num_experts = layer.params.num_experts.unwrap_or(8).max(1) as f64;
+                    let top_k = layer.params.top_k.unwrap_or(2) as f64;
+                    (top_k / num_experts).clamp(0.0, 1.0)
+                }
+                // The router, a shared expert, and every non-MoE layer type
+                // run on every token.
+                _ => 1.0,
+            };
+            (raw as f64 * scale * active_fraction).round() as u64
         })
         .sum()
 }
@@ -492,5 +589,181 @@ pub fn evaluate_custom_equation_with(
             );
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod moe_decomposed_tests {
+    use super::*;
+    use neurax_parser::parse_model_config;
+
+    /// A block diagram draws an MoE layer as separate router / experts /
+    /// combine nodes — this is the exact shape both `huggingfaceImporter.ts`
+    /// and every MoE reference template in `modelTemplates.ts` produce, not
+    /// a simplification for the test. Treating each of those nodes as if it
+    /// alone were a complete MoE layer (the router's tiny gating matrix
+    /// costed as `num_experts` full experts, and the per-layer repeat count
+    /// diluted across however many same-typed nodes one logical layer used)
+    /// used to put Mixtral-8x7B at 36.2B parameters and DeepSeek-MoE-16B at
+    /// 46.3B — respectively 22% low and 182% high against their published
+    /// sizes.
+    fn decomposed_moe_json(
+        hidden: usize,
+        num_layers: usize,
+        num_experts: usize,
+        top_k: usize,
+        expert_intermediate: usize,
+        shared_experts: usize,
+    ) -> String {
+        let shared_expert_layer = if shared_experts > 0 {
+            format!(
+                r#",{{"id":"shared","layer_type":"moe_shared_expert","params":{{"hidden_size":{hidden},"intermediate_size":{expert_intermediate},"num_experts":{shared_experts},"activation":"silu"}}}}"#
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            r#"{{
+                "schema_version": "1.0",
+                "model": {{
+                    "name": "MoeTest",
+                    "type": "moe",
+                    "global_params": {{ "num_layers": {num_layers} }},
+                    "layers": [
+                        {{"id": "attn", "layer_type": "attention", "params": {{"hidden_size": {hidden}, "num_heads": 8}}}},
+                        {{"id": "router", "layer_type": "moe_router", "params": {{"hidden_size": {hidden}, "num_experts": {num_experts}}}}},
+                        {{"id": "experts", "layer_type": "moe", "params": {{"hidden_size": {hidden}, "intermediate_size": {expert_intermediate}, "num_experts": {num_experts}, "top_k": {top_k}, "activation": "silu"}}}},
+                        {{"id": "combine", "layer_type": "moe_combine", "params": {{"hidden_size": {hidden}, "top_k": {top_k}}}}}{shared_expert_layer}
+                    ]
+                }},
+                "training": {{"batch_size": 1}},
+                "hardware": {{"gpus": [{{"name": "A100", "count": 1}}]}}
+            }}"#
+        )
+    }
+
+    #[test]
+    fn a_dense_mlp_block_scales_only_against_its_own_share_of_the_depth() {
+        // The bug this guards: an earlier version of this branch returned
+        // early for every repeatable layer type once num_dense_layers was
+        // set, which would have scaled attention to only num_dense_layers
+        // layers instead of the model's real depth.
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "DenseScaleTest",
+                "type": "moe",
+                "global_params": { "num_layers": 28, "num_dense_layers": 1 },
+                "layers": [
+                    {"id": "attn", "layer_type": "attention", "params": {"hidden_size": 2048, "num_heads": 16}},
+                    {"id": "router", "layer_type": "moe_router", "params": {"hidden_size": 2048, "num_experts": 64}},
+                    {"id": "experts", "layer_type": "moe", "params": {"hidden_size": 2048, "intermediate_size": 1408, "num_experts": 64, "top_k": 6}},
+                    {"id": "combine", "layer_type": "moe_combine", "params": {"hidden_size": 2048, "top_k": 6}},
+                    {"id": "dense_ffn", "layer_type": "mlp", "params": {"hidden_size": 2048, "intermediate_size": 10944, "gated": true}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+
+        let attn_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::Attention)
+            .unwrap();
+        let dense_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::Mlp)
+            .unwrap();
+        let moe_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::MoE)
+            .unwrap();
+
+        // Attention runs in all 28 layers, dense or routed.
+        assert_eq!(repeat_scale_for(&config, attn_layer), 28.0);
+        // The dense FFN only replaces the routed one in the 1 dense layer.
+        assert_eq!(repeat_scale_for(&config, dense_layer), 1.0);
+        // The routed experts run in the other 27.
+        assert_eq!(repeat_scale_for(&config, moe_layer), 27.0);
+    }
+
+    #[test]
+    fn mixtral_8x7b_matches_its_published_size() {
+        // hidden 4096, 32 layers, 8 experts, top-2, expert width 14336, no
+        // shared experts. Published: 46.7B total, ~12.9B active per token.
+        let json = decomposed_moe_json(4096, 32, 8, 2, 14336, 0);
+        let config = parse_model_config(&json).unwrap();
+
+        let total = scaled_total_parameters(&config) as f64 / 1e9;
+        let active = scaled_active_parameters(&config) as f64 / 1e9;
+
+        assert!(
+            (total - 46.7).abs() < 1.0,
+            "Mixtral-8x7B: expected ~46.7B total, got {total:.2}B"
+        );
+        assert!(
+            (active - 12.9).abs() < 1.0,
+            "Mixtral-8x7B: expected ~12.9B active, got {active:.2}B"
+        );
+        // Active must be meaningfully smaller than total — the entire point
+        // of the metric — not just a rounding difference.
+        assert!(active < total * 0.5);
+    }
+
+    #[test]
+    fn deepseek_moe_16b_matches_its_published_size() {
+        // hidden 2048, 28 layers, 64 routed experts top-6, expert width
+        // 1408, 2 shared experts. Published: ~16.4B total, ~2.8B active.
+        let json = decomposed_moe_json(2048, 28, 64, 6, 1408, 2);
+        let config = parse_model_config(&json).unwrap();
+
+        let total = scaled_total_parameters(&config) as f64 / 1e9;
+        let active = scaled_active_parameters(&config) as f64 / 1e9;
+
+        assert!(
+            (total - 16.4).abs() < 1.0,
+            "DeepSeek-MoE-16B: expected ~16.4B total, got {total:.2}B"
+        );
+        assert!(
+            (active - 2.8).abs() < 0.5,
+            "DeepSeek-MoE-16B: expected ~2.8B active, got {active:.2}B"
+        );
+    }
+
+    #[test]
+    fn the_router_alone_is_not_costed_as_num_experts_full_experts() {
+        // The bug in miniature: a router for 64 experts of width 1408 must
+        // cost close to `hidden × num_experts`, not anywhere near
+        // `64 × (one expert's own parameter count)`.
+        let json = decomposed_moe_json(2048, 1, 64, 6, 1408, 0);
+        let config = parse_model_config(&json).unwrap();
+        let router_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::MoeRouter)
+            .expect("router layer present");
+        let router_params = calculate_layer_params(router_layer);
+        assert_eq!(router_params, 2048 * 64);
+    }
+
+    #[test]
+    fn expert_combine_carries_no_parameters() {
+        let json = decomposed_moe_json(2048, 1, 8, 2, 1408, 0);
+        let config = parse_model_config(&json).unwrap();
+        let combine_layer = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.layer_type == LayerType::MoeCombine)
+            .expect("combine layer present");
+        assert_eq!(calculate_layer_params(combine_layer), 0);
     }
 }

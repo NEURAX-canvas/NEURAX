@@ -75,6 +75,7 @@ impl IrPass for ArchitecturePass {
         // headline figure disagreed with the memory pass by more than an order
         // of magnitude on every example that uses this pattern.
         let total_params: u64 = crate::architecture::scaled_total_parameters(&ctx.config);
+        let active_params: u64 = crate::architecture::scaled_active_parameters(&ctx.config);
 
         let mut metrics = ArchitectureMetrics {
             num_layers: global_num_layers.max(json_layer_count),
@@ -82,6 +83,7 @@ impl IrPass for ArchitecturePass {
             params_per_layer: HashMap::new(),
             layers_by_type: HashMap::new(),
             total_parameters: total_params,
+            active_parameters: active_params,
         };
 
         // Fill params_per_layer and layers_by_type for reference

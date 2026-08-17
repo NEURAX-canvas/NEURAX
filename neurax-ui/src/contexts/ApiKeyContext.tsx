@@ -3,7 +3,9 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 const API_KEY_STORAGE_KEY = 'neurax_agent_api_key';
 const API_PROVIDER_STORAGE_KEY = 'neurax_agent_provider';
 
-export type ApiProvider = 'openai' | 'anthropic' | 'google' | 'mistral' | 'custom';
+export type ApiProvider =
+  | 'openai' | 'anthropic' | 'google' | 'mistral'
+  | 'fireworks' | 'deepseek' | 'glm' | 'custom';
 
 export interface ApiKeyConfig {
   key: string;
@@ -24,11 +26,18 @@ interface ApiKeyContextType {
 
 const ApiKeyContext = createContext<ApiKeyContextType | undefined>(undefined);
 
+// Kept in sync by hand with neurax-agent/langchain_runner.py's
+// OPENAI_COMPATIBLE_DEFAULTS and DEFAULT_*_MODEL constants — the backend is
+// what actually talks to each provider, so if the two drift, this panel
+// shows a model name the backend won't use.
 const PROVIDER_DEFAULTS: Record<ApiProvider, { endpoint: string; defaultModel: string }> = {
   openai: { endpoint: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
   anthropic: { endpoint: 'https://api.anthropic.com/v1', defaultModel: 'claude-sonnet-5' },
   google: { endpoint: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-2.5-pro-exp-03-25' },
   mistral: { endpoint: 'https://api.mistral.ai/v1', defaultModel: 'mistral-large-2407' },
+  fireworks: { endpoint: 'https://api.fireworks.ai/inference/v1', defaultModel: 'accounts/fireworks/models/llama-v3p1-70b-instruct' },
+  deepseek: { endpoint: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+  glm: { endpoint: 'https://open.bigmodel.cn/api/paas/v4', defaultModel: 'glm-4-plus' },
   custom: { endpoint: '', defaultModel: 'custom-model' },
 };
 

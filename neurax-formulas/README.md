@@ -18,7 +18,7 @@ Part of [NEURAX](https://github.com/rustnew/NEURAX), the analytical compiler for
 
 ```toml
 [dependencies]
-neurax-formulas = "0.1"
+neurax-formulas = { git = "https://github.com/rustnew/NEURAX", package = "neurax-formulas" }
 ```
 
 ## Quick start
@@ -78,7 +78,7 @@ neurax-formulas ─┤→ neurax-ir (10-pass analytical IR) → neurax-core (pip
 neurax-hardware-db ─┘
 ```
 
-For end-to-end analysis (parse JSON → 55+ metrics), use [`neurax-core`](https://crates.io/crates/neurax-core) instead:
+For end-to-end analysis (parse JSON → 55+ metrics), use [`neurax-core`](../neurax-core) instead:
 
 ```rust
 use neurax_core::analyze_json;

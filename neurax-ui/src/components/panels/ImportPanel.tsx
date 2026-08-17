@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Upload, FileJson, AlertCircle, CheckCircle2, Copy, Info } from 'lucide-react';
+import { Upload, FileJson, AlertCircle, CheckCircle2, Copy, Info, Download, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -11,9 +11,11 @@ import {
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
 import { Textarea } from '@/components/ui/textarea.tsx';
+import { Input } from '@/components/ui/input.tsx';
 import { Label } from '@/components/ui/label.tsx';
 import { sampleTransformerJSON, ImportResult } from '@/utils/architectureImporter.ts';
 import { parseModelJSON, detectImportSource, DetectedImport } from '@/utils/modelImport.ts';
+import { fetchHubConfig } from '@/utils/huggingfaceHub.ts';
 import { openTextFile } from '@/services/desktopRuntime.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 
@@ -50,6 +52,9 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
   const [fileName, setFileName] = useState<string | undefined>(undefined);
   const [previewResult, setPreviewResult] = useState<DetectedImport | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [hubInput, setHubInput] = useState('');
+  const [isFetchingHub, setIsFetchingHub] = useState(false);
+  const [hubError, setHubError] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Shown live under the textarea, before validation, so the user knows the
@@ -63,11 +68,11 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     [jsonInput],
   );
 
-  const handleValidate = () => {
+  const runValidation = (text: string, name: string | undefined) => {
     setIsValidating(true);
 
     setTimeout(() => {
-      const result = parseModelJSON(jsonInput, fileName);
+      const result = parseModelJSON(text, name);
       setPreviewResult(result);
       setIsValidating(false);
 
@@ -84,6 +89,29 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
         });
       }
     }, 300);
+  };
+
+  const handleValidate = () => runValidation(jsonInput, fileName);
+
+  /**
+   * Fetch `config.json` straight from the Hub, by model ID or URL, instead
+   * of leaving NEURAX to find and copy it by hand.
+   */
+  const handleFetchFromHub = async () => {
+    setHubError(null);
+    setIsFetchingHub(true);
+    const outcome = await fetchHubConfig(hubInput);
+    setIsFetchingHub(false);
+
+    if (!outcome.ok) {
+      setHubError(outcome.error);
+      return;
+    }
+
+    const { repoId, contents } = outcome.result;
+    setJsonInput(contents);
+    setFileName(`${repoId}/config.json`);
+    runValidation(contents, `${repoId}/config.json`);
   };
 
   const handleImport = () => {
@@ -109,6 +137,8 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     setJsonInput('');
     setFileName(undefined);
     setPreviewResult(null);
+    setHubInput('');
+    setHubError(null);
     onClose();
   };
 
@@ -163,6 +193,57 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-4">
+          {/* Fetch straight from the Hub — the fastest path when the model
+              is already published, which is most of them. */}
+          <div className="space-y-1.5">
+            <Label htmlFor="hub-input">Import from HuggingFace</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="hub-input"
+                value={hubInput}
+                onChange={(e) => {
+                  setHubInput(e.target.value);
+                  setHubError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isFetchingHub && hubInput.trim()) {
+                    e.preventDefault();
+                    void handleFetchFromHub();
+                  }
+                }}
+                placeholder="mistralai/Mistral-7B-v0.1 or a huggingface.co URL"
+                className="font-mono text-xs"
+              />
+              <Button
+                size="sm"
+                onClick={() => void handleFetchFromHub()}
+                disabled={isFetchingHub || !hubInput.trim()}
+              >
+                {isFetchingHub ? (
+                  <Loader2 className="w-4 h-4 mr-1.5 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4 mr-1.5" />
+                )}
+                {isFetchingHub ? 'Fetching…' : 'Fetch'}
+              </Button>
+            </div>
+            {hubError && (
+              <p className="text-xs text-destructive flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                {hubError}
+              </p>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Fetches the model's public <code className="text-[10px]">config.json</code> directly — nothing is uploaded, and gated or private repositories aren't accessible this way.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+            <div className="h-px flex-1 bg-border" />
+            or
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
           {/* File picker and samples */}
           <div className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => void handleOpenFile()}>

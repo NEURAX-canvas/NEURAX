@@ -26,7 +26,6 @@
 
 ## Checklist
 
-- [ ] Followed the [Code of Conduct](CODE_OF_CONDUCT.md)
 - [ ] Added / updated tests and documentation where relevant
 - [ ] Used [conventional commits](https://www.conventionalcommits.org)
 

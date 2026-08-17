@@ -19,7 +19,7 @@ Part of [NEURAX](https://github.com/rustnew/NEURAX), the analytical compiler for
 
 ```toml
 [dependencies]
-neurax-hardware-db = "0.1"
+neurax-hardware-db = { git = "https://github.com/rustnew/NEURAX", package = "neurax-hardware-db" }
 ```
 
 ## Quick start

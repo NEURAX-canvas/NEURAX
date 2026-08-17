@@ -19,7 +19,7 @@ Part of [NEURAX](https://github.com/rustnew/NEURAX), the analytical compiler for
 
 ```toml
 [dependencies]
-neurax-core = "0.1"
+neurax-core = { git = "https://github.com/rustnew/NEURAX", package = "neurax-core" }
 ```
 
 ## Quick start
@@ -136,12 +136,15 @@ Passes 7 & 8 run concurrently (rayon), and the whole pipeline is deterministic.
 
 | Crate | Role |
 |-------|------|
-| [`neurax-parser`](https://crates.io/crates/neurax-parser) | JSON → validated `ModelConfig` |
-| [`neurax-ir`](https://crates.io/crates/neurax-ir) | The 10-pass IR pipeline |
-| [`neurax-formulas`](https://crates.io/crates/neurax-formulas) | Analytical FLOPs/memory formulas |
-| [`neurax-hardware-db`](https://crates.io/crates/neurax-hardware-db) | GPU/CPU/interconnect specs |
+| [`neurax-parser`](../neurax-parser) | JSON → validated `ModelConfig` |
+| [`neurax-ir`](../neurax-ir) | The 10-pass IR pipeline |
+| [`neurax-formulas`](../neurax-formulas) | Analytical FLOPs/memory formulas |
+| [`neurax-hardware-db`](../neurax-hardware-db) | GPU/CPU/interconnect specs |
 | **neurax-core** | **The unified engine (this crate)** |
-| [`neurax-mlir`](https://crates.io/crates/neurax-mlir) | MLIR-style lowering |
+| [`neurax-mlir`](../neurax-mlir) | MLIR-style lowering |
+
+These are workspace crates in this repository — use a path or git dependency
+to reach any of them from outside a checkout.
 
 ## License
 

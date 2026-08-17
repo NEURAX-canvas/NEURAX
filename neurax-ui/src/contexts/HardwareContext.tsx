@@ -127,6 +127,10 @@ export interface HardwareConfig {
   topK: number;
   expertCapacity?: number;
   useSharedExpert?: boolean;
+  /** DeepSeek-style: how many of the model's early layers are dense (no
+   * routing) before it switches to routed experts — `first_k_dense_replace`
+   * in a HuggingFace config. */
+  numDenseLayers?: number;
 
   // RL
   actionDim: number;

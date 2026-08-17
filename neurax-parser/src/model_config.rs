@@ -125,6 +125,20 @@ pub enum LayerType {
     Normalization,
     Pooling,
     MoE,
+    // A block diagram draws an MoE layer as separate router / experts /
+    // combine nodes (and, for a DeepSeek-style model, a shared-expert node)
+    // so the diagram reads left to right instead of as one opaque box. `MoE`
+    // above is the node actually carrying the routed experts; these three
+    // are its other roles, each with its own real (and much smaller) cost —
+    // folding them into `MoE` used to cost a router's `hidden × num_experts`
+    // gating matrix as if it were `num_experts` full experts, and diluted
+    // the per-layer repeat count across however many same-typed nodes one
+    // logical layer happened to use. See `moe::moe_router_params` and the
+    // `MoeRouter | MoeCombine | MoeSharedExpert` arm in
+    // `neurax-ir/src/architecture/mod.rs`.
+    MoeRouter,
+    MoeCombine,
+    MoeSharedExpert,
     // CNN Modern Layer Types
     ResidualBlock,
     Mbconv,
@@ -193,6 +207,9 @@ impl LayerType {
             "normalization" | "layer_norm" | "batch_norm" | "rms_norm" => Ok(Self::Normalization),
             "pooling" | "max_pool" | "avg_pool" => Ok(Self::Pooling),
             "moe" | "mixture_of_experts" => Ok(Self::MoE),
+            "moe_router" => Ok(Self::MoeRouter),
+            "moe_combine" => Ok(Self::MoeCombine),
+            "moe_shared_expert" => Ok(Self::MoeSharedExpert),
             // CNN Modern architectures
             "residual_block" | "res_block" | "residual" => Ok(Self::ResidualBlock),
             "mbconv" | "inverted_residual" | "mobile_bottleneck" => Ok(Self::Mbconv),
@@ -257,6 +274,9 @@ impl LayerType {
             Self::Normalization => "normalization",
             Self::Pooling => "pooling",
             Self::MoE => "moe",
+            Self::MoeRouter => "moe_router",
+            Self::MoeCombine => "moe_combine",
+            Self::MoeSharedExpert => "moe_shared_expert",
             Self::ResidualBlock => "residual_block",
             Self::Mbconv => "mbconv",
             Self::Inception => "inception",

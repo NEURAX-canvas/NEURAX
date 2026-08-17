@@ -189,7 +189,7 @@ The orchestrator that wires together the 10-pass pipeline, dynamic analysis, and
 
 ### neurax-mlir
 
-MLIR compiler backend with 13 custom dialects:
+MLIR compiler backend with 14 custom dialects:
 
 | Dialect | Purpose |
 |---|---|
@@ -206,6 +206,7 @@ MLIR compiler backend with 13 custom dialects:
 | Training | Training-specific operations |
 | Data | Data pipeline operations |
 | Optimization | Optimization pass operations |
+| Utils | Shared helpers used across the other dialects |
 
 **Lowering pipeline**: Architecture → Graph → Tensor → Operator → Compute → Memory → Hardware → Cost → Report → LLVM IR → Assembly → Object file.
 

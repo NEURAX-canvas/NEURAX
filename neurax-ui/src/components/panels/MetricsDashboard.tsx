@@ -397,6 +397,13 @@ function ArchitectureCategory({
             <StatCard label="Model Name" value={analysis.modelName} sub={analysis.modelType || '—'} />
           )}
           <StatCard label="Total Params" value={fmtNum(analysis.totalParams)} sub="trainable parameters" />
+          {analysis.activeParams > 0 && analysis.activeParams < analysis.totalParams && (
+            <StatCard
+              label="Active Params"
+              value={fmtNum(analysis.activeParams)}
+              sub={`per token · ${Math.round((analysis.activeParams / analysis.totalParams) * 100)}% of total`}
+            />
+          )}
           <StatCard label="Layers" value={analysis.numLayers} sub={`depth ${analysis.graphDepth}`} />
         </div>
         <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 space-y-0.5">
@@ -666,6 +673,13 @@ function PerformanceCategory({
         <StatCard label="Backward FLOPs" value={analysis.backwardFlopsHuman} sub="per pass" />
         <StatCard label="Peak VRAM" value={analysis.memoryUsage} sub={analysis.gpuName || 'GPU estimate'} />
         <StatCard label="Total Params" value={fmtNum(analysis.totalParams)} sub="trainable parameters" />
+        {analysis.activeParams > 0 && analysis.activeParams < analysis.totalParams && (
+          <StatCard
+            label="Active Params"
+            value={fmtNum(analysis.activeParams)}
+            sub={`per token · ${Math.round((analysis.activeParams / analysis.totalParams) * 100)}% of total`}
+          />
+        )}
       </div>
 
       {/* ════ FLOPs ════ */}

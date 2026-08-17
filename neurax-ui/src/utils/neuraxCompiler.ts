@@ -19,6 +19,8 @@ export interface NeuraxLayer {
 export interface NeuraxGlobalParams {
   hidden_size?: number;
   num_layers?: number;
+  /** How many of `num_layers` are dense (no MoE routing) — see `numDenseLayers`. */
+  num_dense_layers?: number;
   vocab_size?: number;
   sequence_length?: number;
   num_heads?: number;
@@ -1218,11 +1220,41 @@ function toParserLayerType(blockType: string): string {
     return 'pooling';
   }
 
+  // A block diagram's MoE layer is one router node, one experts node, one
+  // combine node, and (for a DeepSeek-style model) one shared-expert node —
+  // four separate nodes standing in for one conceptual layer, so the diagram
+  // reads left to right instead of as a single opaque box. All four used to
+  // collapse to the same generic `moe` parser type, which the Rust side reads
+  // as "this node alone is a complete MoE layer": the router's `hidden ×
+  // num_experts` gating matrix got costed as `num_experts` full experts, and
+  // a real model's params/FLOPs came out wrong by 20-180%, confirmed against
+  // Mixtral-8x7B and DeepSeek-MoE-16B's published sizes. Splitting the three
+  // roles that have a concrete, tested real-world shape (the router, the
+  // combine step, and a DeepSeek-style shared expert) onto their own parser
+  // types fixes both the misattributed cost and — because
+  // `repeat_scale_for` counts occurrences per type — the depth multiplier
+  // that was being diluted across however many same-typed nodes one logical
+  // layer happened to use.
+  //
+  // The remaining, more exotic MoE block variants below (expert-choice
+  // routing, product-key routers, soft-MoE, ...) have no reference template
+  // or import path exercising them yet, so there is no real config to
+  // measure them against — left mapped to the generic `moe` type rather than
+  // guessed into a bucket that can't be verified.
+  if (normalized === 'noisy_topk_router') {
+    return 'moe_router';
+  }
+  if (normalized === 'expert_combine') {
+    return 'moe_combine';
+  }
+  if (normalized === 'shared_expert') {
+    return 'moe_shared_expert';
+  }
+
   if (
     normalized === 'moe_block' ||
     normalized === 'router_linear' ||
     normalized === 'router_softmax' ||
-    normalized === 'noisy_topk_router' ||
     normalized === 'expert_choice_router' ||
     normalized === 'non_trainable_router' ||
     normalized === 'product_key_router' ||
@@ -1234,11 +1266,9 @@ function toParserLayerType(blockType: string): string {
     normalized === 'expert_scalar' ||
     normalized === 'expert_memory' ||
     normalized === 'expert_dispatch' ||
-    normalized === 'expert_combine' ||
     normalized === 'output_combination' ||
     normalized === 'concat_projection' ||
     normalized === 'attention_pooling' ||
-    normalized === 'shared_expert' ||
     normalized === 'moe_layer' ||
     normalized === 'moa_block' ||
     normalized === 'fine_grained_moe' ||
@@ -1482,6 +1512,14 @@ export function compileToNeuraxIR(
     headDim?: number | null;
     ffnDim?: number | null;
     numLayers?: number | null;
+    /**
+     * DeepSeek-style MoE models keep their first few layers dense (plain
+     * feed-forward, no routing) before switching to routed experts —
+     * `first_k_dense_replace` in the config. `repeat_scale_for` on the Rust
+     * side reads this to scale the model's `mlp` and `moe` blocks against
+     * their own real share of the depth instead of the full depth each.
+     */
+    numDenseLayers?: number | null;
     kvHeads?: number | null;
     useBias?: boolean | null;
     dropout?: number | null;
@@ -1611,6 +1649,7 @@ export function compileToNeuraxIR(
     headDim = null,
     ffnDim = null,
     numLayers = null,
+    numDenseLayers = null,
     kvHeads = null,
     useBias = null,
     dropout = null,
@@ -2301,6 +2340,7 @@ export function compileToNeuraxIR(
   const global_params: NeuraxGlobalParams = {};
   if (hiddenDim != null) global_params.hidden_size = hiddenDim;
   if (numLayers != null) global_params.num_layers = numLayers;
+  if (numDenseLayers != null) global_params.num_dense_layers = numDenseLayers;
   if (vocabSize != null) global_params.vocab_size = vocabSize;
   if (resolvedSeqLen != null) global_params.sequence_length = resolvedSeqLen;
   if (numHeads != null) global_params.num_heads = numHeads;

@@ -1358,7 +1358,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '8× SwiGLU Experts', x: 1050, y: 200, params: {
             num_experts: 8,
-            expert_intermediate_size: 14336,
+            top_k: 2,
+            intermediate_size: 14336,
+            hidden_size: 4096,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1444,7 +1446,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '8× SwiGLU Experts', x: 1050, y: 200, params: {
             num_experts: 8,
-            expert_intermediate_size: 21504,
+            top_k: 2,
+            intermediate_size: 21504,
+            hidden_size: 6144,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1530,7 +1534,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '64× FFN Experts', x: 1050, y: 200, params: {
             num_experts: 64,
-            expert_intermediate_size: 2816,
+            top_k: 6,
+            intermediate_size: 2816,
+            hidden_size: 2048,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1617,7 +1623,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '160× FFN Experts', x: 1050, y: 200, params: {
             num_experts: 160,
-            expert_intermediate_size: 1536,
+            top_k: 6,
+            intermediate_size: 1536,
+            hidden_size: 5120,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1704,7 +1712,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '256× SwiGLU Experts', x: 1050, y: 200, params: {
             num_experts: 256,
-            expert_intermediate_size: 2048,
+            top_k: 8,
+            intermediate_size: 2048,
+            hidden_size: 7168,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1790,7 +1800,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '60× Activated Experts', x: 1050, y: 200, params: {
             num_experts: 60,
-            expert_intermediate_size: 2816,
+            top_k: 2,
+            intermediate_size: 2816,
+            hidden_size: 2048,
             activation: 'silu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1876,7 +1888,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '60× SwiGLU Experts', x: 1050, y: 200, params: {
             num_experts: 60,
-            expert_intermediate_size: 2816,
+            top_k: 2,
+            intermediate_size: 2816,
+            hidden_size: 2048,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
@@ -1962,7 +1976,9 @@ export const MODEL_TEMPLATES: VariantPreset[] = [
           } },
         { id: 'n10', type: 'moe_layer', name: '16× SwiGLU Experts', x: 1050, y: 200, params: {
             num_experts: 16,
-            expert_intermediate_size: 16384,
+            top_k: 4,
+            intermediate_size: 16384,
+            hidden_size: 4096,
             activation: 'swiglu'
           } },
         { id: 'n11', type: 'expert_combine', name: 'Expert Combine', x: 1250, y: 200, params: {
