@@ -17,13 +17,33 @@ describe('AuthContext — local account', () => {
 
   it('creates a profile automatically, with no sign-up step', async () => {
     const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
-
-    // The bootstrap runs in an effect; let it flush.
     await act(async () => {});
 
     expect(result.current.isAuthenticated).toBe(true);
     expect(result.current.user).not.toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).not.toBeNull();
+  });
+
+  it('is authenticated on the very first render, not one tick later', () => {
+    // ProtectedRoute reads isAuthenticated during the first render — before
+    // any effect runs. The bootstrap used to live in a useEffect, so a
+    // returning visitor opening /app directly (a bookmark, a refresh) was
+    // bounced to `/` by <Navigate> before their already-stored profile had
+    // a chance to load, even though it was sitting in localStorage the
+    // whole time. No `act(async ...)` here on purpose: this asserts what
+    // the very first synchronous render sees.
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        id: 'demo-existing', email: 'returning@example.com', username: 'Returning',
+        avatarSeed: 'avatar-3', plan: 'elite', createdAt: new Date().toISOString(),
+      }),
+    );
+
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user?.username).toBe('Returning');
   });
 
   it('reuses the stored profile across a remount, rather than minting a new one', async () => {
