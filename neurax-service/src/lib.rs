@@ -2380,25 +2380,25 @@ async fn analyze_stream_events(
     // subscriber that joins late — and NEURAX's whole point is that analysis
     // is fast (well under 50ms for most models), so it routinely finishes
     // and broadcasts its Completed/Result events before this handler's GET
-    // request even arrives, let alone subscribes. The subscriber below would
-    // then sit on `rx.recv().await` forever: nothing left to receive, the
-    // connection never closes, and the client's "Analyzing…" state has
-    // nothing to end it. Checking `state.results` first — before
-    // subscribing — closes that race: a job that already finished is
-    // answered directly, exactly like the `None` branch below already does
-    // for a channel that was cleaned up entirely.
-    if let Some(body) = immediate_result_body() {
-        return HttpResponse::Ok()
-            .content_type("text/event-stream")
-            .insert_header(("Cache-Control", "no-cache"))
-            .insert_header(("Connection", "keep-alive"))
-            .body(body);
-    }
-
+    // request even arrives, let alone subscribes. A subscriber that joins
+    // after the fact would then sit on `rx.recv().await` forever: nothing
+    // left to receive, the connection never closes, and the client's
+    // "Analyzing…" state has nothing to end it.
+    //
+    // The fix has to subscribe *before* checking `state.results`, not after:
+    // checking first and subscribing second leaves exactly the same race in
+    // the gap between the two — the job can finish and broadcast in that
+    // gap too. Subscribing first means every event sent from this point
+    // forward is guaranteed to be captured by `rx`, so checking results
+    // immediately afterward can only miss a job that finished *before* the
+    // subscribe — which is fine, because a finished job's data is already
+    // sitting in `state.results` for exactly that check to find.
     let rx = match state.channels.get(&job_id) {
         Some(tx) => tx.subscribe(),
         None => {
-            // Job already completed, check for result
+            // No channel at all — either this job never existed, or it's
+            // old enough that the 30s cleanup already removed it. Either
+            // way, `state.results` is the only place left to look.
             if let Some(body) = immediate_result_body() {
                 return HttpResponse::Ok()
                     .content_type("text/event-stream")
@@ -2410,68 +2410,107 @@ async fn analyze_stream_events(
         }
     };
 
-    // Stream events via SSE
+    if let Some(body) = immediate_result_body() {
+        return HttpResponse::Ok()
+            .content_type("text/event-stream")
+            .insert_header(("Cache-Control", "no-cache"))
+            .insert_header(("Connection", "keep-alive"))
+            .body(body);
+    }
+
+    // Stream events via SSE.
+    //
+    // `rx.recv()` alone is not a reliable way to learn that the job is
+    // done: a `tokio::sync::broadcast::Sender::send()` made while this
+    // handler had zero subscribers — perfectly possible up until the
+    // `subscribe()` call above completes — silently drops that message
+    // rather than queuing it, and a receiver that subscribes even one
+    // instant after "Completed" was sent has no way to see it, no matter
+    // how the subscribe-vs-check ordering above is arranged. `state.jobs`
+    // and `state.results`, on the other hand, are updated in place and
+    // stay correct regardless of when anyone looks — so a periodic check
+    // of them, racing against `rx.recv()`, is what actually closes this:
+    // even a subscriber that missed every single broadcast event notices
+    // the job finished within one tick and ends the stream, instead of
+    // waiting forever for a message that already came and went.
     let state_inner = state.into_inner();
+    let job_id_poll = job_id.clone();
     let stream = async_stream::stream! {
         let mut rx = rx;
+        let mut poll = tokio::time::interval(Duration::from_millis(50));
+        poll.tick().await; // the first tick fires immediately; consume it
         loop {
-            match rx.recv().await {
-                Ok(event_json) => {
-                    // Parse the event to check for terminal states
-                    let event: serde_json::Value = match serde_json::from_str(&event_json) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
+            tokio::select! {
+                recv = rx.recv() => {
+                    match recv {
+                        Ok(event_json) => {
+                            let event: serde_json::Value = match serde_json::from_str(&event_json) {
+                                Ok(v) => v,
+                                Err(_) => continue,
+                            };
+                            yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(format!("data: {}\n\n", event_json)));
 
-                    yield Ok::<_, actix_web::Error>(actix_web::web::Bytes::from(format!("data: {}\n\n", event_json)));
-
-                    // Check if this is a terminal event
-                    let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                    if event_type == "Completed" || event_type == "Failed" {
-                        // Send final result if completed
-                        if event_type == "Completed" {
-                            // `Completed` is emitted by the analysis engine
-                            // itself, inside `spawn_blocking`, strictly
-                            // before that call returns and the handler
-                            // writes to `state.results` — so a subscriber
-                            // can see this event before the result is
-                            // actually there yet. The gap is only ever the
-                            // time between `spawn_blocking` resolving and
-                            // the next line running; a few short retries
-                            // close it without a bigger reordering.
-                            let mut result = state_inner.results.get(&job_id);
-                            for _ in 0..20 {
-                                if result.is_some() {
+                            let event_type = event.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                            if event_type == "Failed" {
+                                break;
+                            }
+                            if event_type == "Completed" {
+                                // `Completed` is emitted by the analysis
+                                // engine itself, inside `spawn_blocking`,
+                                // strictly before that call returns and this
+                                // handler's caller writes to `state.results`
+                                // — so the result can genuinely not be there
+                                // yet at this exact instant. Do not break:
+                                // fall through to the next loop iteration,
+                                // where `poll.tick()` (at most 50ms away)
+                                // checks `state.results` again and sends
+                                // Result — and terminates the stream — the
+                                // moment it's actually there, without this
+                                // branch needing its own retry loop.
+                                if let Some(result) = state_inner.results.get(&job_id_poll) {
+                                    let result_json = serde_json::json!({
+                                        "type": "Result",
+                                        "data": result.value()
+                                    });
+                                    yield Ok(actix_web::web::Bytes::from(format!("data: {}\n\n", result_json)));
                                     break;
                                 }
-                                tokio::time::sleep(Duration::from_millis(10)).await;
-                                result = state_inner.results.get(&job_id);
                             }
-                            if let Some(result) = result {
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            yield Ok(actix_web::web::Bytes::from(format!("data: {{\"type\":\"Lagged\",\"data\":{{\"count\":{}}}}}\n\n", n)));
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            if let Some(result) = state_inner.results.get(&job_id_poll) {
                                 let result_json = serde_json::json!({
                                     "type": "Result",
                                     "data": result.value()
                                 });
                                 yield Ok(actix_web::web::Bytes::from(format!("data: {}\n\n", result_json)));
                             }
+                            break;
                         }
-                        break;
                     }
                 }
-                Err(broadcast::error::RecvError::Lagged(n)) => {
-                    // Client is behind, send a lag notice
-                    yield Ok(actix_web::web::Bytes::from(format!("data: {{\"type\":\"Lagged\",\"data\":{{\"count\":{}}}}}\n\n", n)));
-                }
-                Err(broadcast::error::RecvError::Closed) => {
-                    // Channel closed, check for result
-                    if let Some(result) = state_inner.results.get(&job_id) {
+                _ = poll.tick() => {
+                    if let Some(result) = state_inner.results.get(&job_id_poll) {
                         let result_json = serde_json::json!({
                             "type": "Result",
                             "data": result.value()
                         });
                         yield Ok(actix_web::web::Bytes::from(format!("data: {}\n\n", result_json)));
+                        break;
                     }
-                    break;
+                    if let Some(job) = state_inner.jobs.get(&job_id_poll) {
+                        if job.status == "failed" {
+                            let failed_json = serde_json::json!({
+                                "type": "Failed",
+                                "data": { "job_id": job_id_poll, "error": job.error.clone().unwrap_or_default(), "phase": "unknown" }
+                            });
+                            yield Ok(actix_web::web::Bytes::from(format!("data: {}\n\n", failed_json)));
+                            break;
+                        }
+                    }
                 }
             }
         }
