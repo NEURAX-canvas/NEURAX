@@ -2,7 +2,7 @@
 
 **Know what a model costs — before you spend a single GPU-hour finding out.**
 
-Point NEURAX at an architecture — a full LLM or a small model built for your own dataset — and it hands back memory, speed, and training cost in under 50 milliseconds. No GPU, no training run, no waiting to find out it doesn't fit.
+The usual way to find out an architecture doesn't fit is to launch the training run and watch it OOM six hours in — or finish, and cost three times what you budgeted, because nothing checked before you committed the GPU-hours. NEURAX checks first. Point it at an architecture — a full LLM or a small model built for your own dataset — and it hands back memory, speed, and training cost in under 50 milliseconds. No GPU, no training run, no waiting to find out.
 
 [![CI](https://github.com/rustnew/NEURAX/actions/workflows/ci.yml/badge.svg)](https://github.com/rustnew/NEURAX/actions)
 [![Release](https://img.shields.io/github/v/release/rustnew/NEURAX?style=flat-square&color=blue)](https://github.com/rustnew/NEURAX/releases)
