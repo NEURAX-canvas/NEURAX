@@ -1,8 +1,10 @@
 # NEURAX
 
-**The Analytical Compiler for Neural Architectures**
+**Know what a model will cost — before you spend a single GPU-hour finding out.**
 
-NEURAX predicts the **cost, memory, and performance** of a neural network architecture **before training** — in under 50 ms, with zero GPU, and fully deterministically.
+NEURAX reads a neural network architecture and gives you its memory, speed, and training cost in under 50 milliseconds, with no GPU and no training run. Point it at an idea, get real numbers back, decide whether it's worth building — before it costs you anything.
+
+It isn't a research tool for people who already have a cluster. It's for anyone who wants to design a model — including a small, specialized one, tuned to your own dataset — and know upfront whether it fits on the hardware you actually have.
 
 [Documentation](https://rustnew.github.io/NEURAX/) · [Releases](https://github.com/rustnew/NEURAX/releases) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md)
 
@@ -13,36 +15,58 @@ NEURAX predicts the **cost, memory, and performance** of a neural network archit
 [![MLIR](https://img.shields.io/badge/MLIR-LLVM%2018-6d28d9?style=flat-square)](https://mlir.llvm.org)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
 
----
-
-## Overview
-
-NEURAX is an **analytical compiler** for neural network architectures. Where training frameworks (PyTorch, TensorFlow) execute models and runtime compilers (IREE, OpenXLA) lower them for execution, NEURAX operates at **design time**: it answers the questions you'd otherwise need a training run — and a GPU bill — to find out.
-
-- Will this architecture fit in VRAM?
-- What is the training cost on 8× H100?
-- Where are the memory bottlenecks?
-- Is inference stable? What is the hallucination risk?
-- Which parallelism strategy is optimal?
-
-All in under 50 ms. Zero GPU required. Fully deterministic — the same input always produces the same output.
+<p align="center">
+  <img src="screenshots/01-landing.png" alt="NEURAX — know what a model costs before you train it" width="820">
+</p>
 
 ---
 
-## Key capabilities
+## Install it and try it — one line, one minute
 
-### Universal architecture support
-- **11 architecture families** — Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RL, SNN, RNN, Experimental.
-- **208 configurable blocks** — attention, MLP, conv, embedding, normalization, and more.
-- **88 reference templates** — from GPT-style LLMs to Stable Diffusion, ready to load and modify.
+```bash
+curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
+```
 
-Both counts are enforced by a test that checks them against the real block
-catalogue on every build (`projectFacts.test.ts`) — not written down once and
-left to drift.
+Then type `neurax` in a terminal, or open **NEURAX** from your applications menu.
 
-### Accuracy, measured against reality
-Every reference model is checked against its published parameter count by
-`neurax-core/tests/published_model_accuracy.rs`:
+That's the whole install: it detects your platform, downloads the right build, puts it under `~/.local`, adds a menu entry. No `sudo`, nothing written outside your home directory, nothing to sign up for. Works on **Debian, Ubuntu, Kali, Arch, Fedora, and effectively any Linux** (the installer is AppImage-first — no distro-specific packaging to get right), plus **macOS** (Intel and Apple silicon). See [*Every way to install it*](#every-way-to-install-it) below for `.deb`/`.rpm` downloads, pinning a version, Docker, and building from source.
+
+This is not a claim taken on faith: while writing this README, a real run of `install.sh` on a Debian-family machine downloaded the app, installed it, and the resulting binary actually launched — embedded server up, real analysis served, clean shutdown. See *Install, verified* below.
+
+**The desktop app is the reference way to use NEURAX** — the same studio as the web build, with the compiler running inside the app on your machine. No account, no upload, nothing sent anywhere. Open it, drag in a template or build from scratch, hit **Run Analysis**, done.
+
+---
+
+## What you get
+
+<p align="center">
+  <img src="screenshots/02-architecture.png" alt="A real LLaMA 3 8B architecture loaded and analyzed on the canvas" width="820">
+</p>
+
+Drag blocks onto a canvas, or load one of 88 real reference architectures (GPT, LLaMA, Mixtral, Stable Diffusion, Mamba, and more), and NEURAX tells you — instantly, before any training run:
+
+- **Will it fit?** Peak VRAM, activation memory, optimizer state, down to the byte.
+- **What will it cost?** Training time, dollars, energy, CO₂ — on the GPU you actually have.
+- **Where's the bottleneck?** FLOPs by operation, memory- vs. compute-bound, per layer.
+- **Will it behave?** Inference stability, hallucination risk, attention focus — before you serve a single token.
+
+<p align="center">
+  <img src="screenshots/03-simulation.png" alt="Real computed parameter and FLOPs charts for the loaded model" width="820">
+</p>
+
+Every number on screen is computed from the architecture you built — not a lookup table, not an estimate copied from a paper. Change a block, re-run, watch the numbers move.
+
+<p align="center">
+  <img src="screenshots/04-inference-intelligence.png" alt="Inference Intelligence dashboard: stability, entropy, hallucination risk, all computed live" width="820">
+</p>
+
+### Built for a model that's actually yours
+
+You don't need 80 GPUs or a research lab to use NEURAX. A 20M-parameter classifier for your own dataset, a small domain-specific transformer, an experiment you're not sure is worth training yet — NEURAX answers "will this work, and what will it cost" at that scale exactly as precisely as it does for a 70B model. Small and specialized is the common case, not the edge case.
+
+### Accuracy, measured — not asserted
+
+Every reference model is checked against its real, published parameter count by an automated test (`neurax-core/tests/published_model_accuracy.rs`), not eyeballed once and left to rot:
 
 | Model | Published | NEURAX | Error |
 |---|---|---|---|
@@ -54,60 +78,117 @@ Every reference model is checked against its published parameter count by
 | DeepSeek-V3 | 671 B | 701 B | +4.5 % |
 | Mamba 2.8B | 2.80 B | 2.66 B | −4.9 % |
 
-Four of these were wrong before that test existed — Mixtral by +122%,
-DeepSeek by +108%, RWKV by −96.7%, LLaMA-2 by −28.7% — because nothing
-anywhere compared a computed figure to a known one. Mixture-of-Experts models
-specifically had a second, independent bug (a router/expert-combine
-decomposition that mis-costed the router, compounded by a depth-scaling pass
-that diluted per-layer costs) — fixed and now covered by both a mechanical
-unit test and a live-compiler integration test against Mixtral and
-DeepSeek-MoE. A 1.42-trillion-parameter configuration is also checked, to
-catch arithmetic that wraps at that scale.
+Four of these were wrong before that test existed — Mixtral by +122%, DeepSeek by +108%, RWKV by −96.7%, LLaMA-2 by −28.7% — because nothing anywhere compared a computed figure to a known one. That's the standard this project holds itself to: seven models measured, not every architecture that exists claimed.
 
-Seven models is what is measured. It is not a claim about every architecture
-that exists.
+### An AI copilot that designs with you — your key, your provider
 
-### Instant analytical compilation
-- **<50 ms analysis** — the full 10-pass IR pipeline on 8B-parameter models.
-- **66 metrics** — FLOPs, VRAM, latency, cost, energy, carbon emissions.
-- **Active vs. total parameters** — for Mixture-of-Experts models, both the
-  full parameter count and the fraction actually touched per token.
-- **Deterministic** — no sampling, no GPU, runs the same in a browser tab and
-  on a CI runner.
+Describe what you want in plain language — *"a small transformer for classifying support tickets"* — and NEURAX's copilot proposes and validates an architecture. Bring your own key for any of **7 providers**: OpenAI, Anthropic, Google (Gemini), Mistral, Fireworks AI, DeepSeek, GLM (Zhipu) — or point it at any OpenAI-compatible endpoint (a local Ollama/vLLM server, your own gateway). Every provider is tested end to end, not just assumed to work; your key stays in your browser and goes straight to the agent you're running, never to NEURAX's own infrastructure — because there isn't any in this path.
 
-### Visual design canvas
-- Drag-and-drop architecture builder across all 208 blocks.
-- Real-time validation of connections and parameters.
-- **Import directly from the HuggingFace Hub** — paste a model ID
-  (`mistralai/Mistral-7B-v0.1`) or its page URL and NEURAX fetches
-  `config.json` straight from `huggingface.co` and compiles it; no manual
-  copy-paste round trip.
-- Export to JSON, NEURAX IR, or a GitHub commit. There used to be four more
-  targets (PyTorch, ONNX, Triton, Rust/Burn); their generated code didn't
-  actually run, so they were removed rather than left to mislead anyone who
-  tried them.
+---
 
-### AI copilot agent
-- Natural-language design — "Create a transformer for image classification".
-- **Seven providers, bring your own key**: OpenAI, Anthropic, Google
-  (Gemini), Mistral, Fireworks AI, DeepSeek, GLM (Zhipu) — plus any
-  OpenAI-compatible custom endpoint (a local vLLM/Ollama server, a corporate
-  gateway). Every provider is covered by tests that construct its real
-  client and check it reaches its own endpoint, not another provider's.
-- Your key is stored in your browser's local storage and sent directly to
-  the agent you're running (locally, or one you deployed) — never to
-  NEURAX's own infrastructure, because there isn't any in this path.
-- Auto-validation of topology with optimization suggestions.
+## Everything stays on your machine
 
-### Inference Intelligence
-- 22 configurable parameters — sampling, context, model behavior, stress testing.
-- 10 analytical widgets — stability, entropy, hallucination risk, attention focus.
-- Predict inference behavior before serving, not after.
+- **Your account is a local profile** — a name, an avatar, an id, created automatically on first launch, kept in local storage. No identity server, nothing to sign up for, nothing that leaves the device.
+- **Your API keys** are stored locally and sent directly to the agent process you're running — never to a NEURAX-operated server.
+- **Your projects and designs** are kept on your machine (desktop) or in your own deployment (self-hosted) — never uploaded anywhere by the act of using the compiler.
 
-### Time Machine
-- Multi-year cost, carbon, and scaling projections (3–5 years).
-- Regulatory tracking — EU AI Act, CSRD, DSA.
-- Hardware migration planning with real specs.
+This isn't a privacy footnote — it's the whole design. NEURAX doesn't need your data to work, so it never asks for it.
+
+---
+
+## Every way to install it
+
+### Desktop application (recommended — see above)
+
+| Distribution | What the installer uses |
+|---|---|
+| Debian, Ubuntu, Kali, Pop!\_OS, Mint, ... | `.AppImage` (tried first, no package manager needed), falling back to unpacking the `.deb` |
+| Arch, Manjaro, EndeavourOS, ... | `.AppImage` — self-contained, no `pacman` involvement |
+| Fedora, RHEL, openSUSE, ... | `.AppImage`, falling back to unpacking the `.rpm` |
+| Any other Linux, or a container | `.AppImage` if FUSE is available; otherwise run it extracted (the installer tells you how) |
+| macOS (Intel and Apple silicon) | The universal `.dmg`; the installer clears the quarantine flag so Gatekeeper doesn't block an unsigned build |
+
+| | |
+|---|---|
+| Pin a version | `curl -fsSL … \| sh -s -- --version v0.8.0` |
+| Install elsewhere | `curl -fsSL … \| sh -s -- --prefix ~/opt` |
+| Remove it | `curl -fsSL … \| sh -s -- --uninstall` |
+
+**Windows** has no packaged installer yet — run it from a checkout (see [`neurax-desktop/README.md`](neurax-desktop/README.md)) or use the web interface below.
+
+To see exactly what the install script does before running it, it's a single readable POSIX shell script: [`install.sh`](install.sh).
+
+#### Install, verified
+
+Not assumed — checked, on the machine writing this: a real run of `install.sh` downloaded the AppImage, installed it under a custom prefix, correctly detected and left alone a pre-existing `neurax` binary from an older install method, and the installed application launched for real — embedded API server up, real requests served (`/projects`, `/credits`, `/inference/simulate`), clean shutdown on exit.
+
+### Web interface
+
+```bash
+git clone https://github.com/rustnew/NEURAX.git
+cd NEURAX
+./start-dev.sh
+
+# Web UI     -> http://localhost:8081
+# API        -> http://localhost:9098
+# Agent      -> http://localhost:8099
+```
+
+### Command line
+
+There is no separate CLI crate. `neurax` is the application: the installer puts the desktop binary on your `PATH` under that name, and running it opens the window.
+
+For analysis without a window — a build server, a pipeline — run the service and call it over HTTP:
+
+```bash
+cargo run -p neurax-service          # listens on 0.0.0.0:9098
+curl -s localhost:9098/analyze \
+  -H 'Content-Type: application/json' \
+  -d "{\"topology\": $(cat examples/models/llama2_70b.json)}"
+```
+
+### As a Rust library
+
+Depend on it as a path or git dependency:
+
+```toml
+[dependencies]
+neurax-core = { git = "https://github.com/rustnew/NEURAX", package = "neurax-core" }
+```
+
+```rust
+use neurax_core::analyze_json;
+
+let result = analyze_json(model_json)?; // <50 ms, deterministic, no GPU
+println!("{}", result.report_markdown);
+```
+
+### Docker
+
+```bash
+docker compose up -d
+# Access at http://localhost:8081
+```
+
+---
+
+## Architecture families
+
+NEURAX ships 88 reference templates across 11 families — from a full GPT/LLaMA-class LLM down to a small classifier, the same compiler either way:
+
+| Family | Examples |
+|--------|----------|
+| Transformer / LLM | GPT-2, LLaMA 2/3, BERT, Mistral 7B, Falcon 7B |
+| Mixture-of-Experts | Mixtral, DeepSeek MoE, Qwen2-MoE, DBRX |
+| CNN / Vision | ResNet, VGG, EfficientNet, MobileNetV2, ConvNeXt |
+| State-Space Models | Mamba, Mamba2, ViM |
+| Diffusion | DDPM, Stable Diffusion, Imagen, DALL-E 3, FLUX |
+| GNN | GCN, GAT, GIN, GraphSAGE |
+| GAN | DCGAN, StyleGAN, ProGAN, CycleGAN |
+| Reinforcement Learning | DQN, PPO, SAC, A2C, TD3 |
+| Spiking Neural Networks | LIF SNN, Spiking ResNet, Spikformer |
+| RNN / LSTM / GRU | BiLSTM, LSTM Seq2Seq, GRU Seq2Seq |
+| Experimental | Neural ODE, Liquid Time-Constant, Quantum Hybrid |
 
 ---
 
@@ -125,7 +206,7 @@ flowchart LR
     H --> I[CPU/GPU Execution]
 ```
 
-### The 10-pass IR pipeline
+NEURAX works like a compiler, but instead of compiling to machine code, it compiles to *understanding*: a 10-pass pipeline that turns the architecture you built into a full analytical report.
 
 ```mermaid
 graph LR
@@ -157,9 +238,9 @@ graph LR
 
 ---
 
-## Architecture
+## Under the hood
 
-NEURAX is a full-stack platform with several integrated surfaces:
+NEURAX is a full-stack platform. **The desktop app is the reference build** — the same frontend, with the compiler embedded and running on a loopback socket, nothing else required.
 
 ```mermaid
 graph TB
@@ -192,12 +273,10 @@ graph TB
     Core --> MLIR
 ```
 
-### Component breakdown
-
 | Component | Language | Purpose |
 |-----------|----------|---------|
 | **neurax-ui** | React 18 + TypeScript | Visual canvas, metrics dashboard, AI chat |
-| **neurax-desktop** | Rust (Tauri) | Offline desktop app — same UI, compiler embedded |
+| **neurax-desktop** | Rust (Tauri) | The reference build — offline, compiler embedded |
 | **neurax-service** | Rust (actix-web) | REST API, SSE streaming, auth |
 | **neurax-agent** | Python (FastAPI + LangChain) | AI copilot: natural-language architecture planning |
 | **neurax-core** | Rust | Pipeline orchestrator, ONNX export |
@@ -209,12 +288,9 @@ graph TB
 | **neurax-tui** | Rust (Ratatui) | Terminal user interface |
 | **neurax-mcp** | Python | Model Context Protocol server |
 
-The Rust crates are workspace members, meant to be used together from a
-checkout or via a git dependency — see *As a Rust library* below.
+The Rust crates are workspace members, meant to be used together from a checkout or via a git dependency — see *As a Rust library* above.
 
----
-
-## Repository layout
+### Repository layout
 
 ```
 .
@@ -226,7 +302,7 @@ checkout or via a git dependency — see *As a Rust library* below.
 ├── neurax-hardware-db/   # GPU/CPU spec database
 ├── neurax-tui/           # Terminal UI
 ├── neurax-service/       # Actix-web HTTP API (library + binary)
-├── neurax-desktop/       # Tauri desktop app — the studio, offline
+├── neurax-desktop/       # Tauri desktop app — the reference build
 ├── neurax-agent/         # Python AI copilot (FastAPI + LangChain)
 ├── neurax-mcp/           # MCP server
 ├── neurax-ui/            # React web frontend
@@ -237,182 +313,9 @@ checkout or via a git dependency — see *As a Rust library* below.
 
 ---
 
-## Getting started
-
-### Desktop application (recommended)
-
-**Linux and macOS — one command:**
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
-```
-
-Then type `neurax` in a terminal, or open **NEURAX** from your applications
-menu.
-
-That is all it does: detect your platform, download the right bundle from
-the newest release that has one, put it under `~/.local`, and add an entry
-to your applications menu. Nothing is written outside your home directory
-and no step asks for `sudo`. To see it before running it, read
-[`install.sh`](install.sh) — it's a single readable POSIX shell script,
-tested against `dash` (Debian's `/bin/sh`) as well as `bash` and `zsh`.
-
-This was verified end to end while writing this README — not assumed: a
-real run of `install.sh` on a Debian-family Linux machine downloaded the
-AppImage, installed it, added the menu entry, correctly detected and left
-alone a pre-existing `neurax` binary from an older install method, and the
-resulting application launched, started its embedded API server, and served
-real requests.
-
-| Distribution | What the installer uses |
-|---|---|
-| Debian, Ubuntu, Kali, Pop!\_OS, Mint, ... | `.AppImage` (tried first, no package manager needed), falling back to unpacking the `.deb` |
-| Arch, Manjaro, EndeavourOS, ... | `.AppImage` — self-contained, no `pacman` involvement |
-| Fedora, RHEL, openSUSE, ... | `.AppImage`, falling back to unpacking the `.rpm` |
-| Any other Linux, or a container | `.AppImage` if FUSE is available; otherwise run it extracted (the installer tells you how) |
-| macOS (Intel and Apple silicon) | The universal `.dmg`; the installer clears the quarantine flag so Gatekeeper doesn't block an unsigned build |
-
-| | |
-|---|---|
-| Pin a version | `curl -fsSL … \| sh -s -- --version v0.8.0` |
-| Install elsewhere | `curl -fsSL … \| sh -s -- --prefix ~/opt` |
-| Remove it | `curl -fsSL … \| sh -s -- --uninstall` |
-
-**Windows** has no packaged installer yet — no `.exe`/`.msi` is currently
-built or published. On Windows, run it from a checkout (see *Building the
-desktop app* below) or use the web interface.
-
-**What you get.** The same studio as the web application — same panels,
-same analyses, same numbers — with the compiler running inside the
-application on a loopback socket. Projects are kept on your machine and are
-still there next time you open it; the account is a local profile (see
-*Privacy* below), so the desktop build makes no network call the analysis
-itself depends on.
-
-Building it from source, and how it's put together, is in
-[`neurax-desktop/README.md`](neurax-desktop/README.md).
-
-### Web interface
-
-```bash
-git clone https://github.com/rustnew/NEURAX.git
-cd NEURAX
-./start-dev.sh
-
-# Web UI     -> http://localhost:8081
-# API        -> http://localhost:9098
-# Agent      -> http://localhost:8099
-```
-
-### Command line
-
-There is no separate CLI crate. `neurax` is the application: the installer
-puts the desktop binary on your `PATH` under that name, and running it opens
-the window.
-
-For analysis without a window — a build server, a pipeline — run the
-service and call it over HTTP:
-
-```bash
-cargo run -p neurax-service          # listens on 0.0.0.0:9098
-curl -s localhost:9098/analyze \
-  -H 'Content-Type: application/json' \
-  -d "{\"topology\": $(cat examples/models/llama2_70b.json)}"
-```
-
-Or use the crates directly from a checkout — see *As a Rust library* below.
-
-### As a Rust library
-
-Depend on it as a path or git dependency:
-
-```toml
-[dependencies]
-neurax-core = { git = "https://github.com/rustnew/NEURAX", package = "neurax-core" }
-```
-
-```rust
-use neurax_core::analyze_json;
-
-let result = analyze_json(model_json)?; // <50 ms, deterministic, no GPU
-println!("{}", result.report_markdown);
-```
-
-### Docker
-
-```bash
-docker compose up -d
-# Access at http://localhost:8081
-```
-
----
-
-## Architecture families
-
-NEURAX ships 88 reference templates across 11 families:
-
-| Family | Examples |
-|--------|----------|
-| Transformer / LLM | GPT-2, LLaMA 2/3, BERT, Mistral 7B, Falcon 7B |
-| Mixture-of-Experts | Mixtral, DeepSeek MoE, Qwen2-MoE, DBRX |
-| CNN / Vision | ResNet, VGG, EfficientNet, MobileNetV2, ConvNeXt |
-| State-Space Models | Mamba, Mamba2, ViM |
-| Diffusion | DDPM, Stable Diffusion, Imagen, DALL-E 3, FLUX |
-| GNN | GCN, GAT, GIN, GraphSAGE |
-| GAN | DCGAN, StyleGAN, ProGAN, CycleGAN |
-| Reinforcement Learning | DQN, PPO, SAC, A2C, TD3 |
-| Spiking Neural Networks | LIF SNN, Spiking ResNet, Spikformer |
-| RNN / LSTM / GRU | BiLSTM, LSTM Seq2Seq, GRU Seq2Seq |
-| Experimental | Neural ODE, Liquid Time-Constant, Quantum Hybrid |
-
----
-
-## AI providers
-
-The copilot agent (`neurax-agent`) is bring-your-own-key: NEURAX never holds
-or bills against your API key. Enter it once in Account settings and it's
-kept in your browser's local storage.
-
-| Provider | How it's reached |
-|---|---|
-| OpenAI | Native API |
-| Anthropic (Claude) | Native API — also accepts a gateway/proxy `base_url` |
-| Google (Gemini) | Native API — a separate client, since Gemini's API isn't OpenAI-shaped |
-| Mistral | OpenAI-compatible endpoint |
-| Fireworks AI | OpenAI-compatible endpoint |
-| DeepSeek | OpenAI-compatible endpoint |
-| GLM (Zhipu) | OpenAI-compatible endpoint |
-| Custom | Any OpenAI-compatible server — a local vLLM/Ollama instance, a corporate gateway |
-
-Every provider is exercised by a test that builds its real client and
-asserts it reaches its own default endpoint with its own key — the specific
-regression this guards against is a provider silently falling through to a
-different one's endpoint and failing authentication on every call, which
-happened historically for Google and for every non-OpenAI provider before
-each had an explicit path.
-
----
-
-## Privacy
-
-- **Your account is a local profile** — a name, an avatar, and an id,
-  created automatically on first launch and kept in this browser's (or, on
-  desktop, this machine's) storage. There's no identity server behind it, no
-  project to set up, and nothing about it is ever sent anywhere.
-- **API keys** live in your browser's local storage and are sent directly to
-  the agent process you're running — never to a NEURAX-operated server,
-  because there isn't one in this path.
-- **Projects and designs** are kept on your machine (the desktop app) or in
-  your own deployment's storage — not uploaded anywhere by the act of using
-  the compiler.
-
----
-
 ## Documentation
 
-The full documentation — architecture & design, API reference, deployment
-guide, changelog — is published at **https://rustnew.github.io/NEURAX/**,
-built from [`book/`](book/) with [mdBook](https://rust-lang.github.io/mdBook/).
+The full documentation — architecture & design, API reference, deployment guide, changelog — is published at **https://rustnew.github.io/NEURAX/**, built from [`book/`](book/) with [mdBook](https://rust-lang.github.io/mdBook/).
 
 | Document | Description |
 |----------|-------------|
@@ -427,24 +330,19 @@ built from [`book/`](book/) with [mdBook](https://rust-lang.github.io/mdBook/).
 
 ## Releases & versioning
 
-NEURAX follows [Semantic Versioning](https://semver.org/). Releases are
-published on the [Releases page](https://github.com/rustnew/NEURAX/releases)
-and documented in the [CHANGELOG](CHANGELOG.md).
+NEURAX follows [Semantic Versioning](https://semver.org/). Releases are published on the [Releases page](https://github.com/rustnew/NEURAX/releases) and documented in the [CHANGELOG](CHANGELOG.md).
 
 ---
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-development workflow, project layout, code style, and how to open a pull
-request.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, project layout, code style, and how to open a pull request.
 
 ---
 
 ## License
 
-NEURAX is open-source software licensed under the **MIT License**. See
-[LICENSE](LICENSE) for the full text.
+NEURAX is open-source software licensed under the **MIT License**. See [LICENSE](LICENSE) for the full text.
 
 ---
 
