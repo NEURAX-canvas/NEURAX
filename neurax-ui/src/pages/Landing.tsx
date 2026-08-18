@@ -177,7 +177,7 @@ export default function Landing() {
           </div>
 
           <p className="mt-5 text-[13px] text-muted-foreground">
-            Free and open source · MIT · Demo mode, no account required
+            Free and open source · MIT · No sign-up, nothing to configure
           </p>
         </div>
 
@@ -313,8 +313,8 @@ export default function Landing() {
             Resolve the guess.
           </h2>
           <p className="mt-5 text-[16px] leading-relaxed text-muted-foreground">
-            Place a few blocks and read what the design costs. Nothing to install, and demo mode
-            gets you in without creating an account.
+            Place a few blocks and read what the design costs. Nothing to install in the browser,
+            and no account to create first.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-3">
             <AuthControl
