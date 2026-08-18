@@ -1,5 +1,3 @@
-<img width="1919" height="918" alt="Capture d’écran du 2026-08-16 12-37-49" src="https://github.com/user-attachments/assets/e30d2ff1-2fe9-4573-9f84-ac17c858b468" />
-
 # NEURAX
 
 **Know what a model costs — before you spend a single GPU-hour finding out.**
@@ -11,18 +9,11 @@ The usual way to find out an architecture doesn't fit is to launch the training 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 <p align="center">
-  <img width="1916" height="1075" alt="Capture d’écran du 2026-08-16 08-59-57" src="https://github.com/user-attachments/assets/69771bb1-9954-4dfd-a7a2-ed18f8c39e69" />
-  <img width="1906" height="1076" alt="Capture d’écran du 2026-08-14 13-01-49" src="https://github.com/user-attachments/assets/cc7d4f27-4276-49cd-bd79-e3e695e9b791" />
-  <img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 08-09-52" src="https://github.com/user-attachments/assets/96a4fb4e-7a30-474a-9816-e1e783510ae1" />
-  <img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 08-04-14" src="https://github.com/user-attachments/assets/d4324dc6-92a1-4742-a849-aa21d1b149ca" />
-  <img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 08-00-28" src="https://github.com/user-attachments/assets/91e7403a-a634-4e13-8eb2-83c6eea87a52" />
-<img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 07-50-10" src="https://github.com/user-attachments/assets/a820b4d7-e317-4fc4-b6df-88f0f6b76704" />
-<img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 07-49-12" src="https://github.com/user-attachments/assets/ba4445ef-d13f-4a7f-874c-a691b3cd891c" />
-<img width="1916" height="1075" alt="Capture d’écran du 2026-08-16 09-07-32" src="https://github.com/user-attachments/assets/d7c8b293-a2b8-4a38-af02-d3490a40bb1f" />
-<img width="1916" height="1075" alt="Capture d’écran du 2026-08-16 09-00-55" src="https://github.com/user-attachments/assets/567474d4-051a-4b37-97dd-5a7de3e963b3" />
+  <img width="820" alt="A 28B-parameter transformer (GQA, SwiGLU) loaded on the canvas, with real FLOPs, VRAM, and compute-efficiency numbers computed live" src="https://github.com/user-attachments/assets/d4324dc6-92a1-4742-a849-aa21d1b149ca" />
+  <br><sub>A 28B GQA/SwiGLU transformer, loaded and analyzed — parameters, FLOPs, VRAM, and roofline position, all computed the moment it was built.</sub>
 </p>
 
-## Install it now
+## Install the desktop app
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
@@ -30,20 +21,18 @@ curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
 
 Then type `neurax`, or open **NEURAX** from your applications menu. That's the entire install — no `sudo`, nothing written outside your home directory, nothing to sign up for.
 
-Runs on **Debian, Ubuntu, Kali, Arch, Fedora, and effectively any Linux**, plus **macOS** (Intel and Apple silicon). Verified live, not assumed: while writing this, a real run of this exact command downloaded the app, installed it, and launched it for real.
+<p align="center">
+  <img width="600" alt="A real terminal running the install command above, on a real machine" src="https://github.com/user-attachments/assets/e30d2ff1-2fe9-4573-9f84-ac17c858b468" />
+  <br><sub>The command above, actually run — download, install, and NEURAX ready to open, in one pass.</sub>
+</p>
+
+Runs on **Debian, Ubuntu, Kali, Arch, Fedora, and effectively any Linux**, plus **macOS** (Intel and Apple silicon).
 
 Not sure yet? Read the install script before running it — one file, plain shell: [`install.sh`](install.sh).
 
 ## What it gives you
 
-<p align="center">
- <img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 07-46-47" src="https://github.com/user-attachments/assets/f91bb600-8e5d-4cea-a00a-73ae88926eb3" />
- <img width="1920" height="1077" alt="Capture d’écran du 2026-08-18 07-47-31" src="https://github.com/user-attachments/assets/a0c6631e-ee29-4edd-a3a6-01dcf13648ee" />
-
-
-</p>
-
-Drag blocks onto a canvas, or load one of 88 real reference architectures, and get:
+Drag blocks onto a canvas, or load one of 88 real reference architectures — LLM, diffusion, MoE, and more — and get:
 
 - **Will it fit?** Peak VRAM, activations, optimizer state — to the byte.
 - **What will it cost?** Training time, dollars, energy, CO₂ — on the hardware you actually have.
@@ -51,6 +40,29 @@ Drag blocks onto a canvas, or load one of 88 real reference architectures, and g
 - **Will it behave?** Inference stability and hallucination risk, before you serve a token.
 
 Every number is computed from the architecture you built, live — not a lookup table.
+
+<p align="center">
+  <img width="49%" alt="Importing a model directly from a HuggingFace config.json, by URL or by pasting the file" src="https://github.com/user-attachments/assets/ba4445ef-d13f-4a7f-874c-a691b3cd891c" />
+  <img width="49%" alt="A Mixture-of-Experts diffusion model (MMDiT blocks, VAE, T5-XXL text encoder) analyzed on the canvas" src="https://github.com/user-attachments/assets/69771bb1-9954-4dfd-a7a2-ed18f8c39e69" />
+  <br><sub>Left: import any public model straight from HuggingFace — paste an ID or a <code>config.json</code>, nothing uploaded. Right: the same compiler, on a diffusion architecture — not just LLMs.</sub>
+</p>
+
+**This is what the opening line means, in practice** — a 512-expert, 92-layer design pushed deliberately past a single GPU, caught before any training run:
+
+<p align="center">
+  <img width="820" alt="A design NEURAX flags as OOM Risk: CRITICAL — 21.5 TB of peak VRAM against an 80 GB GPU, found in milliseconds, not six hours into training" src="https://github.com/user-attachments/assets/a820b4d7-e317-4fc4-b6df-88f0f6b76704" />
+  <br><sub>21.5 TB of peak VRAM against an 80 GB card — NEURAX says so instantly, not partway through a training run that was never going to finish.</sub>
+</p>
+
+<p align="center">
+  <img width="820" alt="The Time Machine's regulatory compliance timeline — EU AI Act, CSRD, and other real, dated obligations checked automatically" src="https://github.com/user-attachments/assets/f91bb600-8e5d-4cea-a00a-73ae88926eb3" />
+  <br><sub>Time Machine also tracks what training that model would actually be obligated to — EU AI Act thresholds, carbon reporting, verified against real, dated regulation text, not a generic checklist.</sub>
+</p>
+
+<p align="center">
+  <img width="820" alt="Comparing two designs side by side — parameters, VRAM, FLOPs, and latency, with the percentage change for each" src="https://github.com/user-attachments/assets/91e7403a-a634-4e13-8eb2-83c6eea87a52" />
+  <br><sub>Change an architecture decision and see exactly what moved — every metric, as a percentage, not just a new number to compare by eye.</sub>
+</p>
 
 **This isn't only for people who already have a research cluster.** A small, specialized model tuned to your own dataset gets the same precise answer as a 70B one. That's the common case NEURAX is built for.
 
