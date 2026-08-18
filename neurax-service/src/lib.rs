@@ -2359,23 +2359,52 @@ async fn analyze_stream_events(
         return HttpResponse::Forbidden().body("Invalid token");
     }
 
-    // Get or create a receiver
+    // Both branches below need to hand the client a Completed+Result pair
+    // for a job that already finished, without a live subscriber to relay it.
+    let immediate_result_body = || {
+        let result = state.results.get(&job_id)?;
+        let completed = serde_json::json!({
+            "type": "Completed",
+            "data": { "job_id": job_id, "total_ms": 0 }
+        });
+        let result_event = serde_json::json!({
+            "type": "Result",
+            "data": result.value()
+        });
+        Some(format!("data: {completed}\n\ndata: {result_event}\n\n"))
+    };
+
+    // Get or create a receiver.
+    //
+    // A `tokio::sync::broadcast` channel does not replay past sends to a
+    // subscriber that joins late — and NEURAX's whole point is that analysis
+    // is fast (well under 50ms for most models), so it routinely finishes
+    // and broadcasts its Completed/Result events before this handler's GET
+    // request even arrives, let alone subscribes. The subscriber below would
+    // then sit on `rx.recv().await` forever: nothing left to receive, the
+    // connection never closes, and the client's "Analyzing…" state has
+    // nothing to end it. Checking `state.results` first — before
+    // subscribing — closes that race: a job that already finished is
+    // answered directly, exactly like the `None` branch below already does
+    // for a channel that was cleaned up entirely.
+    if let Some(body) = immediate_result_body() {
+        return HttpResponse::Ok()
+            .content_type("text/event-stream")
+            .insert_header(("Cache-Control", "no-cache"))
+            .insert_header(("Connection", "keep-alive"))
+            .body(body);
+    }
+
     let rx = match state.channels.get(&job_id) {
         Some(tx) => tx.subscribe(),
         None => {
             // Job already completed, check for result
-            if state.results.contains_key(&job_id) {
-                // Return completion event directly
-                let event = serde_json::json!({
-                    "type": "Completed",
-                    "data": { "job_id": job_id, "total_ms": 0 }
-                });
-                let sse_data = format!("data: {}\n\n", event);
+            if let Some(body) = immediate_result_body() {
                 return HttpResponse::Ok()
                     .content_type("text/event-stream")
                     .insert_header(("Cache-Control", "no-cache"))
                     .insert_header(("Connection", "keep-alive"))
-                    .body(sse_data);
+                    .body(body);
             }
             return HttpResponse::NotFound().body("Job stream expired");
         }
@@ -2401,7 +2430,24 @@ async fn analyze_stream_events(
                     if event_type == "Completed" || event_type == "Failed" {
                         // Send final result if completed
                         if event_type == "Completed" {
-                            if let Some(result) = state_inner.results.get(&job_id) {
+                            // `Completed` is emitted by the analysis engine
+                            // itself, inside `spawn_blocking`, strictly
+                            // before that call returns and the handler
+                            // writes to `state.results` — so a subscriber
+                            // can see this event before the result is
+                            // actually there yet. The gap is only ever the
+                            // time between `spawn_blocking` resolving and
+                            // the next line running; a few short retries
+                            // close it without a bigger reordering.
+                            let mut result = state_inner.results.get(&job_id);
+                            for _ in 0..20 {
+                                if result.is_some() {
+                                    break;
+                                }
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                                result = state_inner.results.get(&job_id);
+                            }
+                            if let Some(result) = result {
                                 let result_json = serde_json::json!({
                                     "type": "Result",
                                     "data": result.value()

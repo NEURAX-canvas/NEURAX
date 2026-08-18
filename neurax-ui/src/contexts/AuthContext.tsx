@@ -15,7 +15,7 @@
  * to work. It's an ordinary profile: name and avatar are editable in
  * Account, exactly as they would be on any account system.
  */
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useState, useCallback } from 'react';
 import {
   getStoredDemoUser,
   clearDemoUser,
@@ -38,13 +38,17 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<DemoUser | null>(null);
-
-  // On mount: use the stored profile, or create one — there's nothing to
-  // await here, no request that could fail or leave this pending.
-  useEffect(() => {
-    setUser(getStoredDemoUser() ?? createDemoUser('local@neurax', 'Explorer'));
-  }, []);
+  // Read (or create) the profile synchronously, in the initializer, not in
+  // an effect: `ProtectedRoute` reads `isAuthenticated` on the very first
+  // render, before any effect has run. Deferring the bootstrap to an effect
+  // meant that first render always saw `isAuthenticated === false` — for a
+  // fresh visitor that's invisible (they land on `/` anyway), but a
+  // returning one whose profile is already in storage, opening `/app`
+  // directly (a bookmark, a refresh), was bounced straight back to the
+  // landing page by `<Navigate to="/" />` before the profile even loaded.
+  const [user, setUser] = useState<DemoUser | null>(
+    () => getStoredDemoUser() ?? createDemoUser('local@neurax', 'Explorer'),
+  );
 
   const signIn = useCallback((email: string, username?: string) => {
     setUser(createDemoUser(email, username || email.split('@')[0] || 'Explorer'));
