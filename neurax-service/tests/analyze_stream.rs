@@ -100,8 +100,14 @@ fn a_stream_opened_after_the_job_already_finished_still_delivers_the_result() {
         .expect("starting the job should succeed");
     assert_eq!(start.status().as_u16(), 202, "job did not start");
     let started: Value = start.json().expect("start response is JSON");
-    let job_id = started["job_id"].as_str().expect("job_id present").to_string();
-    let token = started["view_token"].as_str().expect("view_token present").to_string();
+    let job_id = started["job_id"]
+        .as_str()
+        .expect("job_id present")
+        .to_string();
+    let token = started["view_token"]
+        .as_str()
+        .expect("view_token present")
+        .to_string();
 
     // No sleep here — connecting immediately is what used to lose the race.
     let stream = client()
@@ -109,7 +115,11 @@ fn a_stream_opened_after_the_job_already_finished_still_delivers_the_result() {
         .header("Authorization", "Bearer dev-token")
         .send()
         .expect("the stream must answer, not hang until the client timeout");
-    assert_eq!(stream.status().as_u16(), 200, "stream endpoint rejected the request");
+    assert_eq!(
+        stream.status().as_u16(),
+        200,
+        "stream endpoint rejected the request"
+    );
 
     let body = stream.text().expect("stream body reads");
     assert!(
