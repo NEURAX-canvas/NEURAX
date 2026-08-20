@@ -15,6 +15,8 @@ The usual way to find out an architecture doesn't fit is to launch the training 
 
 ## Install the desktop app
 
+**Linux or macOS** — one command:
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
 ```
@@ -27,6 +29,8 @@ Then type `neurax`, or open **NEURAX** from your applications menu. That's the e
 </p>
 
 Runs on **Debian, Ubuntu, Kali, Arch, Fedora, and effectively any Linux**, plus **macOS** (Intel and Apple silicon).
+
+**Windows** — no one-line installer (`install.sh` is a POSIX shell script; Windows' own shells don't run it). Download **`NEURAX_<version>_x64-setup.exe`** from [Releases](https://github.com/rustnew/NEURAX/releases/latest), run it, then launch NEURAX from the Start menu. Windows 11 already has the WebView2 runtime NEURAX renders through; the installer adds it on Windows 10 if it's missing.
 
 Not sure yet? Read the install script before running it — one file, plain shell: [`install.sh`](install.sh).
 
