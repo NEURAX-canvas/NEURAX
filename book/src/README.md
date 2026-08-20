@@ -34,4 +34,9 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
 
 ## Documentation
 
-Use the sidebar to navigate the full documentation set. Start with the [Architecture & Design](DESIGN.md) chapter to understand how NEURAX works internally, then the [API Reference](API_REFERENCE.md) and [Deployment Guide](DEPLOYMENT.md) to run it yourself.
+Use the sidebar to navigate the full documentation set. Installing the
+[Desktop App](DESKTOP.md) is the fastest way to run NEURAX yourself, on
+Linux, macOS or Windows. Start with the [Architecture & Design](DESIGN.md)
+chapter to understand how NEURAX works internally, then the
+[API Reference](API_REFERENCE.md) and [Deployment Guide](DEPLOYMENT.md) to
+run the server side yourself.
