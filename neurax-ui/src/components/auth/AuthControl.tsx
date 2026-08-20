@@ -26,7 +26,6 @@ import {
 } from '@/components/ui/select.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
 import { NotionistsAvatarPicker, AVATAR_OPTIONS, resolveAvatar } from '@/components/profile/NotionistsAvatarPicker.tsx';
-import { Identicon } from '@/components/profile/Identicon.tsx';
 
 interface AuthControlProps {
   triggerLabel?: string;
@@ -72,10 +71,6 @@ export function AuthControl({
   const [apiCustomEndpoint, setApiCustomEndpoint] = useState('');
   const [apiModel, setApiModel] = useState('');
 
-  // The stored value is an avatar id, not an emoji. Rendering it as text put
-  // the literal "ax-01" inside a 32px circle, where it wrapped onto two lines
-  // and collided with the badge beside it.
-  const storedAvatar = useMemo(() => localStorage.getItem('neurax_account_emoji'), []);
   const avatarSrc = useMemo(() => (user ? avatarUrl : identiconDataUri('user')), [user, avatarUrl]);
   const displayName = user?.username ?? 'User';
 
@@ -131,10 +126,16 @@ export function AuthControl({
 
   // ── Create the local profile ────────────────────────────────
   const onCreateProfile = () => {
-    // Persist the chosen avatar by id; the identicon is drawn from its seed.
-    localStorage.setItem('neurax_account_emoji', resolveAvatar(selectedAvatarId).id);
-
-    signIn(email.trim() || 'local@neurax', username.trim() || undefined);
+    // The avatar picked here used to be discarded — `signIn` always drew a
+    // random seed of its own, from a completely different pool of seeds
+    // than this picker's options, so the one just chosen never reached the
+    // profile that's actually displayed. Passed through now, so what's
+    // picked here is what appears afterward.
+    signIn(
+      email.trim() || 'local@neurax',
+      username.trim() || undefined,
+      resolveAvatar(selectedAvatarId).seed,
+    );
 
     // Always land in the studio. An API key is only needed for the AI agent —
     // the compiler itself runs without one — so diverting to account settings
@@ -185,11 +186,7 @@ export function AuthControl({
             onClick={() => navigate('/account')}
             aria-label="Open account"
           >
-            {avatarSrc ? (
-              <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
-            ) : (
-              <Identicon seed={resolveAvatar(storedAvatar).seed} size={32} />
-            )}
+            <img src={avatarSrc} alt="avatar" className="h-full w-full object-cover" />
           </button>
           <span className="hidden sm:inline text-xs text-white/60 font-medium max-w-[100px] truncate">
             {displayName}

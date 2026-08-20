@@ -71,11 +71,20 @@ export const AVATAR_OPTIONS: AvatarOption[] = [
  */
 export const NOTIONISTS_AVATARS = AVATAR_OPTIONS;
 
-/** Resolve a stored identifier, tolerating values written by the emoji set. */
+/**
+ * Resolve a stored identifier to the option it names — an avatar id (how
+ * the picker itself refers to one) or an avatar seed (how a profile's
+ * `avatarSeed` field refers to the same one; the two are different strings
+ * for the same option, `{ id: 'ax-07', seed: 'neurax-quanta' }`, and a
+ * profile only ever stores the seed), tolerating values written by the
+ * emoji set that predated both.
+ */
 export function resolveAvatar(stored: string | null | undefined): AvatarOption {
   if (!stored) return AVATAR_OPTIONS[0];
   const byId = AVATAR_OPTIONS.find((option) => option.id === stored);
   if (byId) return byId;
+  const bySeed = AVATAR_OPTIONS.find((option) => option.seed === stored);
+  if (bySeed) return bySeed;
   // Anything else — including an emoji saved by the previous picker — is
   // hashed to a stable option, so an existing profile keeps a consistent
   // avatar instead of silently resetting to the first one.
