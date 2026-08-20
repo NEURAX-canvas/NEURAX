@@ -2642,6 +2642,8 @@ params: params as Record<string, ParameterValue>,
         onOpenDesign={() => void handleOpenDesign()}
         onSaveDesign={() => void handleSaveDesign()}
         documentName={documentName}
+        documentBaseName={documentBaseName}
+        onRenameDocument={(name) => setDocumentName(name)}
         isDirty={isDirty}
         onUndo={undoDesign}
         onRedo={redoDesign}
