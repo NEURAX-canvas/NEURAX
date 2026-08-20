@@ -9,6 +9,84 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08
+
+### Added
+- Import Mamba and Mamba-2 models directly from HuggingFace — a new family
+  (no attention, no `num_attention_heads` to look for), field names verified
+  against real live configs on the Hub.
+- Publish metadata in the HuggingFace import dialog: author, license,
+  download/like counts, and publish date, fetched from the Hub's model-info
+  API alongside the config — verified live to be public and CORS-enabled the
+  same way the existing raw-config fetch is.
+- Honest refusal for HuggingFace families NEURAX doesn't import yet (CNN,
+  ViT, Whisper, diffusers pipelines, RWKV, ...): names the real family
+  instead of reporting a generic "no hidden size in this config".
+- TOML as a third export format, alongside JSON and NEURAX IR — the same
+  compiled topology, round-tripped losslessly (verified structurally, not
+  just visually).
+- Rename an open design in place, from the header, without a full Save As.
+- Auto-arrange: untangle overlapping or crowded canvas blocks with one
+  click, following the actual connections between them (dagre), instead of
+  dragging each one apart by hand.
+
+### Fixed
+- Seven Mamba/Mamba-2 reference templates were computing roughly double
+  their real parameter count: a visual six-node decomposition of one block
+  had two nodes each independently carrying the block's *whole* formula,
+  while the node that was conceptually the block's core carried none of it.
+  Rebuilt as one node per block, carrying the one real formula. Three of the
+  five Mamba sizes also stated half their real layer count (130M: 12 vs. the
+  real 24).
+- The canvas's connection-delete button was drawn inside its own
+  connection's group, where a *different* connection's wide invisible
+  click-target — rendered later — could paint on top of it and swallow a
+  click a few pixels off centre: visibly selected, red, and unreliable,
+  which read as "doesn't work" rather than "works most of the time."
+  Rendered in its own pass, after every connection, so nothing painted
+  later sits on top of it.
+- Compilation warnings accumulated across repeated analysis runs instead of
+  being replaced — the same architectural issue re-analysed twice showed
+  its warning twice.
+- Changing account avatar didn't reach anywhere the avatar is actually
+  displayed: three separate storage locations all claimed to be "the
+  avatar", and only one of them (never the one either "save avatar" affordance
+  wrote to) was ever read by the header.
+- The model-templates panel had no visible scrollbar over 88 reference
+  architectures — same fix already applied to the hyperparameter panel,
+  now applied here too.
+- `neurax-mlir`'s per-layer parameter and FLOPs formulas were a second, separate,
+  cruder set from the ones `neurax-formulas`/`neurax-ir` actually use — e.g.
+  attention's parameter count omitted the ×4 for Q/K/V/O projections — and
+  only 5 of ~40 layer types were handled at all. Now reuses the real formulas
+  directly rather than re-deriving an approximation of them.
+- ResNet-50's reference template approximated its four stages as attention
+  blocks (no bottleneck-block layer type existed); parameter accuracy against
+  the published 25.6M figure went from +3.53% to -0.04%. Along the way, every
+  BatchNorm-bearing CNN block formula (ResNet, MobileNet, DenseNet, ConvNeXt,
+  ShuffleNet, YOLO's C2f) was counting BatchNorm's non-trainable running
+  statistics as if they were trainable parameters.
+- CI's `build-and-test` job was failing on every PR with "No space left on
+  device" — the cargo cache had grown to 4.26 GB from caching `target`
+  alongside the registry, which combined with the LLVM/MLIR toolchain
+  exceeded the runner's disk. Stopped caching `target`; added a cleanup step
+  freeing the preinstalled toolchains the workspace never uses.
+- The desktop release pipeline never built Windows — confirmed against every
+  past release (v0.7.1 through v0.8.0): zero Windows assets, ever, despite
+  the desktop README documenting a Windows installer. Added `windows-latest`
+  to the build matrix and verified a real run produces a real installer.
+
+### Changed
+- `book/src/DESIGN.md`'s architecture diagrams no longer show `neurax-mlir`
+  wired into the live request path (`CORE --> MLIR --> LLVM/IREE`, generating
+  MLIR for every analysis) — it isn't; nothing in the shipped product calls
+  it. Also replaced a reference to `neurax-cli`, a crate removed from the
+  repository, with `neurax-desktop`, which ships and was previously absent
+  from the diagram entirely.
+- Added `book/src/DESKTOP.md`: install instructions for Linux, macOS, *and*
+  Windows. The root README pointed to "the documentation" for Windows
+  install steps that the documentation didn't actually have.
+
 ## [0.8.0] — 2026-08
 
 ### Added
