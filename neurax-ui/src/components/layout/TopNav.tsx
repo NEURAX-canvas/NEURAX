@@ -17,8 +17,10 @@ import {
   Redo2,
   GitCompare,
   HelpCircle,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
+import { Input } from '@/components/ui/input.tsx';
 import { ArchitectureSelector } from '@/components/architecture/ArchitectureSelector.tsx';
 import { AuthControl } from '@/components/auth/AuthControl.tsx';
 import { NeuraxLogo } from '@/components/brand/NeuraxLogo.tsx';
@@ -54,6 +56,14 @@ interface TopNavProps {
   onSaveDesign?: () => void;
   /** Name of the open document, or undefined when it has never been saved. */
   documentName?: string;
+  /** The same name, stripped of its `.neurax` extension — what the rename field shows and edits. */
+  documentBaseName?: string;
+  /**
+   * Rename the open document. Renaming a design that came from a saved file
+   * does not itself rewrite that file — same as any other unsaved change,
+   * it takes effect in the document and reaches disk on the next Save.
+   */
+  onRenameDocument?: (name: string) => void;
   /** Whether there are changes not yet written to the file. */
   isDirty?: boolean;
 
@@ -91,6 +101,71 @@ interface TopNavProps {
   isProjectsLoading?: boolean;
 }
 
+/**
+ * The open document's name, editable in place.
+ *
+ * Click (or Enter/Space on it) to start typing; Enter or losing focus
+ * commits, Escape reverts to the name before editing started. An empty
+ * name is rejected rather than committed — a blank title is worse than
+ * "Untitled design", which at least says what it is.
+ */
+export function DocumentNameField({
+  name,
+  onRename,
+}: {
+  name: string;
+  onRename?: (name: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(name);
+
+  const commit = () => {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== name) onRename?.(trimmed);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <Input
+        autoFocus
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            setDraft(name);
+            setEditing(false);
+          }
+        }}
+        onFocus={(e) => e.currentTarget.select()}
+        className="h-6 w-40 px-1.5 text-xs font-medium"
+        aria-label="Design name"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(name);
+        setEditing(true);
+      }}
+      className="group flex items-center gap-1 max-w-[10rem] rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+      title="Rename this design"
+      aria-label={`Rename this design (currently "${name}")`}
+    >
+      <span className="truncate">{name}</span>
+      <Pencil className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-60" />
+    </button>
+  );
+}
+
 export function TopNav({
   onRunAnalysis,
   isAnalyzing,
@@ -101,6 +176,8 @@ export function TopNav({
   onOpenDesign,
   onSaveDesign,
   documentName,
+  documentBaseName,
+  onRenameDocument,
   isDirty,
   onUndo,
   onRedo,
@@ -138,6 +215,14 @@ export function TopNav({
         <h1 className="text-xs sm:text-sm font-bold tracking-tight" style={{ color: 'hsl(var(--foreground))' }}>
           NEURAX
         </h1>
+
+        <div className="hidden sm:flex items-center gap-1.5">
+          <span className="text-border">/</span>
+          <DocumentNameField
+            name={documentBaseName ?? 'Untitled design'}
+            onRename={onRenameDocument}
+          />
+        </div>
 
         <AuthControl />
       </div>
