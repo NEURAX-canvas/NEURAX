@@ -1,9 +1,9 @@
 name: Build desktop installers
 
-# Not on every push. Building two operating systems takes tens of minutes and
-# produces artefacts nobody looks at unless a release is being cut, so this runs
-# on a version tag, or on request when you want to test a build without
-# publishing anything.
+# Not on every push. Building three operating systems takes tens of minutes
+# and produces artefacts nobody looks at unless a release is being cut, so
+# this runs on a version tag, or on request when you want to test a build
+# without publishing anything.
 on:
   push:
     tags: ["v*"]
@@ -29,6 +29,9 @@ jobs:
             # so `install.sh` has a single file to fetch for either.
             args: "--target universal-apple-darwin"
             label: macos-universal
+          - platform: windows-latest
+            args: ""
+            label: windows-x64
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -118,4 +121,6 @@ jobs:
             neurax-desktop/target/release/bundle/deb/*.deb
             neurax-desktop/target/release/bundle/rpm/*.rpm
             neurax-desktop/target/**/release/bundle/dmg/*.dmg
+            neurax-desktop/target/release/bundle/msi/*.msi
+            neurax-desktop/target/release/bundle/nsis/*.exe
           if-no-files-found: error
