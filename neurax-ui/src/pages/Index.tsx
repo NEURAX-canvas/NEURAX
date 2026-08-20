@@ -28,7 +28,7 @@ import { ModelHyperparametersDialog } from '@/components/panels/ModelHyperparame
 import { InferenceIntelligence } from '@/components/inference';
 import { ProductionWorkspace } from '@/components/production/ProductionWorkspace.tsx';
 import { SimulationWorkspace } from '@/components/simulation/SimulationWorkspace.tsx';
-import { TimeMachineWorkspace } from '@/components/timemachine/TimeMachineWorkspace.tsx';
+import { TimeMachineWorkspace, type TimeMachineConfig } from '@/components/timemachine/TimeMachineWorkspace.tsx';
 
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { VariantPreset } from '@/types/catalog.ts';
@@ -54,7 +54,7 @@ import { getBlockDefaults, normalizeBlockParams } from '@/utils/blockDefaults.ts
 import { DEFAULT_HARDWARE_CONFIG, HardwareConfig, useHardware, validateHardwareConfig, ArchitectureFamily as HwFamily } from '@/contexts/HardwareContext.tsx';
 import { useAuth } from '@/contexts/AuthContext.tsx';
 import { explainAnalysisFailure, failureAsWarnings } from '@/services/compilerErrors.ts';
-import { analyze, analyzeStream, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo } from '@/services/neuraxApi.ts';
+import { analyze, analyzeStream, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo, type InferenceParams } from '@/services/neuraxApi.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 import { getPluginLayers } from '@/plugins/registry.ts';
 
@@ -875,6 +875,17 @@ const Index = () => {
   // design has moved on since the recipe was captured, without a deep
   // comparison on every keystroke. See the invalidation effect below.
   const initializationSourceRef = useRef<{ nodes: CanvasNode[]; connections: Connection[] } | null>(null);
+  // Inference Intelligence and Time Machine keep their own sliders as local
+  // state, so this is the copy that actually survives a save: each panel
+  // reports its current values here through onChange, and is handed them
+  // back as `initialParams`/`initialConfig`. Both panels stay permanently
+  // mounted (see WorkspaceTabs), so their `useState` initialiser only runs
+  // once — `panelLoadGeneration` below forces a remount when a file is
+  // opened, so a saved value actually reaches the sliders rather than only
+  // updating state nothing rereads.
+  const [inferenceParams, setInferenceParams] = useState<InferenceParams | null>(null);
+  const [timeMachineConfig, setTimeMachineConfig] = useState<TimeMachineConfig | null>(null);
+  const [panelLoadGeneration, setPanelLoadGeneration] = useState(0);
   const [savedProjects, setSavedProjects] = useState<Project[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const [isProjectsLoading, setIsProjectsLoading] = useState(false);
@@ -1022,6 +1033,9 @@ const Index = () => {
     setActiveWorkspaceTab('architecture');
     initializationSourceRef.current = null;
     setOpenedInitialization(null);
+    setInferenceParams(null);
+    setTimeMachineConfig(null);
+    setPanelLoadGeneration((g) => g + 1);
     pendingConnectionsRef.current.clear();
 
     // A blank page is a new document: undoing back into the previous one would
@@ -1950,8 +1964,13 @@ params: params as Record<string, ParameterValue>,
       hardware: hwConfig,
       analysis,
       initialization: openedInitialization,
+      inference: inferenceParams,
+      timeMachine: timeMachineConfig,
     }),
-    [documentBaseName, selectedArchitecture, nodes, connections, groups, hwConfig, analysis, openedInitialization],
+    [
+      documentBaseName, selectedArchitecture, nodes, connections, groups, hwConfig, analysis,
+      openedInitialization, inferenceParams, timeMachineConfig,
+    ],
   );
 
   /** Write the design somewhere new, asking the user where. */
@@ -2055,6 +2074,13 @@ params: params as Record<string, ParameterValue>,
     setPerLayer([]);
     setAnalysis(initialAnalysis);
     setOpenedInitializationFor(doc.initialization ?? null, design.nodes, design.connections);
+    setInferenceParams(doc.inference ?? null);
+    setTimeMachineConfig(doc.timeMachine ?? null);
+    // Forces Inference Intelligence and Time Machine to remount: both panels
+    // stay mounted across the whole session, so without this their sliders
+    // would keep showing whatever was there before this file was opened —
+    // the state above would be correct and the screen would still be wrong.
+    setPanelLoadGeneration((g) => g + 1);
     pendingConnectionsRef.current.clear();
 
     // A freshly opened file is the start of a history, not a step in the
@@ -2134,6 +2160,10 @@ params: params as Record<string, ParameterValue>,
     // to it.
     initializationSourceRef.current = null;
     setOpenedInitialization(null);
+    // Same reasoning: the project store doesn't carry these either.
+    setInferenceParams(null);
+    setTimeMachineConfig(null);
+    setPanelLoadGeneration((g) => g + 1);
     toast({ title: 'Project loaded', description: `Loaded "${project.name}".` });
   }, [setNodes, setConnections, setGroups, setSelectedArchitecture, setHwConfig, toast]);
 
@@ -2655,8 +2685,25 @@ params: params as Record<string, ParameterValue>,
               }}
             />
           }
-          inferenceContent={<InferenceIntelligence architectureType={selectedArchitecture} nodes={nodes} connections={connections} />}
-          timeMachineContent={<TimeMachineWorkspace nodes={nodes} connections={connections} />}
+          inferenceContent={
+            <InferenceIntelligence
+              key={`inference-${panelLoadGeneration}`}
+              architectureType={selectedArchitecture}
+              nodes={nodes}
+              connections={connections}
+              initialParams={inferenceParams ?? undefined}
+              onParamsChange={setInferenceParams}
+            />
+          }
+          timeMachineContent={
+            <TimeMachineWorkspace
+              key={`timemachine-${panelLoadGeneration}`}
+              nodes={nodes}
+              connections={connections}
+              initialConfig={timeMachineConfig ?? undefined}
+              onConfigChange={setTimeMachineConfig}
+            />
+          }
         >
           {null}
         </WorkspaceTabs>

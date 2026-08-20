@@ -443,4 +443,82 @@ describe('the .neurax document', () => {
       expect(parsed.warnings.some((w) => w.includes('unrecognised method'))).toBe(true);
     });
   });
+
+  describe('carries Inference Intelligence and Time Machine configuration', () => {
+    // Neither panel ever stopped the user from configuring it twice by
+    // asking for two separate imports — both stayed mounted for the whole
+    // session and simply forgot their sliders the moment the design was
+    // reopened, because nothing about them was in this file at all.
+    const inference: DesignSnapshot['inference'] = {
+      temperature: 0.7,
+      top_k: 40,
+      top_p: 0.9,
+      beam_width: 1,
+      repetition_penalty: 1.1,
+      presence_penalty: 0,
+      frequency_penalty: 0,
+      prompt_length: 512,
+      max_output_tokens: 256,
+      sliding_window: false,
+      kv_cache_reuse: true,
+      architecture_family: 'transformer',
+      attention_type: 'gqa',
+      quantization_level: 'fp16',
+      long_context_simulation: false,
+      adversarial_prompt: false,
+      high_temperature_mode: false,
+      low_temperature_mode: false,
+    };
+    const timeMachine: DesignSnapshot['timeMachine'] = {
+      growthRate: 150,
+      budgetMax: 750000,
+      horizon: 3,
+      hardware: 'h200',
+    };
+    const withPanels: DesignSnapshot = { ...snapshot, inference, timeMachine };
+
+    it('round-trips both panels’ configuration, not just the architecture', () => {
+      const parsed = parseNeuraxFile(serializeDesign(withPanels));
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.inference).toEqual(inference);
+      expect(parsed.document.timeMachine).toEqual(timeMachine);
+    });
+
+    it('is additive: an older file with neither section still opens', () => {
+      const parsed = parseNeuraxFile(serializeDesign(snapshot));
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.inference).toBeNull();
+      expect(parsed.document.timeMachine).toBeNull();
+    });
+
+    it('rejects an inference section missing a required field rather than crashing the panel', () => {
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        inference: { ...inference, temperature: undefined },
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.inference).toBeNull();
+      expect(parsed.warnings.some((w) => w.includes('inference parameters'))).toBe(true);
+    });
+
+    it('rejects a Time Machine section with an unknown hardware track', () => {
+      const handEdited = JSON.stringify({
+        format: NEURAX_FORMAT,
+        version: 1,
+        design: { nodes, connections: [], groups: [] },
+        timeMachine: { ...timeMachine, hardware: 'tpu-v9-imaginary' },
+      });
+      const parsed = parseNeuraxFile(handEdited);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.document.timeMachine).toBeNull();
+      expect(parsed.warnings.some((w) => w.includes('Time Machine'))).toBe(true);
+    });
+  });
 });
