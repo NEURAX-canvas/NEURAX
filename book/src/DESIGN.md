@@ -27,8 +27,8 @@ The system is composed of:
 | `neurax-ui` | TypeScript (React 18) | 8081 | Visual web frontend |
 | `neurax-agent` | Python (FastAPI) | 8099 | AI copilot for architecture design |
 | `neurax-mcp` | Python | stdio | Model Context Protocol server |
-| `neurax-cli` | Rust | — | Command-line interface |
 | `neurax-tui` | Rust (Ratatui) | — | Terminal user interface |
+| `neurax-desktop` | Rust (Tauri) | — | Desktop app — the compiler and UI, running locally, no account or network needed |
 
 ---
 
@@ -39,7 +39,7 @@ graph TB
     subgraph "Frontend"
         UI[neurax-ui<br/>React 18 + TypeScript]
         TUI[neurax-tui<br/>Ratatui]
-        CLI[neurax-cli<br/>Rust CLI]
+        DESKTOP[neurax-desktop<br/>Tauri]
     end
 
     subgraph "Service Layer"
@@ -54,7 +54,6 @@ graph TB
         IR[neurax-ir<br/>10 IR dialects<br/>+ inference + dynamic passes]
         FORMULAS[neurax-formulas<br/>FLOPs / params / memory]
         HWDB[neurax-hardware-db<br/>20 GPUs • CPUs • interconnects]
-        MLIR[neurax-mlir<br/>14 MLIR dialects<br/>LLVM 18 • IREE]
     end
 
     subgraph "External Services"
@@ -66,7 +65,7 @@ graph TB
 
     UI -- HTTP --> HTTP_API
     TUI -- direct --> CORE
-    CLI -- direct --> CORE
+    DESKTOP -- embeds --> HTTP_API
     MCP -- HTTP --> HTTP_API
 
     AI_AGENT -- HTTP --> HTTP_API
@@ -77,7 +76,6 @@ graph TB
     CORE --> IR
     CORE --> FORMULAS
     CORE --> HWDB
-    CORE --> MLIR
 
     HTTP_API -- JWT --> SUPABASE
     HTTP_API -- Billing --> STRIPE
@@ -85,7 +83,6 @@ graph TB
 
     style CORE fill:#2ecc71,color:#fff
     style IR fill:#3498db,color:#fff
-    style MLIR fill:#e74c3c,color:#fff
     style UI fill:#9b59b6,color:#fff
     style AI_AGENT fill:#f39c12,color:#fff
 ```
@@ -109,12 +106,9 @@ flowchart LR
     end
 
     PIPELINE --> REPORT["Report<br/>40+ metrics<br/>JSON / Markdown"]
-    PIPELINE --> MLIR_OUT["NEURAX-MLIR<br/>model.mlir"]
-    MLIR_OUT --> LLVM["LLVM 18 / IREE<br/>CPU • CUDA • ROCm<br/>Metal • Vulkan"]
 
     style INPUT fill:#4a90d9,color:#fff
     style REPORT fill:#2ecc71,color:#fff
-    style MLIR_OUT fill:#e74c3c,color:#fff
 ```
 
 ### The 10-Pass IR Pipeline
@@ -189,7 +183,24 @@ The orchestrator that wires together the 10-pass pipeline, dynamic analysis, and
 
 ### neurax-mlir
 
-MLIR compiler backend with 14 custom dialects:
+MLIR compiler backend with 14 custom dialects, callable as a library
+(`compile_model_to_mlir`) and covered by its own 119 tests.
+
+**Not part of the request path above.** Nothing in `neurax-service` or
+`neurax-core` calls into this crate — the diagrams in this document used to
+show it wired into the live pipeline, feeding LLVM 18/IREE for CPU, CUDA,
+Vulkan, Metal and ROCm targets, which described a lowering pipeline that
+doesn't run. What actually produces every metric a user sees is the
+10-pass analytical IR pipeline above (`neurax-ir` + `neurax-formulas`).
+`neurax-mlir` is real, working code — reachable by depending on the crate
+directly, see `examples/compile_to_mlir.rs` — that emits textual MLIR from
+the same parsed `ModelConfig`, using the same real per-layer formulas as
+the analytical pipeline (`neurax_ir::calculate_layer_params`,
+`neurax_ir::layer_flops`) rather than the standalone approximation it used
+to keep. Lowering that MLIR the rest of the way to LLVM IR, an object
+file, or any of the target backends below is not wired up to anything —
+the dialects and target-specific codegen modules exist, but nothing in
+the shipped product calls them today.
 
 | Dialect | Purpose |
 |---|---|
@@ -208,9 +219,7 @@ MLIR compiler backend with 14 custom dialects:
 | Optimization | Optimization pass operations |
 | Utils | Shared helpers used across the other dialects |
 
-**Lowering pipeline**: Architecture → Graph → Tensor → Operator → Compute → Memory → Hardware → Cost → Report → LLVM IR → Assembly → Object file.
-
-**Target backends**: CPU, CUDA, Vulkan, Metal, ROCm — plus IREE integration for cross-platform deployment.
+**Target backend code that exists but nothing calls**: CPU, CUDA, Vulkan, Metal, ROCm codegen modules, plus IREE integration — implemented, tested in isolation, not reachable from an analysis request.
 
 ### neurax-formulas
 
