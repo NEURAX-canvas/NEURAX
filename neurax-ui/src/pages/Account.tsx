@@ -28,10 +28,6 @@ import {
 } from '@/components/profile/NotionistsAvatarPicker.tsx';
 import { Identicon } from '@/components/profile/Identicon.tsx';
 
-// Key kept as-is so profiles saved by the emoji picker are still found; the
-// value is now an avatar id, and legacy emoji values resolve to a stable option.
-const AVATAR_KEY = 'neurax_account_emoji';
-
 const PROVIDERS: { value: ApiProvider; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { value: 'openai', label: 'OpenAI', icon: OpenAIIcon },
   { value: 'anthropic', label: 'Anthropic', icon: AnthropicIcon },
@@ -59,9 +55,11 @@ export default function Account() {
   // genuinely does await something has an obvious place to wire into.
   const busy = false;
 
-  // ── Émoji ──
+  // ── Avatar ──
+  // Seeded from the profile's own `avatarSeed` — the value the header
+  // actually displays — not a separate copy that could say something else.
   const [selectedAvatarId, setSelectedAvatarId] = useState<string>(
-    () => resolveAvatar(localStorage.getItem(AVATAR_KEY)).id,
+    () => resolveAvatar(user?.avatarSeed ?? null).id,
   );
 
   // ── Profile edit ──
@@ -90,11 +88,17 @@ export default function Account() {
     }
   }, [username, email, isEditing]);
 
-  // ── Emoji ──
+  // ── Avatar ──
+  //
+  // This used to write to a localStorage key ('neurax_account_emoji') that
+  // nothing reading the header's avatar ever looked at — `updateProfile`'s
+  // type didn't even accept an avatar field, so there was no path from this
+  // "Save" button to the profile that's actually displayed. The toast said
+  // "updated"; the header stayed exactly as it was.
   const onSaveEmoji = useCallback(() => {
-    localStorage.setItem(AVATAR_KEY, selectedAvatarId);
-    toast({ title: 'Emoji saved', description: 'Your account emoji has been updated.' });
-  }, [selectedAvatarId, toast]);
+    updateProfile({ avatarSeed: resolveAvatar(selectedAvatarId).seed });
+    toast({ title: 'Avatar saved', description: 'Your account avatar has been updated.' });
+  }, [selectedAvatarId, updateProfile, toast]);
 
   // ── Profile ── a local write, not a network round trip: nothing here can
   // fail the way a request can, so there's no error branch to report.

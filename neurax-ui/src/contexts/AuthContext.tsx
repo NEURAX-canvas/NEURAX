@@ -28,10 +28,10 @@ import {
 interface AuthContextType {
   isAuthenticated: boolean;
   user: DemoUser | null;
-  signIn: (email: string, username?: string) => void;
+  signIn: (email: string, username?: string, avatarSeed?: string) => void;
   signOut: () => void;
   /** Patch the current profile's editable fields (Account settings). */
-  updateProfile: (patch: Partial<Pick<DemoUser, 'username' | 'email'>>) => void;
+  updateProfile: (patch: Partial<Pick<DemoUser, 'username' | 'email' | 'avatarSeed'>>) => void;
   avatarUrl: string;
 }
 
@@ -50,8 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => getStoredDemoUser() ?? createDemoUser('local@neurax', 'Explorer'),
   );
 
-  const signIn = useCallback((email: string, username?: string) => {
-    setUser(createDemoUser(email, username || email.split('@')[0] || 'Explorer'));
+  const signIn = useCallback((email: string, username?: string, avatarSeed?: string) => {
+    setUser(createDemoUser(email, username || email.split('@')[0] || 'Explorer', avatarSeed));
   }, []);
 
   const signOut = useCallback(() => {
@@ -59,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   }, []);
 
-  const updateProfile = useCallback((patch: Partial<Pick<DemoUser, 'username' | 'email'>>) => {
+  const updateProfile = useCallback((patch: Partial<Pick<DemoUser, 'username' | 'email' | 'avatarSeed'>>) => {
     setUser((prev) => {
       if (!prev) return prev;
       const next = { ...prev, ...patch };

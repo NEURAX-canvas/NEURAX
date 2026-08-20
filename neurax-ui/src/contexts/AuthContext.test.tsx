@@ -107,4 +107,59 @@ describe('AuthContext — local account', () => {
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
     expect(stored.username).toBe('Persisted');
   });
+
+  // Changing avatar used to have no effect on anything reading `avatarUrl` —
+  // `updateProfile`'s own type didn't accept an avatar field, so the
+  // "Save" button on the Account page wrote somewhere the header never
+  // looked. This is the actual property that was broken: changing the
+  // avatar changes what `avatarUrl` — the value the header renders — is.
+  it('updateProfile can change the avatar, and avatarUrl reflects it immediately', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    await act(async () => {});
+    const before = result.current.avatarUrl;
+
+    act(() => {
+      result.current.updateProfile({ avatarSeed: 'neurax-vertex' });
+    });
+
+    expect(result.current.user?.avatarSeed).toBe('neurax-vertex');
+    expect(result.current.avatarUrl).not.toBe(before);
+  });
+
+  it('persists a changed avatar to storage, so a reload keeps it too', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    await act(async () => {});
+
+    act(() => {
+      result.current.updateProfile({ avatarSeed: 'neurax-photon' });
+    });
+
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!);
+    expect(stored.avatarSeed).toBe('neurax-photon');
+  });
+
+  // The avatar picked at sign-up used to be discarded — `signIn` always drew
+  // a random seed of its own regardless of what was passed through from the
+  // picker.
+  it('signIn honours the avatar it is given, instead of always randomising one', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    await act(async () => {});
+
+    act(() => {
+      result.current.signIn('new@example.com', 'New', 'neurax-cortex');
+    });
+
+    expect(result.current.user?.avatarSeed).toBe('neurax-cortex');
+  });
+
+  it('signIn still picks a random avatar when none is given, same as before', async () => {
+    const { result } = renderHook(() => useAuth(), { wrapper: AuthProvider });
+    await act(async () => {});
+
+    act(() => {
+      result.current.signIn('new@example.com', 'New');
+    });
+
+    expect(result.current.user?.avatarSeed).toBeTruthy();
+  });
 });

@@ -50,12 +50,12 @@ export function clearDemoUser(): void {
   localStorage.removeItem(DEMO_USER_KEY);
 }
 
-export function createDemoUser(email: string, username: string): DemoUser {
+export function createDemoUser(email: string, username: string, avatarSeed?: string): DemoUser {
   const user: DemoUser = {
     id: `demo-${Date.now()}`,
     email,
     username: username || email.split('@')[0] || 'Explorer',
-    avatarSeed: randomAvatarSeed(),
+    avatarSeed: avatarSeed || randomAvatarSeed(),
     plan: 'elite',
     createdAt: new Date().toISOString(),
   };
