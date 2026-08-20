@@ -902,40 +902,80 @@ export function ArchitectureCanvas({
                         path={path}
                       />
                     </circle>
-                    {/* Delete button when selected */}
-                    {isSelected && (
-                      <g
-                        style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteConnection(conn.id);
-                        }}
-                      >
-                        <circle
-                          cx={(fromPos.x + fromPos.width + toPos.x) / 2}
-                          cy={(fromPos.y + fromPos.height / 2 + toPos.y + toPos.height / 2) / 2}
-                          r={14}
-                          fill="hsl(var(--destructive))"
-                          stroke="hsl(var(--background))"
-                          strokeWidth={2}
-                        />
-                        <text
-                          x={(fromPos.x + fromPos.width + toPos.x) / 2}
-                          y={(fromPos.y + fromPos.height / 2 + toPos.y + toPos.height / 2) / 2}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fill="hsl(var(--destructive-foreground))"
-                          fontSize={16}
-                          fontWeight="bold"
-                          style={{ pointerEvents: 'none' }}
-                        >
-                          ×
-                        </text>
-                      </g>
-                    )}
                   </g>
                 );
               });
+            })()}
+
+            {/* Delete button for the selected connection — rendered in its own
+                pass, after every connection, rather than inline inside that
+                connection's own <g>. A connection's invisible hit-area
+                (20px-wide stroke, to make a thin line easy to click) is a
+                sibling of every other connection's, and whichever one comes
+                later in `connections` paints on top in SVG's document order.
+                Inline, a later connection crossing near the delete button's
+                position could sit above it and swallow the click — the
+                button was visible but unreliable, not broken outright, which
+                is exactly the "shows red but doesn't work" a click that
+                lands one pixel into a neighbouring connection's hit area
+                would produce. Rendered last here, nothing painted after it
+                can steal the click. */}
+            {(() => {
+              if (!selectedConnectionId) return null;
+              const conn = connections.find((c) => c.id === selectedConnectionId);
+              if (!conn) return null;
+              const fromGroupId = groups.some((g) => g.id === conn.from)
+                ? conn.from
+                : groups.find((g) => g.nodeIds.includes(conn.from))?.id;
+              const toGroupId = groups.some((g) => g.id === conn.to)
+                ? conn.to
+                : groups.find((g) => g.nodeIds.includes(conn.to))?.id;
+              const resolvedFrom = fromGroupId ?? conn.from;
+              const resolvedTo = toGroupId ?? conn.to;
+              if (fromGroupId && fromGroupId === toGroupId) return null; // Internal — no line is drawn for it either.
+              const fromPos = getNodeOrGroupPos(resolvedFrom);
+              const toPos = getNodeOrGroupPos(resolvedTo);
+              if (!fromPos || !toPos) return null;
+
+              const cx = (fromPos.x + fromPos.width + toPos.x) / 2;
+              const cy = (fromPos.y + fromPos.height / 2 + toPos.y + toPos.height / 2) / 2;
+
+              return (
+                <g
+                  style={{ cursor: 'pointer' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteConnection(conn.id);
+                  }}
+                >
+                  {/* Wider invisible ring, same reasoning as the connection's
+                      own hit-area: a 14px circle is a small, precise target
+                      at typical zoom levels, and a click a few pixels off
+                      the visible edge should still register. */}
+                  <circle cx={cx} cy={cy} r={20} fill="transparent" />
+                  <circle
+                    cx={cx}
+                    cy={cy}
+                    r={14}
+                    fill="hsl(var(--destructive))"
+                    stroke="hsl(var(--background))"
+                    strokeWidth={2}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  <text
+                    x={cx}
+                    y={cy}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="hsl(var(--destructive-foreground))"
+                    fontSize={16}
+                    fontWeight="bold"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    ×
+                  </text>
+                </g>
+              );
             })()}
 
             {/* Temporary connection while dragging */}

@@ -457,8 +457,14 @@ export function VariantPresetsPanel({
         )}
       </div>
 
-      {/* Preset List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin p-3 space-y-2">
+      {/* Preset List.
+          `overflow-y-scroll` + `scrollbar-visible`, not `-auto` + `-thin`:
+          the same fix already applied to the hyperparameter panel. 88
+          reference templates is a long list with no sign anything was
+          below the fold — see index.css's `.scrollbar-visible` for why
+          `-auto` alone shows nothing at rest on the Linux desktop build's
+          webview. */}
+      <div className="flex-1 overflow-y-scroll scrollbar-visible p-3 space-y-2">
         {/* Loading state */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
