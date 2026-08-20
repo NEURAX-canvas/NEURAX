@@ -13,10 +13,12 @@ import {
   Server,
   Network,
   Github,
-  Loader2
+  Loader2,
+  FileCode2,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils.ts';
+import { toToml } from '@/utils/tomlExport.ts';
 import { saveTextFile } from '@/services/desktopRuntime.ts';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
@@ -46,7 +48,8 @@ const iconMap: Record<string, React.ElementType> = {
   Zap,
   Server,
   Network,
-  Github
+  Github,
+  FileCode2,
 };
 
 interface ExportOption {
@@ -70,6 +73,7 @@ const EXPORT_OPTIONS: ExportOption[] = [
   // not making one.
   { id: 'json', name: 'JSON', description: 'Architecture and analysis, re-importable', extension: '.json', icon: 'FileJson', minPlan: 'free' },
   { id: 'neurax-ir', name: 'NEURAX IR', description: 'Compiler input — the exact topology analysed', extension: '.neurax.json', icon: 'Box', includeAnalysis: true, minPlan: 'free' },
+  { id: 'toml', name: 'TOML', description: 'Same topology, in a format meant to be hand-edited and diffed', extension: '.toml', icon: 'FileCode2', includeAnalysis: true, minPlan: 'free' },
   { id: 'github', name: 'GitHub', description: 'Push the architecture to a repository', extension: '', icon: 'Github', minPlan: 'free' },
 ];
 
@@ -121,6 +125,14 @@ export function ExportPanel({
     numClasses: hwConfig.numClasses,
   });
   const neuraxJson = JSON.stringify(neuraxIR, null, 2);
+
+  // Same data as the JSON export, in TOML — see toToml's own doc comment.
+  let neuraxToml: string;
+  try {
+    neuraxToml = toToml(neuraxIR);
+  } catch (err) {
+    neuraxToml = `# Could not render as TOML: ${err instanceof Error ? err.message : String(err)}\n`;
+  }
 
   /**
    * Write the export out and tell the user where it went.
@@ -189,14 +201,26 @@ export function ExportPanel({
       return;
     }
 
-    // `EXPORT_OPTIONS` offers JSON and NEURAX IR and nothing else, so reaching
+    if (format.id === 'toml') {
+      const filename = `${architectureName.toLowerCase().replace(/\s+/g, '_')}.toml`;
+      const saved = await saveAndNotify(
+        neuraxToml,
+        filename,
+        'application/toml',
+        'TOML export complete',
+      );
+      if (saved) onClose();
+      return;
+    }
+
+    // `EXPORT_OPTIONS` offers JSON, NEURAX IR and TOML and nothing else, so reaching
     // here means a format was added to the list without a branch to handle it.
     // The code that used to sit here handled `network`, `pytorch` and `rust`
     // — formats removed from the list — and ended in a fallback that showed
     // "Export Complete" a second later without having written anything.
     toast({
       title: 'Unsupported export format',
-      description: `No handler for "${format.id}". Export as JSON or NEURAX IR instead.`,
+      description: `No handler for "${format.id}". Export as JSON, NEURAX IR, or TOML instead.`,
       variant: 'destructive',
     });
   };
@@ -234,7 +258,10 @@ export function ExportPanel({
                 <FileJson className="w-3 h-3 text-primary" />
                 NEURAX IR
               </TabsTrigger>
-
+              <TabsTrigger value="toml" className="flex items-center gap-1">
+                <FileCode2 className="w-3 h-3 text-primary" />
+                TOML
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="formats" className="flex-1 overflow-y-auto p-1">
@@ -364,7 +391,53 @@ export function ExportPanel({
               </div>
             </TabsContent>
 
-
+            <TabsContent value="toml" className="flex-1 overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <FileCode2 className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">Same topology, as TOML</span>
+                  {nodes.length > 0 && (
+                    <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/30">
+                      Compiled from canvas
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7"
+                  onClick={() => handleCopyCode(neuraxToml)}
+                >
+                  {copied ? <Check className="w-4 h-4 mr-1" /> : <Copy className="w-4 h-4 mr-1" />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </Button>
+              </div>
+              <div className="flex-1 overflow-auto bg-background rounded-lg border border-border">
+                <pre className="p-4 text-xs font-mono text-muted-foreground whitespace-pre overflow-x-auto">
+                  {neuraxToml}
+                </pre>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <Button variant="outline" size="sm" onClick={() => handleCopyCode(neuraxToml)}>
+                  <Copy className="w-4 h-4 mr-2" />
+                  Copy TOML
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    saveAndNotify(
+                      neuraxToml,
+                      `${architectureName}.toml`,
+                      'application/toml',
+                      'TOML exported',
+                    )
+                  }
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download .toml
+                </Button>
+              </div>
+            </TabsContent>
 
           </Tabs>
 
