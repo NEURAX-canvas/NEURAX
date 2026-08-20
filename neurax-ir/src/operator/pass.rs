@@ -699,6 +699,28 @@ fn decompose_layer_to_ops(
     ops
 }
 
+/// Total FLOPs for one layer — the sum of every atomic operation
+/// `decompose_layer_to_ops` breaks it into.
+///
+/// Exposed publicly so other consumers of the real per-layer-type formulas
+/// this pass already applies don't have to re-derive their own, separate
+/// approximation. The MLIR backend used to: its own `compiler.rs` counted
+/// attention as `4 × hidden²` FLOPs and left every CNN, SSM, GAN, RNN and
+/// diffusion layer type silently uncounted, simply because nothing connected
+/// it to this pass.
+pub fn layer_flops(
+    layer: &crate::architecture::LayerDef,
+    batch: usize,
+    seq: usize,
+    dtype: &str,
+    ctx: &NeuraxContext,
+) -> f64 {
+    decompose_layer_to_ops(layer, batch, seq, dtype, ctx)
+        .iter()
+        .map(|op| op.flops)
+        .sum()
+}
+
 /// Adapt an IR layer back to the parser type the shared helpers expect.
 fn to_parser_layer(layer: &crate::architecture::LayerDef) -> neurax_parser::Layer {
     neurax_parser::Layer {

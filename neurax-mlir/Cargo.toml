@@ -17,4 +17,6 @@ all-features = true
 melior = { workspace = true }
 thiserror = { workspace = true }
 neurax-parser = { version = "0.8.0", path = "../neurax-parser" }
+neurax-ir = { version = "0.8.0", path = "../neurax-ir" }
+neurax-formulas = { version = "0.8.0", path = "../neurax-formulas" }
 regex = "1"

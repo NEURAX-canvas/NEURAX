@@ -17,7 +17,23 @@ use crate::dialects::{
     ArchitectureDialect, ComputeDialect, CostDialect, HardwareDialect, MemoryDialect,
     OperatorDialect, ParallelismDialect, ReportDialect, TensorDialect,
 };
+use neurax_ir::architecture::LayerDef;
+use neurax_ir::NeuraxContext;
 use neurax_parser::{LayerType, ModelConfig};
+
+/// `batch`, `seq` and `dtype` as the analytical pipeline (`neurax-ir`)
+/// derives them, so a layer costed here and the same layer costed by the
+/// application's actual metrics pipeline start from the same inputs.
+fn training_shape(ctx: &NeuraxContext) -> (usize, usize, String) {
+    let batch = ctx.config.training.batch_size;
+    let seq = ctx
+        .config
+        .training
+        .sequence_length
+        .or(ctx.config.model.global_params.sequence_length)
+        .unwrap_or(512);
+    (batch, seq, ctx.config.training.precision.clone())
+}
 
 /// Compile a parsed model configuration to textual MLIR.
 ///
@@ -63,19 +79,43 @@ pub fn compile_model_to_mlir(
     }
 
     // 3. Layer operations
+    //
+    // Every layer's `param_count` and `flops` below come from the same
+    // formulas the application's actual metrics pipeline uses
+    // (`neurax_ir::calculate_layer_params`, `neurax_ir::layer_flops`) instead
+    // of a separate approximation kept only here. Previously this match
+    // covered five layer types (Attention, Mlp, MoE, Embedding, Dense) with
+    // its own cruder formulas — e.g. attention's param count was `hidden²`,
+    // missing the ×4 for the Q/K/V/O projections a real attention block has
+    // — and silently emitted nothing at all (`_ => {}`) for every CNN, SSM,
+    // GAN, RNN, diffusion, GNN and SNN layer type. Every layer type now gets
+    // a real `param_count`/`flops` pair; the specific `op.*` dialect kind
+    // below still only distinguishes the families that already had one
+    // (matching a richer dialect op per family — `op.conv2d`, `op.ssm`,
+    // `op.generator`, ... — to every remaining `LayerType` is further,
+    // separate work; `op.custom` carries the real numbers honestly under
+    // the layer's own type name until then).
+    let mlir_ctx = NeuraxContext::new(config.clone());
+    let (batch, seq, dtype) = training_shape(&mlir_ctx);
+
     for layer in &config.model.layers {
         let layer_op =
             ArchitectureDialect::layer(context, &layer.id, layer.layer_type.as_str(), location)
                 .map_err(|e| format!("Failed to create layer op for {}: {e:?}", layer.id))?;
         operations.push(layer_op.to_string());
 
+        let param_count = neurax_ir::calculate_layer_params(layer) as i64;
+        let layer_def = LayerDef::from(layer);
+        let flops = neurax_ir::layer_flops(&layer_def, batch, seq, &dtype, &mlir_ctx);
+
         match layer.layer_type {
             LayerType::Attention => {
-                let hidden_size = layer.params.hidden_size.unwrap_or(768) as i64;
-                let num_heads = layer.params.num_heads.unwrap_or(12) as i64;
-
-                let param_count = hidden_size * hidden_size;
-                let flops = 4.0 * (hidden_size as f64).powi(2);
+                // Same defaults `neurax_ir::calculate_layer_params` uses for
+                // this layer type — otherwise a layer that omits
+                // `hidden_size`/`num_heads` would show one pair of numbers
+                // here while `param_count` above was computed from another.
+                let hidden_size = layer.params.hidden_size.unwrap_or(512) as i64;
+                let num_heads = layer.params.num_heads.unwrap_or(8) as i64;
 
                 let attn_op = OperatorDialect::attention(
                     context,
@@ -88,24 +128,16 @@ pub fn compile_model_to_mlir(
                 .map_err(|e| format!("Failed to create attention op: {e:?}"))?;
                 operations.push(attn_op.to_string());
             }
-            LayerType::Mlp => {
-                let hidden_size = layer.params.hidden_size.unwrap_or(768) as i64;
-                let intermediate_size = layer.params.intermediate_size.unwrap_or(3072) as i64;
-
-                let param_count = hidden_size * intermediate_size * 3;
-                let flops = 3.0 * hidden_size as f64 * intermediate_size as f64;
-
+            LayerType::Mlp | LayerType::Dense => {
                 let mlp_op = OperatorDialect::matmul(context, param_count, flops, location)
-                    .map_err(|e| format!("Failed to create mlp op: {e:?}"))?;
+                    .map_err(|e| format!("Failed to create matmul op: {e:?}"))?;
                 operations.push(mlp_op.to_string());
             }
             LayerType::MoE => {
-                let hidden_size = layer.params.hidden_size.unwrap_or(768) as i64;
+                // Same defaults `neurax_ir`'s MoE param/FLOPs formulas use.
+                let hidden_size = layer.params.hidden_size.unwrap_or(512) as i64;
                 let num_experts = layer.params.num_experts.unwrap_or(8) as i64;
                 let top_k = layer.params.top_k.unwrap_or(2) as i64;
-
-                let param_count = hidden_size * hidden_size * num_experts;
-                let flops = 2.0 * hidden_size as f64 * hidden_size as f64 * top_k as f64;
 
                 let moe_op = OperatorDialect::moe(
                     context,
@@ -120,38 +152,43 @@ pub fn compile_model_to_mlir(
                 operations.push(moe_op.to_string());
             }
             LayerType::Embedding => {
+                // Same fallback chain `neurax_ir`'s Embedding formula uses:
+                // an explicit `embedding_dim`, then the layer's own
+                // `hidden_size`, then 512 — not a flat 768 default that
+                // ignores whether `hidden_size` was actually set.
                 let vocab_size = layer.params.vocab_size.unwrap_or(50000) as i64;
-                let embed_dim = layer.params.embedding_dim.unwrap_or(768) as i64;
+                let embed_dim = layer
+                    .params
+                    .embedding_dim
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(512))
+                    as i64;
 
                 let tensor_shape = vec![vocab_size, embed_dim];
                 let tensor_op = TensorDialect::tensor_info(
                     context,
                     &format!("{}_weights", layer.id),
                     &tensor_shape,
-                    "f32",
-                    vocab_size * embed_dim * 4,
+                    &dtype,
+                    param_count * neurax_formulas::dtype_bytes(&dtype) as i64,
                     &layer.id,
                     location,
                 )
                 .map_err(|e| format!("Failed to create tensor op: {e:?}"))?;
                 operations.push(tensor_op.to_string());
             }
-            LayerType::Dense => {
-                let in_features = layer.params.hidden_size.unwrap_or(768) as i64;
-                let out_features = layer
-                    .params
-                    .intermediate_size
-                    .unwrap_or(layer.output_shape.last().copied().unwrap_or(768) as usize)
-                    as i64;
-
-                let param_count = in_features * out_features;
-                let flops = 2.0 * in_features as f64 * out_features as f64;
-
-                let dense_op = OperatorDialect::matmul(context, param_count, flops, location)
-                    .map_err(|e| format!("Failed to create dense op: {e:?}"))?;
-                operations.push(dense_op.to_string());
+            _ => {
+                let custom_op = OperatorDialect::custom(
+                    context,
+                    layer.layer_type.as_str(),
+                    param_count,
+                    flops,
+                    None,
+                    None,
+                    location,
+                )
+                .map_err(|e| format!("Failed to create op for {}: {e:?}", layer.id))?;
+                operations.push(custom_op.to_string());
             }
-            _ => {}
         }
     }
 
@@ -245,131 +282,39 @@ pub fn compile_model_to_mlir(
     Ok(output)
 }
 
+/// Total parameters across every layer, real formula per layer type, scaled
+/// by [`neurax_ir::repeat_scale_for`] exactly as the application's own
+/// metrics pipeline scales a JSON that lists one representative block per
+/// kind rather than every real layer.
+///
+/// This used to assume every model was a uniform transformer stack — one
+/// hidden size, one intermediate size, one attention shape, read out of
+/// `global_params.extra` and repeated `num_layers` times — which was wrong
+/// for the same reason the MLIR backend's per-layer loop was: a CNN's,
+/// SSM's or diffusion model's layers aren't attention/MLP blocks at all, and
+/// even for an actual transformer, a config with several genuinely different
+/// layers (GQA in some blocks, MHA in others; a wider or narrower MLP on
+/// specific layers) was flattened into "the same block, `num_layers` times".
 fn calculate_total_params(config: &ModelConfig) -> i64 {
-    let num_layers = config
-        .model
-        .global_params
-        .num_layers
-        .unwrap_or(config.model.layers.len() as u64) as i64;
-    let hidden = config
-        .model
-        .global_params
-        .extra
-        .get("hidden_size")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(config.model.global_params.embedding_dim.unwrap_or(768) as u64)
-        as i64;
-    let vocab = config.model.global_params.vocab_size.unwrap_or(50000) as i64;
+    neurax_ir::scaled_total_parameters(config) as i64
+}
 
-    let intermediate = config
-        .model
-        .global_params
-        .extra
-        .get("intermediate_size")
-        .or_else(|| config.model.global_params.extra.get("ffn_dim"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or((hidden * 4) as u64) as i64;
-    let num_heads = config
-        .model
-        .global_params
-        .extra
-        .get("num_attention_heads")
-        .or_else(|| config.model.global_params.extra.get("num_heads"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(32) as i64;
-    let num_kv_heads = config
-        .model
-        .global_params
-        .extra
-        .get("num_key_value_heads")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(num_heads as u64) as i64;
-    let head_dim = hidden / num_heads.max(1);
+/// Total FLOPs across every layer, real per-layer-type formula
+/// ([`neurax_ir::layer_flops`]) scaled the same way as parameters above.
+fn calculate_total_flops(config: &ModelConfig) -> f64 {
+    let ctx = NeuraxContext::new(config.clone());
+    let (batch, seq, dtype) = training_shape(&ctx);
 
-    let has_moe = config
+    config
         .model
         .layers
         .iter()
-        .any(|l| l.layer_type == LayerType::MoE);
-
-    let attn_params = hidden * hidden + hidden * head_dim * num_kv_heads * 2 + hidden * hidden;
-
-    let mlp_params = if has_moe {
-        let mut expert_params = hidden * intermediate * 3;
-        let mut num_experts = 8i64;
-        let mut shared_experts = 0i64;
-
-        for layer in &config.model.layers {
-            if layer.layer_type == LayerType::MoE {
-                num_experts = layer.params.num_experts.unwrap_or(8) as i64;
-                shared_experts = layer.params.shared_experts.unwrap_or(0) as i64;
-                expert_params = layer.params.hidden_size.unwrap_or(hidden as usize) as i64
-                    * layer
-                        .params
-                        .intermediate_size
-                        .unwrap_or(intermediate as usize) as i64
-                    * 3;
-                break;
-            }
-        }
-        expert_params * num_experts + expert_params * shared_experts + hidden * num_experts
-    } else {
-        hidden * intermediate * 3
-    };
-
-    let embedding_params = vocab * hidden;
-    let layernorm_params = hidden * 2 * num_layers;
-    let final_ln_params = hidden;
-    let lm_head_params = hidden * vocab;
-
-    embedding_params
-        + (attn_params + mlp_params) * num_layers
-        + layernorm_params
-        + final_ln_params
-        + lm_head_params
-}
-
-fn calculate_total_flops(config: &ModelConfig) -> f64 {
-    let mut total = 0.0;
-
-    for layer in &config.model.layers {
-        let seq = config.model.global_params.sequence_length.unwrap_or(2048) as f64;
-        match layer.layer_type {
-            LayerType::Attention => {
-                let hidden = layer.params.hidden_size.unwrap_or(768) as f64;
-                total += 4.0 * hidden * hidden * seq;
-            }
-            LayerType::Mlp => {
-                let hidden = layer.params.hidden_size.unwrap_or(768) as f64;
-                let intermediate = layer.params.intermediate_size.unwrap_or(3072) as f64;
-                total += 3.0 * hidden * intermediate * seq;
-            }
-            LayerType::MoE => {
-                let hidden = layer.params.hidden_size.unwrap_or(768) as f64;
-                let top_k = layer.params.top_k.unwrap_or(2) as f64;
-                total += 2.0 * hidden * hidden * seq * top_k;
-            }
-            LayerType::Dense => {
-                let in_f = layer.params.hidden_size.unwrap_or(768) as f64;
-                let out_f = layer.params.intermediate_size.unwrap_or(768) as f64;
-                total += 2.0 * in_f * out_f * seq;
-            }
-            _ => {}
-        }
-    }
-
-    let num_layers = config
-        .model
-        .global_params
-        .num_layers
-        .unwrap_or(config.model.layers.len() as u64);
-    let json_layers = config.model.layers.len().max(1) as u64;
-
-    if num_layers > json_layers {
-        total *= num_layers as f64 / json_layers as f64;
-    }
-
-    total
+        .map(|layer| {
+            let layer_def = LayerDef::from(layer);
+            let scale = neurax_ir::repeat_scale_for(config, layer);
+            neurax_ir::layer_flops(&layer_def, batch, seq, &dtype, &ctx) * scale
+        })
+        .sum()
 }
 
 fn calculate_activation_memory(config: &ModelConfig) -> i64 {
