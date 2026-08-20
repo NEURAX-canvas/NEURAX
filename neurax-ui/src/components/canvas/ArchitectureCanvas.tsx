@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { ZoomIn, ZoomOut, Maximize2, Trash2, Copy, Link, MousePointer2, Hand, Target, Layers } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Trash2, Copy, Link, MousePointer2, Hand, Target, Layers, LayoutGrid } from 'lucide-react';
 import { CanvasNode as CanvasNodeType, Connection, LayerConfig, NodeGroup } from '@/types/architecture.ts';
+import { computeAutoLayout } from '@/utils/autoLayout.ts';
 import { CanvasNode } from './CanvasNode.tsx';
 import { GroupNode } from './GroupNode.tsx';
 import { CanvasMinimap } from './CanvasMinimap.tsx';
@@ -550,6 +551,27 @@ export function ArchitectureCanvas({
     });
   }, [nodes]);
 
+  /**
+   * Spread out overlapping or crowded blocks, instead of dragging each one
+   * apart by hand — the same problem `handleZoomToFit` solves for the
+   * *view*, solved here for the *blocks themselves*. See `computeAutoLayout`
+   * for what "spread out" means: a directed left-to-right layout following
+   * the same connections drawn on screen, not a generic grid.
+   */
+  const handleAutoArrange = useCallback(() => {
+    const { nodePositions, groupPositions } = computeAutoLayout(nodes, connections, groups);
+    for (const [id, pos] of nodePositions) {
+      onUpdateNode(id, pos);
+    }
+    for (const [id, pos] of groupPositions) {
+      onUpdateGroup?.(id, pos);
+    }
+    // The new layout is elsewhere on the canvas than whatever was in view
+    // before it ran; frame it the same way opening a design does, rather
+    // than leaving the viewport pointed at wherever the old positions were.
+    requestAnimationFrame(() => handleZoomToFit());
+  }, [nodes, connections, groups, onUpdateNode, onUpdateGroup, handleZoomToFit]);
+
   // Space bar for pan mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -649,6 +671,17 @@ export function ArchitectureCanvas({
             title="Reset view"
           >
             <Maximize2 className="w-4 h-4" />
+          </Button>
+          <div className="w-px h-6 bg-border mx-0.5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            className="w-8 h-8 rounded-lg"
+            onClick={handleAutoArrange}
+            disabled={nodes.length + groups.length < 2}
+            title="Auto-arrange — spread out overlapping blocks by following the connections"
+          >
+            <LayoutGrid className="w-4 h-4" />
           </Button>
         </div>
       </div>
