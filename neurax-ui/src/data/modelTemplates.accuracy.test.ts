@@ -84,3 +84,73 @@ describe('reference templates', () => {
     expect(p.my_own_knob).toBe(7);
   });
 });
+
+/**
+ * The SSM (Mamba/Mamba-2) templates used to decompose one block into
+ * ssm_in_proj/causal_conv1d/s6_block/ssm_out_proj — visually descriptive,
+ * numerically wrong: the compiler's layer-type resolution gave two of those
+ * nodes the *whole* block's formula each (double-counted) and the actual
+ * selective-scan step none of its own. Rebuilt as one `mamba_block` node per
+ * layer, carrying `neurax_formulas::ssm::mamba_params`'s real formula —
+ * reimplemented independently here (not imported from either the graph or
+ * the Rust formula) so a bug shared between them still has a chance of
+ * being caught.
+ */
+describe('SSM reference templates', () => {
+  const SSM_TEMPLATE_IDS = [
+    'tpl-mamba-130m', 'tpl-mamba-370m', 'tpl-mamba-790m', 'tpl-mamba-1.4b', 'tpl-mamba-2.8b',
+    'tpl-mamba2-130m', 'tpl-mamba2-2.7b',
+  ];
+
+  function mambaParamCount(nodes: any[]): number {
+    const embedding = nodes.find((n) => n.type === 'token_embedding');
+    const width = embedding.params.hidden_size;
+    const vocab = embedding.params.vocab_size;
+
+    const block = nodes.find((n) => n.type === 'mamba_block');
+    const dInner = width * block.params.expansion_factor;
+    const perBlock =
+      width * (dInner * 2) + // in_proj
+      dInner * 4 + // conv1d
+      (dInner * block.params.state_dim * 3 + dInner) + // A, B, C, D
+      dInner * width; // out_proj
+
+    const stack = nodes.find((n) => n.type === 'layer_stack');
+    const layers = stack.params.num_layers;
+
+    const head = nodes.find((n) => n.type === 'lm_head');
+    const untiedHead = head.params.tie_weights !== true ? vocab * width : 0;
+
+    return vocab * width + layers * (perBlock + width) + width + untiedHead;
+  }
+
+  it('carry exactly one parameter-bearing SSM node per layer, not the old double-counted three', () => {
+    for (const id of SSM_TEMPLATE_IDS) {
+      const tpl = MODEL_TEMPLATES.find((t) => t.id === id);
+      expect(tpl, `${id} should exist`).toBeTruthy();
+      const mambaNodes = (tpl!.nodes as any[]).filter((n) => n.type === 'mamba_block');
+      const staleNodes = (tpl!.nodes as any[]).filter((n) =>
+        ['s6_block', 'ssd_block', 'ssm_in_proj', 'ssm_out_proj', 'state_space'].includes(n.type),
+      );
+      expect(mambaNodes, `${id} should have exactly one mamba_block`).toHaveLength(1);
+      expect(staleNodes, `${id} should have no leftover decomposed SSM nodes`).toHaveLength(0);
+    }
+  });
+
+  it('Mamba-2.8B reproduces its published parameter count (±10%, matching neurax-core/tests/published_model_accuracy.rs)', () => {
+    const tpl = MODEL_TEMPLATES.find((t) => t.id === 'tpl-mamba-2.8b')!;
+    const counted = mambaParamCount(tpl.nodes as any[]);
+    const published = 2.8e9;
+    const error = Math.abs(counted - published) / published;
+    expect(
+      error,
+      `graph implies ${(counted / 1e9).toFixed(3)} B, published ${(published / 1e9).toFixed(1)} B`,
+    ).toBeLessThan(0.1);
+  });
+
+  it('Mamba-130M states its real 24-layer depth, not the previous (wrong) 12', () => {
+    const tpl = MODEL_TEMPLATES.find((t) => t.id === 'tpl-mamba-130m')!;
+    const stack = (tpl.nodes as any[]).find((n) => n.type === 'layer_stack');
+    expect(stack.params.num_layers).toBe(24);
+  });
+});

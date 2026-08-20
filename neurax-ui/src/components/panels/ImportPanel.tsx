@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Upload, FileJson, AlertCircle, CheckCircle2, Copy, Info, Download, Loader2 } from 'lucide-react';
+import {
+  Upload, FileJson, AlertCircle, CheckCircle2, Copy, Info, Download, Loader2,
+  User, Scale, ArrowDownToLine, Heart, CalendarClock, Lock,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -15,7 +18,7 @@ import { Input } from '@/components/ui/input.tsx';
 import { Label } from '@/components/ui/label.tsx';
 import { sampleTransformerJSON, ImportResult } from '@/utils/architectureImporter.ts';
 import { parseModelJSON, detectImportSource, DetectedImport } from '@/utils/modelImport.ts';
-import { fetchHubConfig } from '@/utils/huggingfaceHub.ts';
+import { fetchHubConfig, fetchHubModelInfo, type HubModelInfo } from '@/utils/huggingfaceHub.ts';
 import { openTextFile } from '@/services/desktopRuntime.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 
@@ -55,6 +58,12 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
   const [hubInput, setHubInput] = useState('');
   const [isFetchingHub, setIsFetchingHub] = useState(false);
   const [hubError, setHubError] = useState<string | null>(null);
+  // Publish metadata for the repo the config above actually came from — only
+  // ever set alongside a successful Hub fetch, and cleared the moment the
+  // text stops being that fetch's unmodified output (edited, replaced by a
+  // sample, or a local file opened instead), so it never describes a
+  // different config than the one on screen.
+  const [hubInfo, setHubInfo] = useState<HubModelInfo | null>(null);
   const { toast } = useToast();
 
   // Shown live under the textarea, before validation, so the user knows the
@@ -99,11 +108,12 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
    */
   const handleFetchFromHub = async () => {
     setHubError(null);
+    setHubInfo(null);
     setIsFetchingHub(true);
     const outcome = await fetchHubConfig(hubInput);
-    setIsFetchingHub(false);
 
     if (!outcome.ok) {
+      setIsFetchingHub(false);
       setHubError(outcome.error);
       return;
     }
@@ -112,6 +122,11 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     setJsonInput(contents);
     setFileName(`${repoId}/config.json`);
     runValidation(contents, `${repoId}/config.json`);
+
+    // Best-effort, after the config that actually matters: a slow or failed
+    // metadata call must never hold up or fail the import itself.
+    void fetchHubModelInfo(repoId).then((info) => setHubInfo(info));
+    setIsFetchingHub(false);
   };
 
   const handleImport = () => {
@@ -139,6 +154,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     setPreviewResult(null);
     setHubInput('');
     setHubError(null);
+    setHubInfo(null);
     onClose();
   };
 
@@ -146,6 +162,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     setJsonInput(which === 'hf' ? SAMPLE_HF_CONFIG : sampleTransformerJSON);
     setFileName(undefined);
     setPreviewResult(null);
+    setHubInfo(null);
   };
 
   /**
@@ -176,6 +193,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
     setJsonInput(picked.contents);
     setFileName(picked.name);
     setPreviewResult(null);
+    setHubInfo(null);
   };
 
   return (
@@ -190,6 +208,14 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
             Open a HuggingFace <code className="text-xs">config.json</code> or a NEURAX design.
             The format is detected from the file.
           </DialogDescription>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            From HuggingFace, NEURAX reads <strong className="text-foreground font-medium">transformer</strong>{' '}
+            language models (decoder and encoder, including mixture-of-experts) and{' '}
+            <strong className="text-foreground font-medium">Mamba / Mamba-2</strong> state-space models —
+            any config with a near-universal shape (widths, depth, head or state counts). It does not read
+            CNN, diffusion, GAN, RNN, GNN, SNN or RL configs from the Hub yet; pointing it at one of those
+            reports what's missing rather than guessing at numbers.
+          </p>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-4">
@@ -281,6 +307,7 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
                 setJsonInput(e.target.value);
                 setFileName(undefined);
                 setPreviewResult(null);
+                setHubInfo(null);
               }}
               placeholder={
                 'Paste a HuggingFace config.json here — the one beside the weights in any Hub repository:\n\n' +
@@ -291,6 +318,58 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
               className="min-h-[220px] font-mono text-xs"
             />
           </div>
+
+          {/* Hub publish metadata — who published this, when, and how
+              established it is. Never blocks the import: absent whenever
+              the fetch failed, was skipped (Open File, a pasted config,
+              a sample), or the config was edited since it was fetched. */}
+          {hubInfo && (
+            <div className="p-3 rounded-lg border border-border bg-muted/40 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-foreground font-mono">{hubInfo.repoId}</p>
+                <div className="flex items-center gap-1.5">
+                  {hubInfo.gated && (
+                    <Badge variant="outline" className="text-[10px] gap-1 text-amber-600 dark:text-amber-400 border-amber-500/30">
+                      <Lock className="w-3 h-3" />
+                      Gated
+                    </Badge>
+                  )}
+                  <a
+                    href={`https://huggingface.co/${hubInfo.repoId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+                  >
+                    View on the Hub
+                  </a>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <User className="w-3 h-3" />
+                  {hubInfo.author ?? 'Unknown publisher'}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Scale className="w-3 h-3" />
+                  {hubInfo.license ?? 'No license stated'}
+                </span>
+                <span className="flex items-center gap-1">
+                  <ArrowDownToLine className="w-3 h-3" />
+                  {hubInfo.downloads.toLocaleString('en-US')}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Heart className="w-3 h-3" />
+                  {hubInfo.likes.toLocaleString('en-US')}
+                </span>
+                {hubInfo.createdAt && (
+                  <span className="flex items-center gap-1">
+                    <CalendarClock className="w-3 h-3" />
+                    Published {new Date(hubInfo.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Preview Result */}
           {previewResult && (

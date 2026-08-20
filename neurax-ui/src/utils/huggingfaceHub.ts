@@ -71,6 +71,90 @@ export interface HubFetchResult {
 }
 
 /**
+ * What the Hub knows about a repository beyond its `config.json` — who
+ * published it, when, under what license, and how established it is.
+ *
+ * None of this changes a single number NEURAX computes: the architecture
+ * import reads `config.json` alone, exactly as before. This is context for
+ * the human deciding whether to trust what they just imported — a shape
+ * that happens to parse is not evidence the repository is real, current, or
+ * the one they meant to reference.
+ */
+export interface HubModelInfo {
+  repoId: string;
+  /** The organization or user that published it — not necessarily who wrote it. */
+  author: string | null;
+  license: string | null;
+  downloads: number;
+  likes: number;
+  /** When the repository was created on the Hub. */
+  createdAt: string | null;
+  /** When any file in it — weights, config, README — was last pushed. */
+  lastModified: string | null;
+  gated: boolean;
+  private: boolean;
+}
+
+/** A `license:<id>` tag, the fallback when `cardData.license` is absent. */
+function licenseFromTags(tags: unknown): string | null {
+  if (!Array.isArray(tags)) return null;
+  const tag = tags.find((t): t is string => typeof t === 'string' && t.startsWith('license:'));
+  return tag ? tag.slice('license:'.length) : null;
+}
+
+/**
+ * Fetch what the Hub's model-info API knows about a repository.
+ *
+ * `huggingface.co/api/models/<repo>` — verified directly against the live
+ * endpoint (not assumed from documentation): public, unauthenticated, and
+ * sends `Access-Control-Allow-Origin` for the caller's own origin, the same
+ * way the raw-file endpoint `fetchHubConfig` uses does.
+ *
+ * Best-effort and separate from `fetchHubConfig` on purpose: this call
+ * failing (rate limit, a Hub outage, a repo whose info endpoint 404s for a
+ * reason its raw-file endpoint didn't) must never block an import that only
+ * needs the config. Callers get `null` rather than a thrown error for
+ * exactly that reason — there is nothing actionable a user could do about
+ * missing publish metadata, unlike a missing or malformed config.
+ */
+export async function fetchHubModelInfo(repoId: string): Promise<HubModelInfo | null> {
+  let response: Response;
+  try {
+    response = await fetch(`https://huggingface.co/api/models/${repoId}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return null;
+  }
+  if (!response.ok) return null;
+
+  let data: Record<string, unknown>;
+  try {
+    data = await response.json();
+  } catch {
+    return null;
+  }
+
+  const cardData = data.cardData;
+  const cardLicense =
+    cardData && typeof cardData === 'object' && !Array.isArray(cardData)
+      ? (cardData as Record<string, unknown>).license
+      : undefined;
+
+  return {
+    repoId,
+    author: typeof data.author === 'string' ? data.author : null,
+    license: typeof cardLicense === 'string' ? cardLicense : licenseFromTags(data.tags),
+    downloads: typeof data.downloads === 'number' ? data.downloads : 0,
+    likes: typeof data.likes === 'number' ? data.likes : 0,
+    createdAt: typeof data.createdAt === 'string' ? data.createdAt : null,
+    lastModified: typeof data.lastModified === 'string' ? data.lastModified : null,
+    gated: data.gated !== false && data.gated !== undefined,
+    private: data.private === true,
+  };
+}
+
+/**
  * Fetch a repo's `config.json` from the Hub.
  *
  * Tries `main` first, then `master` — a shrinking but real minority of

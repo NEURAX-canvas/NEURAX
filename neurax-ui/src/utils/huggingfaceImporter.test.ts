@@ -581,3 +581,175 @@ describe('HuggingFace config import', () => {
     });
   });
 });
+
+// ── Mamba / Mamba-2 — real configs fetched live from the Hub ────────────────
+
+const MAMBA_2_8B = {
+  architectures: ['MambaForCausalLM'],
+  model_type: 'mamba',
+  hidden_size: 2560,
+  num_hidden_layers: 64,
+  vocab_size: 50280,
+  state_size: 16,
+  expand: 2,
+  conv_kernel: 4,
+  layer_norm_epsilon: 1e-5,
+};
+
+const MAMBA_130M = {
+  architectures: ['MambaForCausalLM'],
+  _name_or_path: 'state-spaces/mamba-130m-hf',
+  model_type: 'mamba',
+  hidden_size: 768,
+  num_hidden_layers: 24,
+  vocab_size: 50280,
+  state_size: 16,
+  expand: 2,
+  conv_kernel: 4,
+};
+
+const MAMBA2_CODESTRAL_7B = {
+  architectures: ['Mamba2ForCausalLM'],
+  _name_or_path: 'mistralai/Mamba-Codestral-7B-v0.1',
+  model_type: 'mamba2',
+  hidden_size: 4096,
+  num_hidden_layers: 64,
+  vocab_size: 32768,
+  state_size: 128,
+  expand: 2,
+  conv_kernel: 4,
+  num_heads: 128,
+  head_dim: 64,
+  tie_word_embeddings: false,
+};
+
+/**
+ * Independent of `countParams` above (attention-shaped, doesn't apply here)
+ * and of `neurax_formulas::ssm::mamba_params` (the Rust implementation this
+ * checks against) — reimplemented from the same published block structure
+ * (in_proj, conv1d, the A/B/C/D SSM parameters, out_proj) rather than
+ * imported from either, so a bug shared between the graph and one formula
+ * still has a chance of being caught here.
+ */
+function countMambaParams(nodes: CanvasNode[]): number {
+  const embedding = node(nodes, 'token_embedding');
+  const width = p(embedding, 'hidden_size');
+  const vocab = p(embedding, 'vocab_size');
+
+  const block = node(nodes, 'mamba_block');
+  const stateDim = p(block, 'state_dim');
+  const expansion = p(block, 'expansion_factor');
+  const dInner = width * expansion;
+
+  const inProj = width * (dInner * 2);
+  const conv1d = dInner * 4;
+  const ssm = dInner * stateDim * 3 + dInner;
+  const outProj = dInner * width;
+  const perBlock = inProj + conv1d + ssm + outProj;
+
+  const stack = node(nodes, 'layer_stack');
+  const layers = p(stack, 'num_layers');
+
+  // One RMSNorm inside the block body, one on the trunk after the stack.
+  const bodyNormWeights = width;
+  const finalNormWeights = width;
+
+  let total = vocab * width; // embedding
+  total += layers * (perBlock + bodyNormWeights);
+  total += finalNormWeights;
+
+  const head = node(nodes, 'lm_head');
+  if (head && head.params?.tie_weights !== true) total += vocab * width;
+
+  return total;
+}
+
+describe('Mamba / Mamba-2 import', () => {
+  it('reproduces the parameter count already verified against the published 2.8B Mamba (±10%, matching neurax-core/tests/published_model_accuracy.rs)', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(MAMBA_2_8B));
+    expect(result.error).toBeUndefined();
+    expect(result.family).toBe('ssm');
+
+    const counted = countMambaParams(result.nodes);
+    const published = 2.8e9;
+    const error = Math.abs(counted - published) / published;
+    expect(
+      error,
+      `graph implies ${(counted / 1e9).toFixed(3)} B, published ${(published / 1e9).toFixed(1)} B (${(error * 100).toFixed(1)} % off)`,
+    ).toBeLessThan(0.1);
+  });
+
+  it('reads the real 24-layer shape of Mamba-130M, not a guessed one', () => {
+    // The reference template this importer replaces stated 12 layers for
+    // this size — half the real config's 24. A wrong layer count is not
+    // recoverable by any downstream formula; catching it here is cheaper
+    // than catching it in a parameter-count assertion three steps later.
+    const result = parseHuggingFaceConfig(JSON.stringify(MAMBA_130M));
+    expect(result.error).toBeUndefined();
+    const stack = node(result.nodes, 'layer_stack');
+    expect(p(stack, 'num_layers')).toBe(24);
+    expect(result.modelName).toBe('state-spaces/mamba-130m-hf');
+  });
+
+  it('carries exactly one parameter-bearing SSM node per layer, not several', () => {
+    // The bug this graph shape replaces: two nodes each independently
+    // carrying the block's full formula (double-counted) plus a third
+    // carrying none of it. One node, one formula, once.
+    const result = parseHuggingFaceConfig(JSON.stringify(MAMBA_2_8B));
+    expect(allOf(result.nodes, 'mamba_block')).toHaveLength(1);
+    expect(allOf(result.nodes, 'state_space')).toHaveLength(0);
+  });
+
+  it('imports Mamba-2 (SSD) and notes the approximation honestly', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(MAMBA2_CODESTRAL_7B));
+    expect(result.error).toBeUndefined();
+    expect(result.family).toBe('ssm');
+    const block = node(result.nodes, 'mamba_block');
+    expect(p(block, 'state_dim')).toBe(128);
+    expect(result.notes.join(' ')).toMatch(/approximation/i);
+
+    const head = node(result.nodes, 'lm_head');
+    expect(head?.params?.tie_weights).toBe(false);
+  });
+
+  it('is additive: importing a Mamba config never touches the transformer path', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(LLAMA2_7B));
+    expect(result.family).toBe('transformer');
+    expect(node(result.nodes, 'mamba_block')).toBeUndefined();
+  });
+});
+
+describe('honest refusal of families NEURAX does not import', () => {
+  const cases: Array<{ name: string; config: object; match: RegExp }> = [
+    { name: 'ResNet', config: { model_type: 'resnet', num_channels: 3 }, match: /CNN \(ResNet\)/ },
+    { name: 'ViT', config: { model_type: 'vit', image_size: 224 }, match: /vision transformer/ },
+    { name: 'Whisper', config: { model_type: 'whisper', num_mel_bins: 80 }, match: /speech \(Whisper\)/ },
+    { name: 'RWKV', config: { model_type: 'rwkv', vocab_size: 50277 }, match: /RWKV/ },
+  ];
+
+  for (const { name, config, match } of cases) {
+    it(`names ${name} rather than reporting a missing field`, () => {
+      const result = parseHuggingFaceConfig(JSON.stringify(config));
+      expect(result.error).toBeDefined();
+      expect(result.error).toMatch(match);
+      expect(result.error).toMatch(/NEURAX imports transformer and Mamba\/Mamba-2/);
+    });
+  }
+
+  it('names a diffusers pipeline component instead of guessing at its fields', () => {
+    const unet = {
+      _class_name: 'UNet2DConditionModel',
+      _diffusers_version: '0.21.0',
+      in_channels: 4,
+      out_channels: 4,
+    };
+    const result = parseHuggingFaceConfig(JSON.stringify(unet));
+    expect(result.error).toMatch(/UNet2DConditionModel/);
+    expect(result.error).toMatch(/diffusers pipeline component/);
+  });
+
+  it('still falls through to the generic error for a truly unlisted family', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify({ model_type: 'some_future_cnn' }));
+    expect(result.error).toMatch(/no hidden size/i);
+  });
+});

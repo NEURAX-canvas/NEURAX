@@ -197,6 +197,50 @@ const ENCODER_TYPES = new Set([
   'xlm-roberta', 'camembert', 'mpnet',
 ]);
 
+/**
+ * `model_type` values NEURAX recognises but does not import, mapped to a
+ * human family name for the error message.
+ *
+ * NEURAX imports three families from HuggingFace: transformer (decoder and
+ * encoder, including mixture-of-experts) and Mamba/Mamba-2. Everything
+ * below is a real, common family on the Hub that this importer would
+ * otherwise misreport as "no hidden size in this config" — true, but not
+ * the actual reason, and not actionable the way naming the real family is.
+ * Not exhaustive: an unlisted, genuinely unsupported config still reaches
+ * the generic field-not-found error, just without a name for what it is.
+ */
+const KNOWN_UNSUPPORTED_MODEL_TYPES: Record<string, string> = {
+  resnet: 'CNN (ResNet)',
+  convnext: 'CNN (ConvNeXt)',
+  convnextv2: 'CNN (ConvNeXt V2)',
+  regnet: 'CNN (RegNet)',
+  efficientnet: 'CNN (EfficientNet)',
+  mobilenet_v1: 'CNN (MobileNet)',
+  mobilenet_v2: 'CNN (MobileNet)',
+  mobilevit: 'CNN (MobileViT)',
+  vit: 'vision transformer (ViT)',
+  deit: 'vision transformer (DeiT)',
+  beit: 'vision transformer (BEiT)',
+  swin: 'vision transformer (Swin)',
+  swinv2: 'vision transformer (Swin V2)',
+  detr: 'object-detection (DETR)',
+  yolos: 'object-detection (YOLOS)',
+  sam: 'segmentation (SAM)',
+  dpt: 'depth-estimation (DPT)',
+  clip: 'vision-language (CLIP)',
+  blip: 'vision-language (BLIP)',
+  'blip-2': 'vision-language (BLIP-2)',
+  git: 'vision-language (GIT)',
+  whisper: 'speech (Whisper)',
+  wav2vec2: 'speech (Wav2Vec2)',
+  hubert: 'speech (HuBERT)',
+  speecht5: 'speech (SpeechT5)',
+  vits: 'text-to-speech (VITS)',
+  rwkv: 'RWKV',
+  rwkv5: 'RWKV',
+  rwkv6: 'RWKV',
+};
+
 /** Activations that only ever appear on a gated (SwiGLU/GeGLU) feed-forward. */
 const GATED_ACTIVATIONS = new Set(['silu', 'swish', 'gelu_pytorch_tanh']);
 
@@ -407,6 +451,256 @@ function readShape(
       moe,
       causal: !isEncoder,
     },
+    assumptions,
+  };
+}
+
+// ── Mamba / Mamba-2 (state-space models) ────────────────────────────────────
+//
+// A different family entirely — no attention, no heads, no `num_attention_
+// heads` field to even look for — so this is a parallel path, not a branch
+// of the transformer one above. Both `state-spaces/mamba-*-hf` (`model_type:
+// "mamba"`) and `state-spaces/mamba2-*-hf`-style checkpoints (`model_type:
+// "mamba2"`) were fetched live from the Hub and read field-by-field against
+// this importer while writing it, the same way the transformer path's
+// aliases were derived from real configs rather than the spec.
+
+const MAMBA_MODEL_TYPES = new Set(['mamba', 'mamba2']);
+
+interface MambaShape {
+  modelType: 'mamba' | 'mamba2';
+  name: string;
+  hiddenSize: number;
+  numLayers: number;
+  vocabSize: number;
+  stateDim: number;
+  expansionFactor: number;
+  convKernel: number;
+  normEps: number;
+  tieWordEmbeddings: boolean;
+  /** Mamba-2 only — absent for Mamba-1, where the block has no head structure. */
+  numHeads: number | null;
+  headDim: number | null;
+}
+
+function readMambaShape(
+  config: RawConfig,
+  fallbackName: string,
+): { shape: MambaShape; assumptions: string[] } | { error: string } {
+  const assumptions: string[] = [];
+  const modelType = (str(config, 'model_type') ?? '').toLowerCase() as 'mamba' | 'mamba2';
+
+  const hiddenSize = num(config, 'hidden_size', 'd_model');
+  if (hiddenSize === undefined || hiddenSize <= 0) {
+    return {
+      error: 'No hidden size in this Mamba config (looked for hidden_size, d_model).',
+    };
+  }
+
+  const numLayers = num(config, 'num_hidden_layers', 'n_layer');
+  if (numLayers === undefined || numLayers <= 0) {
+    return {
+      error: 'No layer count in this Mamba config (looked for num_hidden_layers, n_layer).',
+    };
+  }
+
+  let vocabSize = num(config, 'vocab_size', 'padded_vocab_size');
+  if (vocabSize === undefined || vocabSize <= 0) {
+    vocabSize = 50280;
+    assumptions.push('Vocabulary size absent; assumed 50280 (state-spaces/mamba’s own default).');
+  }
+
+  let stateDim = num(config, 'state_size', 'd_state');
+  if (stateDim === undefined || stateDim <= 0) {
+    stateDim = 16;
+    assumptions.push('SSM state dimension absent; assumed 16, the published default for every Mamba/Mamba-2 size.');
+  }
+
+  let expansionFactor = num(config, 'expand');
+  if (expansionFactor === undefined || expansionFactor <= 0) {
+    expansionFactor = 2;
+    assumptions.push('Expansion factor absent; assumed 2, the published default.');
+  }
+
+  const convKernel = num(config, 'conv_kernel', 'd_conv') ?? 4;
+  const normEps = num(config, 'layer_norm_epsilon', 'norm_eps') ?? 1e-5;
+  const tieWordEmbeddings = bool(config, 'tie_word_embeddings', 'tie_embeddings') ?? true;
+
+  // Mamba-2 only: the SSD algorithm organises the state into heads, the way
+  // attention organises width into heads. Reading these is descriptive here
+  // (the notes explain what makes this a Mamba-2, not a Mamba-1, block) —
+  // `neurax_formulas::ssm::mamba_params` doesn't yet have a head-aware
+  // variant of the formula, so the parameter count uses the same formula as
+  // Mamba-1's. Real Mamba-2 checkpoints are close to it (the head structure
+  // reshapes the same total state, it doesn't add a separate parameter
+  // tensor per head) but this is a real, stated approximation, not a
+  // verified-exact one the way the transformer path's numbers are.
+  const numHeads = num(config, 'num_heads') ?? null;
+  const headDim = num(config, 'head_dim') ?? null;
+
+  const name = str(config, '_name_or_path', 'name_or_path') ?? fallbackName;
+
+  return {
+    shape: {
+      modelType,
+      name,
+      hiddenSize,
+      numLayers,
+      vocabSize,
+      stateDim,
+      expansionFactor,
+      convKernel,
+      normEps,
+      tieWordEmbeddings,
+      numHeads,
+      headDim,
+    },
+    assumptions,
+  };
+}
+
+/**
+ * Lay out a Mamba design as one real block, not its internal sub-steps.
+ *
+ * The reference templates used to decompose a Mamba block into its visual
+ * sub-components (input projection, causal conv, the selective-scan step,
+ * output projection) on the canvas. It read well and computed wrong: two of
+ * those sub-nodes each independently carried the *whole* block's parameter
+ * formula (double-counting it), and the step that is conceptually the core
+ * of the block — the selective scan itself — carried none of its own,
+ * because nothing in the compiler's layer-type resolution recognised it and
+ * it fell back to a zero-parameter default. A model imported this way
+ * reported roughly double the block's real parameter count. One node per
+ * layer, carrying the one real formula (`neurax_formulas::ssm::mamba_params`,
+ * verified against Mamba-2.8B's published size — see
+ * `neurax-core/tests/published_model_accuracy.rs`), is correct where the
+ * six-node version was not, even though it shows less of the block's
+ * internal structure on the canvas.
+ */
+function buildMambaGraph(shape: MambaShape): { nodes: CanvasNode[]; connections: Connection[] } {
+  const nodes: CanvasNode[] = [];
+  const connections: Connection[] = [];
+  let nodeSeq = 0;
+  let connSeq = 0;
+
+  const add = (
+    type: LayerType,
+    name: string,
+    x: number,
+    y: number,
+    params: Record<string, unknown>,
+  ): string => {
+    const id = `hf-n${++nodeSeq}`;
+    nodes.push({ id, type, name, x, y, params: params as CanvasNode['params'] });
+    return id;
+  };
+  const link = (from: string, to: string) => {
+    connections.push({ id: `hf-c${++connSeq}`, from, to });
+  };
+
+  const width = shape.hiddenSize;
+  const TRUNK = 140;
+  const BODY = 60;
+
+  const input = add('input', 'Input Tokens', 50, TRUNK, {});
+  const embedding = add('token_embedding', 'Token Embedding', 250, TRUNK, {
+    vocab_size: shape.vocabSize,
+    hidden_size: width,
+  });
+  link(input, embedding);
+
+  const stack = add(
+    'layer_stack',
+    `${shape.numLayers}× ${shape.modelType === 'mamba2' ? 'Mamba-2' : 'Mamba'} Block`,
+    650,
+    TRUNK,
+    { num_layers: shape.numLayers },
+  );
+  link(embedding, stack);
+
+  const preNorm = add('rmsnorm', 'Pre-Block RMSNorm', 650, BODY, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  const block = add(
+    'mamba_block',
+    shape.modelType === 'mamba2'
+      ? `Mamba-2 (SSD, state ${shape.stateDim})`
+      : `Mamba (selective SSM, state ${shape.stateDim})`,
+    850,
+    BODY,
+    {
+      hidden_size: width,
+      state_dim: shape.stateDim,
+      expansion_factor: shape.expansionFactor,
+      conv_kernel_size: shape.convKernel,
+    },
+  );
+  const residual = add('residual_add', 'Residual Add', 1050, BODY, {});
+  link(preNorm, block);
+  link(block, residual);
+  link(residual, stack);
+
+  const finalNorm = add('rmsnorm', 'Final RMSNorm', 1650, TRUNK, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  link(stack, finalNorm);
+
+  const head = add('lm_head', shape.tieWordEmbeddings ? 'LM Head (tied)' : 'LM Head', 1850, TRUNK, {
+    vocab_size: shape.vocabSize,
+    hidden_size: width,
+    tie_weights: shape.tieWordEmbeddings,
+    ...(shape.tieWordEmbeddings ? {} : { in_features: width, out_features: shape.vocabSize }),
+  });
+  link(finalNorm, head);
+
+  const output = add('output', 'Output', 2050, TRUNK, {});
+  link(head, output);
+
+  return { nodes, connections };
+}
+
+function buildMambaHardwareConfig(shape: MambaShape): Partial<HardwareConfig> {
+  return {
+    hiddenDim: shape.hiddenSize,
+    numLayers: shape.numLayers,
+    vocabSize: shape.vocabSize,
+    dState: shape.stateDim,
+  };
+}
+
+function parseMambaConfig(config: RawConfig, fallbackName: string): HuggingFaceImportResult {
+  const empty = { nodes: [], connections: [], notes: [], assumptions: [] };
+  const read = readMambaShape(config, fallbackName);
+  if ('error' in read) {
+    return { ...empty, modelName: fallbackName, error: read.error };
+  }
+
+  const { shape, assumptions } = read;
+  const { nodes, connections } = buildMambaGraph(shape);
+
+  const notes: string[] = [
+    `${shape.numLayers} layers, width ${shape.hiddenSize}, SSM state ${shape.stateDim}, ` +
+      `expansion ×${shape.expansionFactor}, vocabulary ${shape.vocabSize.toLocaleString('en-US')}.`,
+  ];
+  if (shape.modelType === 'mamba2') {
+    notes.push(
+      `Mamba-2 (SSD)${shape.numHeads ? `: ${shape.numHeads} heads` : ''}${shape.headDim ? ` × ${shape.headDim}` : ''}. ` +
+        'Parameter count uses the same formula as Mamba-1 — an approximation for the head-structured SSD algorithm, not a verified-exact one.',
+    );
+  }
+  if (shape.tieWordEmbeddings) {
+    notes.push('Input and output embeddings are tied.');
+  }
+
+  return {
+    nodes,
+    connections,
+    modelName: shape.name,
+    family: 'ssm' as ArchitectureFamily,
+    hardwareConfig: buildMambaHardwareConfig(shape),
+    notes,
     assumptions,
   };
 }
@@ -708,7 +1002,47 @@ export function parseHuggingFaceConfig(
   }
 
   const top = parsed as RawConfig;
+
+  // Diffusers pipeline configs (UNet2DConditionModel, AutoencoderKL, ...)
+  // don't carry `model_type` at all — `_class_name` is their signature
+  // instead, and reading past it into the generic "no hidden size" error
+  // below would blame a field name mismatch for a family this importer
+  // was never going to read.
+  const diffusersClass = str(top, '_class_name');
+  if (diffusersClass) {
+    return {
+      ...empty,
+      modelName: fallbackName,
+      error:
+        `"${diffusersClass}" is a diffusers pipeline component, not a language model config. ` +
+        'NEURAX imports transformer and Mamba/Mamba-2 language models from HuggingFace; ' +
+        'diffusion architectures aren\'t read from the Hub yet — build one on the canvas from the Diffusion family instead.',
+    };
+  }
+
+  const topModelType = (str(top, 'model_type') ?? '').toLowerCase();
+  if (MAMBA_MODEL_TYPES.has(topModelType)) {
+    return parseMambaConfig(top, fallbackName);
+  }
+
   const { config, nested, incomplete } = textConfig(top);
+
+  const nestedModelType = (str(config, 'model_type') ?? '').toLowerCase();
+  if (MAMBA_MODEL_TYPES.has(nestedModelType)) {
+    return parseMambaConfig(config, fallbackName);
+  }
+
+  const unsupportedFamily = KNOWN_UNSUPPORTED_MODEL_TYPES[nestedModelType || topModelType];
+  if (unsupportedFamily) {
+    return {
+      ...empty,
+      modelName: fallbackName,
+      error:
+        `This is a ${unsupportedFamily} model ("model_type": "${nestedModelType || topModelType}"). ` +
+        'NEURAX imports transformer and Mamba/Mamba-2 language models from HuggingFace — ' +
+        `${unsupportedFamily} architectures aren't read from the Hub yet.`,
+    };
+  }
 
   const read = readShape(config, fallbackName);
   if ('error' in read) {
