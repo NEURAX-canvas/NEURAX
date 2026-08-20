@@ -7,7 +7,7 @@ use crate::tensor::Shape;
 use crate::tensor::TensorIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
-use neurax_formulas::{attention, embedding, mlp, moe, normalization};
+use neurax_formulas::{attention, cnn_blocks, embedding, mlp, moe, normalization};
 use neurax_parser::LayerType;
 
 /// Operator pass implementation
@@ -491,9 +491,47 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
-        // CNN layer types - use conv-like operations
-        LayerType::ResidualBlock
-        | LayerType::Mbconv
+        // ResNet's two real block shapes have real FLOPs formulas
+        // (`neurax_formulas::cnn_blocks`) — used here instead of the generic
+        // placeholder below. Nothing in this pass tracks a feature map's
+        // actual height/width as it shrinks through the network (no CNN
+        // layer type does), so `sqrt(seq)` stands in for a square spatial
+        // size, on the same assumption the reference templates already make
+        // (resnet50.json's `sequence_length: 196` is 14×14) — an
+        // approximation, not the exact per-layer resolution, but a real
+        // formula applied to it beats a formula with no structural relation
+        // to the block at all.
+        LayerType::ResidualBlock | LayerType::ResnetBottleneck => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(64);
+            let out_ch = layer.params.out_channels.unwrap_or(256);
+            let stride = layer.params.stride.unwrap_or(1);
+            let flops = if matches!(layer.layer_type, LayerType::ResnetBottleneck) {
+                let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
+                cnn_blocks::resnet_bottleneck_block_flops(
+                    batch, in_ch, mid_ch, out_ch, side, side, stride,
+                )
+            } else {
+                cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, stride)
+            };
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // The remaining CNN block types don't yet have their real FLOPs
+        // formulas wired in here the way the two ResNet block shapes just
+        // were, even though several of those formulas already exist in
+        // `neurax_formulas::cnn_blocks` (`mbconv_flops` in particular) — this
+        // placeholder is a known, separate gap, not a considered estimate.
+        LayerType::Mbconv
         | LayerType::Inception
         | LayerType::DenseBlock
         | LayerType::ConvnextBlock

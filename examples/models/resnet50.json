@@ -1,80 +1,84 @@
 {
-  "schema_version": "1.0.0",
-  "model": {
-    "name": "ResNet-50-25M",
-    "type": "transformer",
-    "layers": [
-      {
-        "id": "conv1",
-        "layer_type": "conv",
-        "params": {
-          "in_channels": 3,
-          "out_channels": 64,
-          "kernel_size": 7,
-          "hidden_size": 64
-        }
-      },
-      {
-        "id": "block1",
-        "layer_type": "attention",
-        "params": {
-          "hidden_size": 256,
-          "num_attention_heads": 4
-        }
-      },
-      {
-        "id": "block2",
-        "layer_type": "attention",
-        "params": {
-          "hidden_size": 512,
-          "num_attention_heads": 8
-        }
-      },
-      {
-        "id": "block3",
-        "layer_type": "attention",
-        "params": {
-          "hidden_size": 1024,
-          "num_attention_heads": 16
-        }
-      },
-      {
-        "id": "block4",
-        "layer_type": "attention",
-        "params": {
-          "hidden_size": 2048,
-          "num_attention_heads": 32
-        }
-      },
-      {
-        "id": "classifier",
-        "layer_type": "linear",
-        "params": {
-          "hidden_size": 2048,
-          "output_size": 1000
-        }
-      }
-    ]
-  },
-  "training": {
-    "batch_size": 256,
-    "sequence_length": 196,
-    "precision": "fp32",
-    "learning_rate": 0.1,
-    "num_epochs": 90
-  },
-  "hardware": {
-    "gpus": [
-      {
-        "name": "V100",
-        "memory_gb": 32,
-        "count": 8
-      }
-    ]
-  },
-  "data": {
-    "dataset_size": 1281167,
-    "vocab_size": 0,
-    "num_classes": 1000
-  }
+    "schema_version": "1.0.0",
+    "model": {
+        "name": "ResNet-50",
+        "type": "cnn",
+        "layers": [
+            {
+                "id": "conv1",
+                "layer_type": "conv",
+                "params": {
+                    "in_channels": 3,
+                    "out_channels": 64,
+                    "kernel_size": 7,
+                    "hidden_size": 64
+                }
+            },
+            {"id": "stage1_block0", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 64, "mid_channels": 64, "out_channels": 256, "stride": 1}},
+            {"id": "stage1_block1", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 256, "mid_channels": 64, "out_channels": 256, "stride": 1}},
+            {"id": "stage1_block2", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 256, "mid_channels": 64, "out_channels": 256, "stride": 1}},
+
+            {"id": "stage2_block0", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 256, "mid_channels": 128, "out_channels": 512, "stride": 2}},
+            {"id": "stage2_block1", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 512, "mid_channels": 128, "out_channels": 512, "stride": 1}},
+            {"id": "stage2_block2", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 512, "mid_channels": 128, "out_channels": 512, "stride": 1}},
+            {"id": "stage2_block3", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 512, "mid_channels": 128, "out_channels": 512, "stride": 1}},
+
+            {"id": "stage3_block0", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 512, "mid_channels": 256, "out_channels": 1024, "stride": 2}},
+            {"id": "stage3_block1", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 1024, "mid_channels": 256, "out_channels": 1024, "stride": 1}},
+            {"id": "stage3_block2", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 1024, "mid_channels": 256, "out_channels": 1024, "stride": 1}},
+            {"id": "stage3_block3", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 1024, "mid_channels": 256, "out_channels": 1024, "stride": 1}},
+            {"id": "stage3_block4", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 1024, "mid_channels": 256, "out_channels": 1024, "stride": 1}},
+            {"id": "stage3_block5", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 1024, "mid_channels": 256, "out_channels": 1024, "stride": 1}},
+
+            {"id": "stage4_block0", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 1024, "mid_channels": 512, "out_channels": 2048, "stride": 2}},
+            {"id": "stage4_block1", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 2048, "mid_channels": 512, "out_channels": 2048, "stride": 1}},
+            {"id": "stage4_block2", "layer_type": "resnet_bottleneck",
+             "params": {"in_channels": 2048, "mid_channels": 512, "out_channels": 2048, "stride": 1}},
+
+            {
+                "id": "classifier",
+                "layer_type": "linear",
+                "params": {
+                    "hidden_size": 2048,
+                    "out_features": 1000
+                }
+            }
+        ]
+    },
+    "training": {
+        "batch_size": 256,
+        "sequence_length": 196,
+        "precision": "fp32",
+        "learning_rate": 0.1,
+        "num_epochs": 90
+    },
+    "hardware": {
+        "gpus": [
+            {
+                "name": "V100",
+                "memory_gb": 32,
+                "count": 8
+            }
+        ]
+    },
+    "data": {
+        "dataset_size": 1281167,
+        "vocab_size": 0,
+        "num_classes": 1000
+    }
 }

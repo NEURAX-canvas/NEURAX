@@ -141,6 +141,12 @@ pub enum LayerType {
     MoeSharedExpert,
     // CNN Modern Layer Types
     ResidualBlock,
+    /// ResNet's *bottleneck* block (1×1 reduce → 3×3 → 1×1 expand) — the
+    /// block ResNet-50 and deeper actually use. Distinct from `ResidualBlock`
+    /// (the 2-conv *basic* block used by ResNet-18/34) and from `ResnetBlock`
+    /// below (a diffusion U-Net's residual block, a different structure
+    /// entirely) — three real things that share a name in casual use.
+    ResnetBottleneck,
     Mbconv,
     Inception,
     DenseBlock,
@@ -212,6 +218,7 @@ impl LayerType {
             "moe_shared_expert" => Ok(Self::MoeSharedExpert),
             // CNN Modern architectures
             "residual_block" | "res_block" | "residual" => Ok(Self::ResidualBlock),
+            "resnet_bottleneck" | "bottleneck_block" | "bottleneck" => Ok(Self::ResnetBottleneck),
             "mbconv" | "inverted_residual" | "mobile_bottleneck" => Ok(Self::Mbconv),
             "inception" | "inception_module" => Ok(Self::Inception),
             "dense_block" | "denseblock" => Ok(Self::DenseBlock),
@@ -278,6 +285,7 @@ impl LayerType {
             Self::MoeCombine => "moe_combine",
             Self::MoeSharedExpert => "moe_shared_expert",
             Self::ResidualBlock => "residual_block",
+            Self::ResnetBottleneck => "resnet_bottleneck",
             Self::Mbconv => "mbconv",
             Self::Inception => "inception",
             Self::DenseBlock => "dense_block",
@@ -376,6 +384,10 @@ pub struct LayerParams {
     pub padding: Option<usize>,
     pub in_channels: Option<usize>,
     pub out_channels: Option<usize>,
+    /// The reduced width inside a ResNet-style bottleneck block (the 1×1
+    /// reduce → 3×3 → 1×1 expand pattern) — distinct from `in_channels` and
+    /// `out_channels`, which are the block's boundary widths.
+    pub mid_channels: Option<usize>,
 
     // Attention parameters
     pub causal: bool,
@@ -517,6 +529,7 @@ impl LayerParams {
             padding: raw.get_usize("padding"),
             in_channels: raw.get_usize("in_channels"),
             out_channels: raw.get_usize("out_channels"),
+            mid_channels: raw.get_usize("mid_channels"),
             causal: raw.get_bool("causal").unwrap_or(false),
             // `num_key_value_heads` is the HuggingFace spelling and the one used
             // by the reference models in examples/; accept both so GQA layers
