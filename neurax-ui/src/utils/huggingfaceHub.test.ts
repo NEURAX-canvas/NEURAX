@@ -4,7 +4,7 @@
 // what a user would actually paste, and (where marked) against the real
 // Hub, not a mock.
 import { describe, it, expect } from 'vitest';
-import { parseRepoId, fetchHubConfig } from './huggingfaceHub.ts';
+import { parseRepoId, fetchHubConfig, fetchHubModelInfo } from './huggingfaceHub.ts';
 
 describe('parseRepoId', () => {
   it('accepts a bare owner/model ID', () => {
@@ -82,5 +82,22 @@ describe.skipIf(!process.env.NEURAX_LIVE_HUB_TEST)('fetchHubConfig against the r
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
     expect(outcome.error).toMatch(/doesn't exist|private/i);
+  }, 20000);
+});
+
+describe.skipIf(!process.env.NEURAX_LIVE_HUB_TEST)('fetchHubModelInfo against the real Hub', () => {
+  it('fetches real publish metadata', async () => {
+    const info = await fetchHubModelInfo('mistralai/Mistral-7B-v0.1');
+    expect(info).not.toBeNull();
+    if (!info) return;
+    expect(info.author).toBe('mistralai');
+    expect(info.license).toBe('apache-2.0');
+    expect(info.downloads).toBeGreaterThan(0);
+    expect(info.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  }, 20000);
+
+  it('returns null rather than throwing for a repo that does not exist', async () => {
+    const info = await fetchHubModelInfo('this-owner-does-not-exist-neurax-test/nope');
+    expect(info).toBeNull();
   }, 20000);
 });
