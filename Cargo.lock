@@ -1973,6 +1973,8 @@ name = "neurax-mlir"
 version = "0.8.0"
 dependencies = [
  "melior",
+ "neurax-formulas",
+ "neurax-ir",
  "neurax-parser",
  "regex",
  "thiserror 1.0.69",
