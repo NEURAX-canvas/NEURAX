@@ -12,21 +12,36 @@ interface InferenceIntelligenceProps {
   /** Blocks on the canvas, so the simulation runs on the real design. */
   nodes?: CanvasNode[];
   connections?: Connection[];
+  /** Restores the sliders from a saved `.neurax` document, once, on mount. */
+  initialParams?: InferenceParams;
+  /** Fired whenever a parameter changes, so the config can be saved. */
+  onParamsChange?: (params: InferenceParams) => void;
 }
 
 export function InferenceIntelligence({
   architectureType,
   nodes = [],
   connections = [],
+  initialParams,
+  onParamsChange,
 }: InferenceIntelligenceProps) {
   const { config: design } = useHardware();
-  const [params, setParams] = useState<InferenceParams>(() =>
-    buildDefaultInferenceParams(architectureType, design),
+  const [params, setParams] = useState<InferenceParams>(
+    () => initialParams ?? buildDefaultInferenceParams(architectureType, design),
   );
   const [report, setReport] = useState<InferenceReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // See TimeMachineWorkspace's identical pattern: read through a ref so an
+  // inline callback prop doesn't turn "notify on change" into "notify on
+  // every render".
+  const onParamsChangeRef = useRef(onParamsChange);
+  onParamsChangeRef.current = onParamsChange;
+  useEffect(() => {
+    onParamsChangeRef.current?.(params);
+  }, [params]);
 
   const runSimulation = useCallback(async (p: InferenceParams) => {
     setLoading(true);

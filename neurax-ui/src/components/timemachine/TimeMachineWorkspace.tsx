@@ -79,22 +79,49 @@ function BreakingDot(props: any) {
   );
 }
 
+/**
+ * The What-If sliders' values — the part of this workspace worth saving.
+ * `activeView`, `projection` and the loading/error flags are computed or
+ * purely navigational, and don't belong in a saved design.
+ */
+export interface TimeMachineConfig {
+  growthRate: number;
+  budgetMax: number;
+  horizon: number;
+  hardware: 'a100' | 'h200' | 'b100';
+}
+
 interface TimeMachineWorkspaceProps {
   nodes: CanvasNode[];
   connections: Connection[];
+  /** Restores the sliders from a saved `.neurax` document, once, on mount. */
+  initialConfig?: TimeMachineConfig;
+  /** Fired whenever a slider changes, so the config can be saved. */
+  onConfigChange?: (config: TimeMachineConfig) => void;
 }
 
-export function TimeMachineWorkspace({ nodes, connections }: TimeMachineWorkspaceProps) {
+export function TimeMachineWorkspace({ nodes, connections, initialConfig, onConfigChange }: TimeMachineWorkspaceProps) {
   const { config: hwConfig } = useHardware();
-  const [growthRate, setGrowthRate] = useState(100);
-  const [budgetMax, setBudgetMax] = useState(500000);
-  const [horizon, setHorizon] = useState(5);
-  const [hardware, setHardware] = useState<'a100' | 'h200' | 'b100'>('a100');
+  const [growthRate, setGrowthRate] = useState(initialConfig?.growthRate ?? 100);
+  const [budgetMax, setBudgetMax] = useState(initialConfig?.budgetMax ?? 500000);
+  const [horizon, setHorizon] = useState(initialConfig?.horizon ?? 5);
+  const [hardware, setHardware] = useState<'a100' | 'h200' | 'b100'>(initialConfig?.hardware ?? 'a100');
   const [activeView, setActiveView] = useState('timeline');
   const [projection, setProjection] = useState<TimeMachineProjection | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [projError, setProjError] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // `onConfigChange` is read through a ref rather than listed as an effect
+  // dependency: an inline arrow function passed as a prop gets a new identity
+  // every render, which would otherwise re-fire this effect (and re-notify
+  // the parent) on every unrelated re-render rather than only when a slider
+  // actually moves.
+  const onConfigChangeRef = useRef(onConfigChange);
+  onConfigChangeRef.current = onConfigChange;
+  useEffect(() => {
+    onConfigChangeRef.current?.({ growthRate, budgetMax, horizon, hardware });
+  }, [growthRate, budgetMax, horizon, hardware]);
 
   useEffect(() => {
     if (nodes.length === 0) { setProjection(null); return; }
