@@ -1420,6 +1420,11 @@ params: params as Record<string, ParameterValue>,
     }
 
     setIsAnalyzing(true);
+    // Every message below is appended onto whatever this run finds, not
+    // replaced — without clearing first, a warning from a run three clicks
+    // ago is still on screen, and gets a duplicate of itself added next to
+    // it on every subsequent run that reproduces the same issue.
+    setWarnings([]);
 
     try {
       // Compile canvas to NEURAX IR topology
@@ -1552,6 +1557,10 @@ params: params as Record<string, ParameterValue>,
     }
 
     setIsAnalyzing(true);
+    // See handleRunAnalysis: without this, a warning from an earlier run
+    // stays on screen and accumulates a duplicate of itself on every
+    // subsequent run that still reproduces the same issue.
+    setWarnings([]);
 
     try {
       const ir = compileToNeuraxIR(nodes, connections, {
