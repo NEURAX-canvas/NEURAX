@@ -139,6 +139,22 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let stride = layer.params.stride.unwrap_or(1);
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, stride, layer.params.bias)
         }
+        LayerType::ResnetBottleneck => {
+            let in_ch = layer.params.in_channels.unwrap_or(64);
+            // The classic ResNet-50 expansion factor: the bottleneck's
+            // middle width is a quarter of its output width, unless the
+            // config says otherwise.
+            let out_ch = layer.params.out_channels.unwrap_or(256);
+            let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
+            let stride = layer.params.stride.unwrap_or(1);
+            cnn_blocks::resnet_bottleneck_block_params(
+                in_ch,
+                mid_ch,
+                out_ch,
+                stride,
+                layer.params.bias,
+            )
+        }
         LayerType::Mbconv => {
             let in_ch = layer.params.in_channels.unwrap_or(32);
             let out_ch = layer.params.out_channels.unwrap_or(16);

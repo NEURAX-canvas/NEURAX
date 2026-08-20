@@ -261,6 +261,7 @@ fn propagate_shape(
         }
         // CNN layer types - preserve shape for now
         LayerType::ResidualBlock
+        | LayerType::ResnetBottleneck
         | LayerType::Mbconv
         | LayerType::Inception
         | LayerType::DenseBlock
