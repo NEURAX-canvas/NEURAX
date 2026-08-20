@@ -30,7 +30,14 @@ Then type `neurax`, or open **NEURAX** from your applications menu. That's the e
 
 Runs on **Debian, Ubuntu, Kali, Arch, Fedora, and effectively any Linux**, plus **macOS** (Intel and Apple silicon).
 
-**Windows** — no one-line installer (`install.sh` is a POSIX shell script; Windows' own shells don't run it). Download **`NEURAX_<version>_x64-setup.exe`** from [Releases](https://github.com/rustnew/NEURAX/releases/latest), run it, then launch NEURAX from the Start menu. Windows 11 already has the WebView2 runtime NEURAX renders through; the installer adds it on Windows 10 if it's missing.
+**Windows** — no one-line installer (`install.sh` is a POSIX shell script; Windows' own shells don't run it):
+
+1. Go to [Releases](https://github.com/rustnew/NEURAX/releases/latest).
+2. Under **Assets**, download `NEURAX_<version>_x64-setup.exe` (or `NEURAX_<version>_x64_en-US.msi`, if your organization prefers MSI installers).
+3. Run the downloaded file. Windows 11 already has the WebView2 runtime NEURAX renders through; the installer adds it on Windows 10 if it's missing.
+4. Launch **NEURAX** from the Start menu.
+
+Same install as Linux and macOS otherwise: no account to create, no data leaves the machine, and the compiler runs locally, in the app itself.
 
 Not sure yet? Read the install script before running it — one file, plain shell: [`install.sh`](install.sh).
 
