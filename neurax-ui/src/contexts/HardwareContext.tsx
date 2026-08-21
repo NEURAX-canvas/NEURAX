@@ -145,6 +145,10 @@ export interface HardwareConfig {
   outChannels?: number;
 }
 
+// Mirrors `ArchitectureFamily` in `types/plugins.ts` — the 8 families the
+// compiler fully supports. `vit` stays: it was never a selectable family
+// (absent from `ARCHITECTURE_FAMILIES`), only ever a `MANDATORY_FIELDS` key
+// for the mandatory-field check below, unrelated to this reduction.
 export type ArchitectureFamily =
   | 'transformer'
   | 'cnn'
@@ -154,10 +158,7 @@ export type ArchitectureFamily =
   | 'moe'
   | 'diffusion'
   | 'vit'
-  | 'snn'
-  | 'rl'
-  | 'gan'
-  | 'experimental';
+  | 'gan';
 
 export const MANDATORY_FIELDS: Record<string, (keyof HardwareConfig)[]> = {
   common: ['hardware', 'precision', 'batchSize'],
@@ -169,10 +170,7 @@ export const MANDATORY_FIELDS: Record<string, (keyof HardwareConfig)[]> = {
   cnn: ['inChannels'],
   ssm: ['dState'],
   rnn: [],
-  snn: [],
   gan: [],
-  rl: [],
-  experimental: [],
 };
 
 export function validateHardwareConfig(config: HardwareConfig, family: ArchitectureFamily): { isValid: boolean; missingFields: (keyof HardwareConfig)[] } {

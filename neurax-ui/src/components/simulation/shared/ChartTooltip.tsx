@@ -31,6 +31,25 @@ export function chartTooltipStyle(): Record<string, string> {
   };
 }
 
+/**
+ * The one dot a line or area chart actually shows — on the point under the
+ * cursor, not on every sample. Every `<Line>`/`<Area>` in the app sets
+ * `dot={false}` (a mark per point is noise on a dense trace) but left the
+ * hover point at recharts' small, unstyled default, so the one moment that
+ * should read as "here — exactly this value, right now" looked identical
+ * to the rest of the line. A ring in the surface color plus a solid center
+ * in the series' own color is what makes it land as emphasis, not just a
+ * slightly bigger dot.
+ */
+export function chartActiveDot(colorVar: string = 'var(--chart-1)') {
+  return {
+    r: 5,
+    strokeWidth: 2,
+    stroke: 'hsl(var(--card))',
+    fill: colorVar,
+  };
+}
+
 export function ChartTooltipContent({
   active,
   payload,

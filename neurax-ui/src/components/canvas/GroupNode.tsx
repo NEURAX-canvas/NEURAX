@@ -50,12 +50,12 @@ export function GroupNode({
     <div
       className={cn(
         "absolute select-none transition-all duration-200 ease-out",
-        "border-2 rounded-2xl shadow-lg w-[240px]",
+        "border-2 rounded-xl shadow-sm w-[240px]",
         "bg-gradient-to-br from-primary/5 via-card to-accent/5",
         "border-primary/40",
-        "hover:shadow-xl hover:border-primary/60",
+        "hover:shadow-lg hover:border-primary/60",
         "cursor-move",
-        isSelected && "border-primary shadow-xl ring-4 ring-primary/20"
+        isSelected && "border-primary shadow-lg ring-4 ring-primary/20"
       )}
       // Rounded to a whole pixel for display only — see CanvasNode's own
       // left/top for why an unrounded position reads as permanent blur.
@@ -64,7 +64,7 @@ export function GroupNode({
       onMouseDown={onDragStart}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-primary/20 bg-primary/10 rounded-t-2xl">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-primary/20 bg-primary/10 rounded-t-xl">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-primary/20 border border-primary/30 text-primary">
           <Layers className="w-5 h-5" />
         </div>

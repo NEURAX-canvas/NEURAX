@@ -22,9 +22,10 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
 
 ## Key capabilities
 
-- **11 architecture families** — Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RL, SNN, RNN, Experimental.
-- **208 configurable blocks** and **88 reference templates**, both counted
-  against the real catalogue by a test, not stated from memory.
+- **8 architecture families, fully supported** — Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RNN — every
+  metric, not just parameter count. Families without dedicated compiler formulas (RL, SNN, an
+  "Experimental" catch-all) were removed rather than left partially supported.
+- **64 reference templates**, counted against the real catalogue by a test, not stated from memory.
 - **10-pass analytical IR pipeline** producing 66 metrics.
 - **MLIR / LLVM 18** compiler backend with 14 custom dialects.
 - **Visual design canvas**, **AI copilot agent**, **Inference Intelligence** and **Time Machine**.

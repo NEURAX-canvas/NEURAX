@@ -48,8 +48,18 @@ _TIME_UNITS_MS = {"ms": 1.0, "millisecond": 1.0, "milliseconds": 1.0, "s": 1000.
                   "sec": 1000.0, "second": 1000.0, "seconds": 1000.0}
 
 # Words that mark an upper bound, in English and French.
+#
+# "runs on 3GB of RAM" states a ceiling exactly as much as "under 3GB" does —
+# stating what the model must fit *inside* is a normal, common way to phrase a
+# resource limit, not a synonym gap to leave unhandled. Verified against a real
+# miss: "qui va tourner sur 3giga de ram" (a real client request, not a
+# constructed test case) matched nothing before these were added, and the
+# constraint was silently dropped rather than reaching the planner at all.
 _UNDER = r"(?:under|below|less\s+than|at\s+most|max(?:imum)?|no\s+more\s+than|within|" \
-         r"moins\s+de|au\s+plus|inf[ée]rieur\s+[àa]|sous|maximum)"
+         r"(?:runs?|running|able\s+to\s+run|capable\s+of\s+running|fit(?:s|ting)?)\s+(?:on|in|within)|" \
+         r"moins\s+de|au\s+plus|inf[ée]rieur\s+[àa]|sous|maximum|" \
+         r"(?:tourner|fonctionner|capable\s+de\s+(?:tourner|fonctionner)|tenir)\s+(?:sur|dans|avec)|" \
+         r"tient\s+dans)"
 
 _NUMBER = r"(\d+(?:[.,]\d+)?)"
 

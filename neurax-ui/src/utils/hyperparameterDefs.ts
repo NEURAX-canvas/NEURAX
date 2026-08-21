@@ -481,14 +481,12 @@ export const UNIVERSAL_PARAMS: HyperparameterDef[] = [
 ];
 
 /**
- * The eleven established families, on their own — everything except
- * `experimental`.
- *
- * Kept apart from the exported `FAMILY_HYPERPARAM_DEFS` so `experimental`'s
- * own entry can be *derived* from the other ten rather than hand-copied: see
- * `buildExperimentalParams` below, assembled after this object closes.
+ * Hyperparameter definitions for the 8 families the compiler fully
+ * supports. `experimental` and its derived "union of every other family's
+ * params" used to live here too — removed along with the family itself,
+ * not worth keeping now that nothing selects it.
  */
-const CONCRETE_FAMILY_DEFS: Record<Exclude<ArchitectureFamily, 'experimental'>, FamilyHyperparameterDefs> = {
+const CONCRETE_FAMILY_DEFS: Record<ArchitectureFamily, FamilyHyperparameterDefs> = {
   transformer: {
     family: 'transformer',
     globalConstraints: TRANSFORMER_CONSTRAINTS,
@@ -1339,208 +1337,9 @@ const CONCRETE_FAMILY_DEFS: Record<Exclude<ArchitectureFamily, 'experimental'>, 
     },
   },
 
-  snn: {
-    family: 'snn',
-    params: [
-      {
-        key: 'hiddenDim',
-        label: 'Hidden Dimension',
-        description: 'Core dimension of the SNN layers',
-        type: 'int',
-        defaultValue: 256,
-        range: { min: 32, max: 4096, step: 32, gridPoints: 6 },
-        priority: 'high',
-        group: 'capacity',
-      },
-      {
-        key: 'numLayers',
-        label: 'Number of Layers',
-        description: 'Depth of the spiking network',
-        type: 'int',
-        defaultValue: 4,
-        range: { min: 1, max: 50, step: 1, gridPoints: 5 },
-        priority: 'high',
-        group: 'capacity',
-      },
-      {
-        key: 'timesteps',
-        label: 'Timesteps',
-        description: 'Number of simulation timesteps for spike propagation',
-        type: 'int',
-        defaultValue: 100,
-        range: { min: 10, max: 1000, logScale: true, gridPoints: 5 },
-        priority: 'critical',
-        group: 'compute',
-      },
-      {
-        key: 'dState',
-        label: 'State Dimension (d_state)',
-        description: 'Internal neuron state dimension',
-        type: 'int',
-        defaultValue: 16,
-        range: { min: 2, max: 128, step: 2, gridPoints: 5 },
-        priority: 'medium',
-        group: 'architecture',
-      },
-      {
-        key: 'spikeRate',
-        label: 'Spike Rate',
-        description: 'Target firing rate for spike regularization',
-        type: 'float',
-        defaultValue: 0.05,
-        range: { min: 0.01, max: 0.5, step: 0.01 },
-        priority: 'medium',
-        group: 'training',
-      },
-      {
-        key: 'dropout',
-        label: 'Dropout Rate',
-        description: 'Dropout for SNN regularization',
-        type: 'float',
-        defaultValue: 0.1,
-        range: { min: 0, max: 0.5, step: 0.05 },
-        priority: 'low',
-        group: 'regularization',
-      },
-          ...UNIVERSAL_PARAMS,
-    ],
-    defaultSearchSpace: {
-      hiddenDim: { min: 64, max: 1024, step: 64 },
-      timesteps: { min: 20, max: 500, logScale: true },
-      numLayers: { min: 2, max: 20 },
-    },
-  },
-
-  rl: {
-    family: 'rl',
-    params: [
-      {
-        key: 'hiddenDim',
-        label: 'Hidden Dimension',
-        description: 'Hidden dimension of policy/value networks',
-        type: 'int',
-        defaultValue: 256,
-        range: { min: 32, max: 2048, step: 32, gridPoints: 5 },
-        priority: 'high',
-        group: 'capacity',
-      },
-      {
-        key: 'numLayers',
-        label: 'Number of Layers',
-        description: 'Depth of RL network',
-        type: 'int',
-        defaultValue: 2,
-        range: { min: 1, max: 20, step: 1 },
-        priority: 'medium',
-        group: 'capacity',
-      },
-      {
-        key: 'actionDim',
-        label: 'Action Dimension',
-        description: 'Number of possible actions',
-        type: 'int',
-        defaultValue: 18,
-        range: { min: 1, max: 10000, logScale: true, gridPoints: 5 },
-        priority: 'high',
-        group: 'data',
-      },
-      {
-        key: 'stateDim',
-        label: 'State Dimension',
-        description: 'Dimension of the state observation',
-        type: 'int',
-        defaultValue: 128,
-        range: { min: 4, max: 4096, step: 4, gridPoints: 6 },
-        priority: 'high',
-        group: 'data',
-      },
-      {
-        key: 'learningRate',
-        label: 'Learning Rate',
-        description: 'Learning rate for RL policy update',
-        type: 'float',
-        defaultValue: 0.0003,
-        range: { min: 1e-6, max: 0.01, logScale: true, gridPoints: 6 },
-        priority: 'critical',
-        group: 'training',
-      },
-      {
-        key: 'batchSize',
-        label: 'Batch Size',
-        description: 'Experience replay batch size',
-        type: 'int',
-        defaultValue: 64,
-        range: { min: 1, max: 4096, logScale: true, gridPoints: 5 },
-        priority: 'medium',
-        group: 'memory',
-      },
-          ...UNIVERSAL_PARAMS,
-    ],
-    defaultSearchSpace: {
-      hiddenDim: { min: 64, max: 1024, step: 64 },
-      stateDim: { min: 8, max: 1024, step: 8 },
-      learningRate: { min: 1e-5, max: 0.005, logScale: true },
-    },
-  },
-
 };
 
-/**
- * Every parameter from every established family, in one list.
- *
- * `experimental` is the catch-all family for blocks that don't fit the other
- * eleven — the palette already treats it that way — so its hyperparameters
- * should be the same: not a copy of transformer's, but the union of what
- * every family exposes. Someone combining an MoE router with an SSM state
- * block needs both `numExperts` and `stateDim` on screen at once, and no
- * single concrete family has both.
- *
- * Deduplicated by key, first occurrence wins — families are visited in the
- * order `CONCRETE_FAMILY_DEFS` declares them, so the earliest, most-authoritative
- * definition of a shared key (`batchSize`, `learningRate`, ...) is the one
- * kept rather than the last family to happen to also mention it.
- */
-function buildExperimentalParams(
-  families: Record<Exclude<ArchitectureFamily, 'experimental'>, FamilyHyperparameterDefs>,
-): HyperparameterDef[] {
-  const seen = new Set<string>();
-  const merged: HyperparameterDef[] = [];
-
-  for (const defs of Object.values(families)) {
-    for (const param of defs.params) {
-      const key = param.key as string;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(param);
-    }
-  }
-
-  return merged;
-}
-
-export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparameterDefs> = {
-  ...CONCRETE_FAMILY_DEFS,
-  experimental: {
-    family: 'experimental',
-    // Every family's own constraints apply to at least the blocks it
-    // contributed; unioning them the same way as the params keeps a
-    // MoE-shaped constraint from silently vanishing just because the design
-    // also has an SSM block in it. Derived from CONCRETE_FAMILY_DEFS itself
-    // (not a hand-picked list of the families that happen to declare
-    // constraints today) so a constraint added to any family later — rnn,
-    // gan, snn and rl currently declare none — reaches experimental too,
-    // instead of silently not applying there until someone remembers to
-    // update this list by hand.
-    globalConstraints: Object.values(CONCRETE_FAMILY_DEFS).flatMap(
-      (defs) => defs.globalConstraints ?? [],
-    ),
-    params: buildExperimentalParams(CONCRETE_FAMILY_DEFS),
-    defaultSearchSpace: {
-      hiddenDim: { min: 128, max: 2048, step: 128 },
-      numLayers: { min: 2, max: 24 },
-    },
-  },
-};
+export const FAMILY_HYPERPARAM_DEFS: Record<ArchitectureFamily, FamilyHyperparameterDefs> = CONCRETE_FAMILY_DEFS;
 
 // ─── Helper functions ───────────────────────────────────────────────
 

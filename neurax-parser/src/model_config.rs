@@ -192,6 +192,19 @@ pub enum LayerType {
     NoisePredictor,
     VaeEncoder,
     VaeDecoder,
+    // Graph Neural Network Layer Types
+    /// GCN-style graph convolution — a linear transform plus a
+    /// degree-normalized sum over each node's neighbours.
+    GraphConvNet,
+    /// GAT-style graph attention — the same shape as `GraphConvNet` but with
+    /// per-edge attention weights, computed per head.
+    GraphAttentionNet,
+    /// A generic message-passing layer (MPNN, GraphSAGE, GIN, RGCN, ...) that
+    /// doesn't specialise into GCN or GAT — modelled as the same linear
+    /// transform `GraphConvNet` uses. Not exact for every variant (GIN's
+    /// 2-layer MLP aggregator in particular), but real and non-zero, where
+    /// this used to fall through to `Custom` and cost nothing at all.
+    MessagePassing,
     // Custom layer with user-defined equations
     Custom,
 }
@@ -265,6 +278,12 @@ impl LayerType {
             "noise_predictor" | "noise_pred" | "denoiser" => Ok(Self::NoisePredictor),
             "vae_encoder" | "vae_enc" | "encoder_vae" => Ok(Self::VaeEncoder),
             "vae_decoder" | "vae_dec" | "decoder_vae" => Ok(Self::VaeDecoder),
+            // Graph Neural Networks
+            "graph_conv" | "gcn_conv" | "gcn" | "graph_convolution" => Ok(Self::GraphConvNet),
+            "graph_attention" | "gat_attention" | "gat_conv" | "gat" => {
+                Ok(Self::GraphAttentionNet)
+            }
+            "message_passing" | "mpnn" | "graph_sage" | "graphsage" => Ok(Self::MessagePassing),
             // Custom layer
             "custom" | "custom_layer" | "user_defined" => Ok(Self::Custom),
             _ => Err(ParserError::InvalidLayerType(s.to_string())),
@@ -331,6 +350,10 @@ impl LayerType {
             Self::NoisePredictor => "noise_predictor",
             Self::VaeEncoder => "vae_encoder",
             Self::VaeDecoder => "vae_decoder",
+            // Graph Neural Networks
+            Self::GraphConvNet => "graph_conv",
+            Self::GraphAttentionNet => "graph_attention",
+            Self::MessagePassing => "message_passing",
             // Custom
             Self::Custom => "custom",
         }

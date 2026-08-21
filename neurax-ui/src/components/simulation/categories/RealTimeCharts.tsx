@@ -14,6 +14,7 @@ import {
   DonutRing,
   ChartContainer,
   chartTooltipStyle,
+  chartActiveDot,
   EmptyChartState,
   ChartErrorBoundary,
   CHART_MARGINS,
@@ -211,6 +212,8 @@ function PartialMetrics({ analysis }: { analysis: AnalysisResult }) {
               stroke="var(--chart-3)"
               fillOpacity={1}
               fill="url(#partialGrad)"
+              dot={false}
+              activeDot={chartActiveDot('var(--chart-3)')}
             />
           </AreaChart>
         </ResponsiveContainer>
@@ -291,6 +294,7 @@ function ThroughputChart({ analysis }: { analysis: AnalysisResult }) {
               name="Tokens/sec"
               stroke="var(--chart-2)"
               dot={false}
+              activeDot={chartActiveDot('var(--chart-2)')}
               strokeWidth={2}
             />
           </LineChart>

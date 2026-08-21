@@ -15,7 +15,7 @@ export type { EmptyChartStateProps } from './EmptyChartState';
 
 export { ChartErrorBoundary } from './ChartErrorBoundary';
 
-export { ChartTooltipContent, chartTooltipStyle } from './ChartTooltip';
+export { ChartTooltipContent, chartTooltipStyle, chartActiveDot } from './ChartTooltip';
 export type { ChartTooltipContentProps } from './ChartTooltip';
 
 export { ChartContainer, CHART_MARGINS } from './ChartContainer';

@@ -132,10 +132,7 @@ const ALL_ARCHITECTURE_FAMILIES: ArchitectureFamily[] = [
   'diffusion',
   'gnn',
   'gan',
-  'rl',
-  'snn',
   'rnn',
-  'experimental',
 ];
 
 const isPositiveNumber = (value: unknown): value is number =>
@@ -274,15 +271,12 @@ function buildHardwareConfigFromPreset(
     ['lstm', 'gru', 'lstm_cell', 'gru_cell', 'bilstm', 'bigru'],
     ['hidden_size', 'hiddenSize'],
   );
-  const timesteps = findNumericParam(nodes, ['rate_encoder', 'latency_encoder'], ['timesteps']);
   const numExperts = findNumericParam(
     nodes,
     ['moe_block', 'moe_layer', 'router_linear', 'router_softmax'],
     ['num_experts'],
   );
   const topK = findNumericParam(nodes, ['moe_block', 'moe_layer', 'router_linear'], ['top_k']);
-  const actionDim = findNumericParam(nodes, ['policy_head'], ['action_dim']);
-  const stateDim = findNumericParam(nodes, ['linear_projection', 'dense'], ['in_features']);
   const diffusionInputSize = findNumericParam(nodes, ['dit_block'], ['input_size']);
   const modelChannels = findNumericParam(
     nodes,
@@ -368,20 +362,6 @@ function buildHardwareConfigFromPreset(
         imgHeight: 64,
         imgWidth: 64,
         inChannels: withPositiveFallback(inChannels, 3),
-      };
-    case 'rl':
-      return {
-        ...base,
-        hiddenDim: withPositiveFallback(embeddingDim, 256),
-        numLayers: withPositiveFallback(layerCount, 2),
-        actionDim: withPositiveFallback(actionDim, 4),
-        stateDim: withPositiveFallback(stateDim, 256),
-      };
-    case 'snn':
-      return {
-        ...base,
-        timesteps: withPositiveFallback(timesteps, 100),
-        spikeRate: withPositiveFallback(current.spikeRate, 0.1),
       };
     case 'rnn':
       return {
@@ -927,12 +907,6 @@ const Index = () => {
         return 'diffusion';
       case 'gan':
         return 'gan';
-      case 'rl':
-        return 'rl';
-      case 'snn':
-        return 'snn';
-      case 'experimental':
-        return 'experimental';
       default:
         return fam;
     }
@@ -2758,6 +2732,10 @@ params: params as Record<string, ParameterValue>,
         connections={connections}
         groups={groups}
         selectedArchitecture={selectedArchitecture}
+        // Only a real, completed analysis — not the zeroed placeholder shown
+        // before the first run — is worth cross-checking generated code
+        // against. `generatedAt` is only ever set by a real analysis result.
+        analysisResult={analysis.generatedAt ? analysis : null}
       />
 
       <ImportPanel

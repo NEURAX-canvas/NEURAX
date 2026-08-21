@@ -9,6 +9,7 @@ import {
   ChartContainer,
   StatCard,
   chartTooltipStyle,
+  chartActiveDot,
   CHART_MARGINS,
   ChartErrorBoundary,
   EmptyChartState,
@@ -151,9 +152,9 @@ export function TrainingCharts({ analysis }: TrainingChartsProps) {
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
                   <Tooltip contentStyle={chartTooltipStyle()} />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="cost" stroke={COLORS[0]} name="Cost ($)" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="time" stroke={COLORS[1]} name="Time (h)" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="energy" stroke={COLORS[2]} name="Energy (kWh)" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="cost" stroke={COLORS[0]} name="Cost ($)" strokeWidth={2} dot={false} activeDot={chartActiveDot(COLORS[0])} />
+                  <Line type="monotone" dataKey="time" stroke={COLORS[1]} name="Time (h)" strokeWidth={2} dot={false} activeDot={chartActiveDot(COLORS[1])} />
+                  <Line type="monotone" dataKey="energy" stroke={COLORS[2]} name="Energy (kWh)" strokeWidth={2} dot={false} activeDot={chartActiveDot(COLORS[2])} />
                 </LineChart>
               </ResponsiveContainer>
             </ChartContainer>

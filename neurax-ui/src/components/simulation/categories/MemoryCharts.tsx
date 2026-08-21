@@ -13,6 +13,7 @@ import {
   DonutRing,
   StatCard,
   chartTooltipStyle,
+  chartActiveDot,
   CHART_MARGINS,
   ChartErrorBoundary,
   EmptyChartState,
@@ -230,6 +231,8 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
                       fill="url(#memVram)"
                       strokeWidth={2}
                       animationDuration={1500}
+                      dot={false}
+                      activeDot={chartActiveDot(MEMORY_COLORS.activations)}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -447,7 +450,7 @@ export function MemoryCharts({ analysis }: MemoryChartsProps) {
                       stroke={MEMORY_COLORS.activations}
                       strokeWidth={3}
                       dot={{ r: 4, fill: MEMORY_COLORS.activations, strokeWidth: 0 }}
-                      activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2 }}
+                      activeDot={{ ...chartActiveDot(MEMORY_COLORS.activations), r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>

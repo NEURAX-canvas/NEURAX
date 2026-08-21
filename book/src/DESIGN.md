@@ -258,7 +258,7 @@ Supports 11 model families with catalogues containing 400+ blocks.
 
 React 18 + TypeScript + Vite single-page application with:
 - Visual canvas (React Flow) with drag-and-drop, parameter editing, minimap
-- 88 reference templates across 11 families
+- 64 reference templates across the 8 architecture families the compiler fully supports
 - Metrics dashboard with 40+ metrics and charts
 - AI Chat Drawer with SSE streaming
 - Hyperparameter Optimization panel

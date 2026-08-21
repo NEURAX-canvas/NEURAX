@@ -1458,6 +1458,11 @@ struct ExportGitHubRequest {
     create_pr: Option<bool>,
     /// Branch name for the PR (ignored unless create_pr is true)
     pr_branch: Option<String>,
+    /// Visibility for a repository NEURAX creates because it didn't already
+    /// exist. Ignored when the repository is already there. Defaults to
+    /// private — an architecture is the client's own, and NEURAX has no
+    /// business making it public on their behalf without being told to.
+    private: Option<bool>,
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -1469,6 +1474,319 @@ struct ExportGitHubResponse {
     pr_url: Option<String>,
     /// Error message if success is false
     error: Option<String>,
+}
+
+/// Makes sure `owner/repo_name` exists, creating it if it doesn't, and
+/// returns its actual default branch — never assumed to be "main", since
+/// plenty of real repositories still default to "master".
+///
+/// Creating it is what makes the client-supplied name enough on its own: no
+/// repository has to be created by hand on GitHub first. `auto_init: true`
+/// is the important part of that — it gives a brand-new repository a real
+/// first commit, so it has a default branch at all. Without it, an empty
+/// repository has zero branches, and every call later in the export that
+/// reads or branches off of one fails with an opaque 404.
+async fn ensure_github_repo(
+    client: &reqwest::Client,
+    token: &str,
+    owner: &str,
+    repo_name: &str,
+    private: bool,
+) -> Result<String, (StatusCode, String)> {
+    let get_url = format!("https://api.github.com/repos/{}/{}", owner, repo_name);
+    let get_resp = client
+        .get(&get_url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "NEURAX-Export")
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
+
+    if get_resp.status().is_success() {
+        let data: serde_json::Value = get_resp.json().await.map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to read repository info: {}", e),
+            )
+        })?;
+        return Ok(data["default_branch"].as_str().unwrap_or("main").to_string());
+    }
+
+    if get_resp.status().as_u16() != 404 {
+        let status = get_resp.status();
+        let body = get_resp.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "GitHub API error checking repository ({}): {}",
+                status, body
+            ),
+        ));
+    }
+
+    tracing::info!(
+        "[EXPORT GITHUB] Repository {}/{} not found, creating it",
+        owner,
+        repo_name
+    );
+
+    // GitHub uses a different endpoint depending on whether `owner` is the
+    // token's own account or an organization — ask which, rather than guess
+    // and get a second, unrelated 404.
+    let who_resp = client
+        .get("https://api.github.com/user")
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "NEURAX-Export")
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
+
+    if !who_resp.status().is_success() {
+        let status = who_resp.status();
+        let body = who_resp.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{}/{} doesn't exist, and the token could not be verified to create it ({}): {}",
+                owner, repo_name, status, body
+            ),
+        ));
+    }
+
+    let who: serde_json::Value = who_resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to read token identity: {}", e),
+        )
+    })?;
+    let login = who["login"].as_str().unwrap_or_default();
+
+    let create_url = if login.eq_ignore_ascii_case(owner) {
+        "https://api.github.com/user/repos".to_string()
+    } else {
+        format!("https://api.github.com/orgs/{}/repos", owner)
+    };
+
+    let create_body = serde_json::json!({
+        "name": repo_name,
+        "private": private,
+        "auto_init": true,
+        "description": "Created by NEURAX — https://github.com/rustnew/NEURAX",
+    });
+
+    let create_resp = client
+        .post(&create_url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "NEURAX-Export")
+        .json(&create_body)
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
+
+    if !create_resp.status().is_success() {
+        let status = create_resp.status();
+        let body = create_resp.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{}/{} doesn't exist, and NEURAX could not create it ({}): {}. \
+                 If {} is an organization, the token needs permission to create \
+                 repositories in it.",
+                owner, repo_name, status, body, owner
+            ),
+        ));
+    }
+
+    let created: serde_json::Value = create_resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to read created-repository response: {}", e),
+        )
+    })?;
+    let default_branch = created["default_branch"]
+        .as_str()
+        .unwrap_or("main")
+        .to_string();
+    tracing::info!(
+        "[EXPORT GITHUB] Created {}/{} (default branch: {})",
+        owner,
+        repo_name,
+        default_branch
+    );
+    Ok(default_branch)
+}
+
+/// Makes sure `branch` actually has a commit on it — not just that the
+/// repository containing it exists.
+///
+/// This is the gap `ensure_github_repo` alone doesn't close: a repository
+/// created by hand on github.com without the "initialize with a README"
+/// checkbox exists, and reports a `default_branch` name, but has zero
+/// commits and zero real branches — `default_branch` on an empty repository
+/// is GitHub's answer to "what the branch will be called", not proof it
+/// exists yet. Pushing to it through the normal Contents API then fails
+/// with a 404 that looks identical to "the repository doesn't exist" —
+/// exactly the symptom this closes.
+///
+/// A brand-new repository this same request just created via `auto_init`
+/// never reaches the "create it" branch below — its first commit already
+/// exists, so the ref lookup here succeeds and this is a no-op.
+async fn ensure_branch_exists(
+    client: &reqwest::Client,
+    token: &str,
+    owner: &str,
+    repo_name: &str,
+    branch: &str,
+    seed_file: &ExportGitHubFile,
+) -> Result<(), (StatusCode, String)> {
+    let ref_url = format!(
+        "https://api.github.com/repos/{}/{}/git/ref/heads/{}",
+        owner, repo_name, branch
+    );
+    let check = client
+        .get(&ref_url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "NEURAX-Export")
+        .send()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
+
+    if check.status().is_success() {
+        return Ok(()); // Branch already has a commit — nothing to do.
+    }
+    if check.status().as_u16() != 404 {
+        let status = check.status();
+        let body = check.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("GitHub API error checking branch ({}): {}", status, body),
+        ));
+    }
+
+    tracing::info!(
+        "[EXPORT GITHUB] {}/{}@{} has no commits yet, creating the first one",
+        owner,
+        repo_name,
+        branch
+    );
+
+    let api_base = format!("https://api.github.com/repos/{}/{}", owner, repo_name);
+    let auth = format!("Bearer {}", token);
+
+    // An empty repository's first commit cannot be made through the Contents
+    // API (the endpoint the rest of this export uses) — it has no parent
+    // commit to attach to. The Git Data API builds one by hand instead: a
+    // blob (the file's bytes), a tree (the blob at its path), a commit (the
+    // tree, no parent), then a ref pointing `refs/heads/{branch}` at it.
+    let blob_resp = client
+        .post(format!("{}/git/blobs", api_base))
+        .header("Authorization", &auth)
+        .header("User-Agent", "NEURAX-Export")
+        .json(&serde_json::json!({
+            "content": base64::engine::general_purpose::STANDARD.encode(seed_file.content.as_bytes()),
+            "encoding": "base64",
+        }))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+    if !blob_resp.status().is_success() {
+        let status = blob_resp.status();
+        let body = blob_resp.text().await.unwrap_or_default();
+        return Err((StatusCode::BAD_GATEWAY, format!("Failed to seed the first commit ({}): {}", status, body)));
+    }
+    let blob: serde_json::Value = blob_resp.json().await.map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read blob response: {}", e)))?;
+    let blob_sha = blob["sha"].as_str().unwrap_or_default().to_string();
+
+    let tree_resp = client
+        .post(format!("{}/git/trees", api_base))
+        .header("Authorization", &auth)
+        .header("User-Agent", "NEURAX-Export")
+        .json(&serde_json::json!({
+            "tree": [{
+                "path": seed_file.path,
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha,
+            }],
+        }))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+    if !tree_resp.status().is_success() {
+        let status = tree_resp.status();
+        let body = tree_resp.text().await.unwrap_or_default();
+        return Err((StatusCode::BAD_GATEWAY, format!("Failed to seed the first commit ({}): {}", status, body)));
+    }
+    let tree: serde_json::Value = tree_resp.json().await.map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read tree response: {}", e)))?;
+    let tree_sha = tree["sha"].as_str().unwrap_or_default().to_string();
+
+    let commit_resp = client
+        .post(format!("{}/git/commits", api_base))
+        .header("Authorization", &auth)
+        .header("User-Agent", "NEURAX-Export")
+        .json(&serde_json::json!({
+            "message": "Initial commit — NEURAX",
+            "tree": tree_sha,
+            "parents": [],
+        }))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+    if !commit_resp.status().is_success() {
+        let status = commit_resp.status();
+        let body = commit_resp.text().await.unwrap_or_default();
+        return Err((StatusCode::BAD_GATEWAY, format!("Failed to seed the first commit ({}): {}", status, body)));
+    }
+    let commit: serde_json::Value = commit_resp.json().await.map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read commit response: {}", e)))?;
+    let commit_sha = commit["sha"].as_str().unwrap_or_default().to_string();
+
+    let ref_resp = client
+        .post(format!("{}/git/refs", api_base))
+        .header("Authorization", &auth)
+        .header("User-Agent", "NEURAX-Export")
+        .json(&serde_json::json!({
+            "ref": format!("refs/heads/{}", branch),
+            "sha": commit_sha,
+        }))
+        .send()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+    if !ref_resp.status().is_success() {
+        let status = ref_resp.status();
+        let body = ref_resp.text().await.unwrap_or_default();
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to create branch \"{}\" ({}): {}", branch, status, body),
+        ));
+    }
+
+    tracing::info!(
+        "[EXPORT GITHUB] Seeded {}/{}@{} with an initial commit",
+        owner,
+        repo_name,
+        branch
+    );
+    Ok(())
 }
 
 async fn export_github(
@@ -1486,7 +1804,6 @@ async fn export_github(
         return resp;
     }
 
-    let branch = req.branch.clone().unwrap_or_else(|| "main".to_string());
     let commit_message = req
         .commit_message
         .clone()
@@ -1511,6 +1828,18 @@ async fn export_github(
         });
     }
 
+    let Some((owner, repo_name)) = repo.split_once('/') else {
+        return HttpResponse::build(StatusCode::BAD_REQUEST).json(ExportGitHubResponse {
+            success: false,
+            file_urls: vec![],
+            pr_url: None,
+            error: Some(format!(
+                "\"{}\" is not a valid repository — expected \"owner/repo\"",
+                repo
+            )),
+        });
+    };
+
     if req.files.is_empty() {
         return HttpResponse::build(StatusCode::BAD_REQUEST).json(ExportGitHubResponse {
             success: false,
@@ -1522,6 +1851,57 @@ async fn export_github(
 
     let client = reqwest::Client::new();
     let api_base = format!("https://api.github.com/repos/{}", repo);
+
+    // The bug this closes: a client exporting to a repository that either
+    // doesn't exist yet, or exists but has zero commits (so no branch has
+    // ever been created), got an opaque "404 Not Found" from a much later
+    // GitHub API call with no indication *why*. Resolving (and, if needed,
+    // creating) the repository up front turns that into either a working
+    // export or one clear error message, and — since a freshly created repo
+    // is `auto_init`ed — guarantees a real default branch exists before
+    // anything below tries to read or branch off of one.
+    let repo_default_branch = match ensure_github_repo(
+        &client,
+        &github_token,
+        owner,
+        repo_name,
+        req.private.unwrap_or(true),
+    )
+    .await
+    {
+        Ok(default_branch) => default_branch,
+        Err((status, message)) => {
+            tracing::error!("[EXPORT GITHUB] Could not resolve repository: {}", message);
+            return HttpResponse::build(status).json(ExportGitHubResponse {
+                success: false,
+                file_urls: vec![],
+                pr_url: None,
+                error: Some(message),
+            });
+        }
+    };
+
+    // Kept around (not just consumed into `branch`) so a later 404 can say
+    // exactly how a client-supplied branch differs from the real default,
+    // instead of just repeating GitHub's generic "Not Found".
+    let branch = req.branch.clone().unwrap_or_else(|| repo_default_branch.clone());
+
+    // Covers the case `ensure_github_repo` alone can't: a repository that
+    // already existed (created by hand, without "initialize with a README")
+    // and has zero commits, so `branch` names a real repository but not yet
+    // a real ref. `req.files[0]` exists — `req.files.is_empty()` was already
+    // rejected above.
+    if let Err((status, message)) =
+        ensure_branch_exists(&client, &github_token, owner, repo_name, &branch, &req.files[0]).await
+    {
+        tracing::error!("[EXPORT GITHUB] Could not prepare branch: {}", message);
+        return HttpResponse::build(status).json(ExportGitHubResponse {
+            success: false,
+            file_urls: vec![],
+            pr_url: None,
+            error: Some(message),
+        });
+    }
 
     // Determine the target branch (use pr_branch if creating a PR)
     let target_branch = if create_pr { &pr_branch } else { &branch };
@@ -1701,14 +2081,41 @@ async fn export_github(
                     status,
                     response_body
                 );
+                // A 404 here almost always means the *branch* in the request
+                // body doesn't exist — not the file or the repository, both
+                // already confirmed above. Spell that out explicitly instead
+                // of surfacing GitHub's generic "Not Found", especially when
+                // the branch actually used differs from the repository's own
+                // default: that mismatch is the single most common cause,
+                // e.g. a client that sent an explicit "main" for a repository
+                // whose real default branch is "master".
+                let error = if status.as_u16() == 404 {
+                    if target_branch != &repo_default_branch {
+                        format!(
+                            "Branch \"{}\" doesn't exist in {} — its default branch is \"{}\". \
+                             Leave the Branch field blank to use it automatically, or push to a \
+                             branch that actually exists.",
+                            target_branch, repo, repo_default_branch
+                        )
+                    } else {
+                        format!(
+                            "GitHub returned 404 pushing {} to {}@{} even though that branch was \
+                             just resolved as the repository's default — the repository may still \
+                             be finishing initialization; wait a few seconds and retry. ({})",
+                            file.path, repo, target_branch, response_body
+                        )
+                    }
+                } else {
+                    format!(
+                        "Failed to push {} ({}): {}",
+                        file.path, status, response_body
+                    )
+                };
                 return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
                     success: false,
                     file_urls,
                     pr_url: None,
-                    error: Some(format!(
-                        "Failed to push {} ({}): {}",
-                        file.path, status, response_body
-                    )),
+                    error: Some(error),
                 });
             }
             Err(e) => {

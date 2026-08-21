@@ -210,11 +210,16 @@ export function ImportPanel({ isOpen, onClose, onImport }: ImportPanelProps) {
           </DialogDescription>
           <p className="text-[11px] text-muted-foreground leading-relaxed">
             From HuggingFace, NEURAX reads <strong className="text-foreground font-medium">transformer</strong>{' '}
-            language models (decoder and encoder, including mixture-of-experts) and{' '}
-            <strong className="text-foreground font-medium">Mamba / Mamba-2</strong> state-space models —
-            any config with a near-universal shape (widths, depth, head or state counts). It does not read
-            CNN, diffusion, GAN, RNN, GNN, SNN or RL configs from the Hub yet; pointing it at one of those
-            reports what's missing rather than guessing at numbers.
+            language models (decoder and encoder, including mixture-of-experts),{' '}
+            <strong className="text-foreground font-medium">Mamba / Mamba-2</strong> state-space models,{' '}
+            <strong className="text-foreground font-medium">ResNet / RegNet / ConvNeXt / EfficientNet</strong> CNNs,
+            and a <strong className="text-foreground font-medium">diffusion pipeline's UNet</strong> — every
+            config read field-by-field against a real model fetched live from the Hub, not guessed from a spec.
+            (A diffusion repo ID alone is enough — NEURAX follows <code className="text-[10px]">model_index.json</code>{' '}
+            to the UNet automatically; the VAE and text encoder aren't counted, so its parameter count is the
+            UNet's alone.) It does not read GAN, RNN or GNN configs — there is no standardised{' '}
+            <code className="text-[10px]">config.json</code> convention for those on the Hub to read in the first
+            place. Build those from the family's own blocks on the canvas instead.
           </p>
         </DialogHeader>
 

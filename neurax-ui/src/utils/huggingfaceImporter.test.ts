@@ -720,8 +720,13 @@ describe('Mamba / Mamba-2 import', () => {
 });
 
 describe('honest refusal of families NEURAX does not import', () => {
+  // ResNet/RegNet/ConvNeXt/EfficientNet moved out of this list once real,
+  // live-verified support was added — see the "CNN import" describe block
+  // below for their (now positive) coverage. MobileNet and ConvNeXt V2
+  // stay refused: no live config was read for either while building the
+  // CNN importer.
   const cases: Array<{ name: string; config: object; match: RegExp }> = [
-    { name: 'ResNet', config: { model_type: 'resnet', num_channels: 3 }, match: /CNN \(ResNet\)/ },
+    { name: 'MobileNet', config: { model_type: 'mobilenet_v2', num_channels: 3 }, match: /CNN \(MobileNet\)/ },
     { name: 'ViT', config: { model_type: 'vit', image_size: 224 }, match: /vision transformer/ },
     { name: 'Whisper', config: { model_type: 'whisper', num_mel_bins: 80 }, match: /speech \(Whisper\)/ },
     { name: 'RWKV', config: { model_type: 'rwkv', vocab_size: 50277 }, match: /RWKV/ },
@@ -732,24 +737,141 @@ describe('honest refusal of families NEURAX does not import', () => {
       const result = parseHuggingFaceConfig(JSON.stringify(config));
       expect(result.error).toBeDefined();
       expect(result.error).toMatch(match);
-      expect(result.error).toMatch(/NEURAX imports transformer and Mamba\/Mamba-2/);
+      expect(result.error).toMatch(/NEURAX imports transformer and MoE language models, Mamba\/Mamba-2, and ResNet\/RegNet\/ConvNeXt\/EfficientNet CNNs/);
     });
   }
 
-  it('names a diffusers pipeline component instead of guessing at its fields', () => {
-    const unet = {
-      _class_name: 'UNet2DConditionModel',
+  it('names a diffusers pipeline component NEURAX still refuses (the VAE, not the UNet)', () => {
+    const vae = {
+      _class_name: 'AutoencoderKL',
       _diffusers_version: '0.21.0',
-      in_channels: 4,
-      out_channels: 4,
+      in_channels: 3,
+      out_channels: 3,
     };
-    const result = parseHuggingFaceConfig(JSON.stringify(unet));
-    expect(result.error).toMatch(/UNet2DConditionModel/);
+    const result = parseHuggingFaceConfig(JSON.stringify(vae));
+    expect(result.error).toMatch(/AutoencoderKL/);
     expect(result.error).toMatch(/diffusers pipeline component/);
   });
 
   it('still falls through to the generic error for a truly unlisted family', () => {
     const result = parseHuggingFaceConfig(JSON.stringify({ model_type: 'some_future_cnn' }));
     expect(result.error).toMatch(/no hidden size/i);
+  });
+});
+
+describe('CNN import — real configs fetched live from the Hub', () => {
+  // microsoft/resnet-50, fetched live while building this importer.
+  const RESNET50 = {
+    architectures: ['ResNetForImageClassification'],
+    depths: [3, 4, 6, 3],
+    downsample_in_first_stage: false,
+    embedding_size: 64,
+    hidden_act: 'relu',
+    hidden_sizes: [256, 512, 1024, 2048],
+    model_type: 'resnet',
+    num_channels: 3,
+  };
+
+  // facebook/convnext-tiny-224, fetched live.
+  const CONVNEXT_TINY = {
+    architectures: ['ConvNextForImageClassification'],
+    depths: [3, 3, 9, 3],
+    hidden_act: 'gelu',
+    hidden_sizes: [96, 192, 384, 768],
+    model_type: 'convnext',
+    num_channels: 3,
+    patch_size: 4,
+  };
+
+  // google/efficientnet-b0, fetched live.
+  const EFFICIENTNET_B0 = {
+    model_type: 'efficientnet',
+    num_channels: 3,
+    hidden_act: 'swish',
+    in_channels: [32, 16, 24, 40, 80, 112, 192],
+    out_channels: [16, 24, 40, 80, 112, 192, 320],
+    kernel_sizes: [3, 3, 5, 3, 5, 5, 3],
+    expand_ratios: [1, 6, 6, 6, 6, 6, 6],
+    num_block_repeats: [1, 2, 2, 3, 3, 4, 1],
+    strides: [1, 2, 2, 2, 1, 2, 1],
+    squeeze_expansion_ratio: 0.25,
+  };
+
+  it('imports ResNet-50 as 4 bottleneck stages, no unresolved layer types', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(RESNET50), 'resnet-50');
+    expect(result.error).toBeUndefined();
+    expect(result.family).toBe('cnn');
+    const stages = result.nodes.filter((n) => n.type === 'bottleneck_block');
+    expect(stages.map((s) => s.params.blocks)).toEqual([3, 4, 6, 3]);
+    expect(stages.map((s) => s.params.planes)).toEqual([256, 512, 1024, 2048]);
+  });
+
+  it('imports ConvNeXt-Tiny as 4 convnext_block stages', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(CONVNEXT_TINY), 'convnext-tiny');
+    expect(result.error).toBeUndefined();
+    const stages = result.nodes.filter((n) => n.type === 'convnext_block');
+    expect(stages.map((s) => s.params.dim)).toEqual([96, 192, 384, 768]);
+    expect(stages.map((s) => s.params.num_blocks)).toEqual([3, 3, 9, 3]);
+  });
+
+  it('imports EfficientNet-B0 as 7 mbconv_block stages with real per-stage shapes', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(EFFICIENTNET_B0), 'efficientnet-b0');
+    expect(result.error).toBeUndefined();
+    const stages = result.nodes.filter((n) => n.type === 'mbconv_block');
+    expect(stages).toHaveLength(7);
+    expect(stages[0].params).toMatchObject({ in_channels: 32, out_channels: 16, expand_ratio: 1, num_blocks: 1 });
+    expect(stages[6].params).toMatchObject({ in_channels: 192, out_channels: 320, expand_ratio: 6, num_blocks: 1 });
+  });
+
+  it('a config missing the stage arrays reports a real error, not a wrong shape', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify({ model_type: 'resnet', num_channels: 3 }));
+    expect(result.error).toMatch(/depths\/hidden_sizes/);
+  });
+});
+
+describe('Diffusion (UNet) import — real config fetched live from the Hub', () => {
+  // runwayml/stable-diffusion-v1-5's unet/config.json, fetched live while
+  // building this importer.
+  const SD15_UNET = {
+    _class_name: 'UNet2DConditionModel',
+    _diffusers_version: '0.6.0',
+    act_fn: 'silu',
+    attention_head_dim: 8,
+    block_out_channels: [320, 640, 1280, 1280],
+    center_input_sample: false,
+    cross_attention_dim: 768,
+    down_block_types: ['CrossAttnDownBlock2D', 'CrossAttnDownBlock2D', 'CrossAttnDownBlock2D', 'DownBlock2D'],
+    in_channels: 4,
+    layers_per_block: 2,
+    out_channels: 4,
+    sample_size: 64,
+    up_block_types: ['UpBlock2D', 'CrossAttnUpBlock2D', 'CrossAttnUpBlock2D', 'CrossAttnUpBlock2D'],
+  };
+
+  it('imports the real SD 1.5 UNet as encoder/mid/decoder with the real channel schedule', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(SD15_UNET), 'sd-1.5-unet');
+    expect(result.error).toBeUndefined();
+    expect(result.family).toBe('diffusion');
+
+    const encoder = result.nodes.find((n) => n.type === 'unet_encoder')!;
+    expect(encoder.params.channels).toEqual([320, 640, 1280, 1280]);
+    expect(encoder.params.num_res_blocks).toBe(2);
+    expect(encoder.params.cross_attention_dim).toBe(768);
+
+    const decoder = result.nodes.find((n) => n.type === 'unet_decoder')!;
+    expect(decoder.params.channels).toEqual([1280, 1280, 640, 320]);
+
+    const mid = result.nodes.find((n) => n.type === 'unet_mid')!;
+    expect(mid.params.channels).toBe(1280);
+  });
+
+  it('is honest that only the UNet is counted, not the full pipeline', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify(SD15_UNET), 'sd-1.5-unet');
+    expect(result.notes.join(' ')).toMatch(/VAE and text encoder are separate/);
+  });
+
+  it('still refuses a UNet2DModel/UNet2DConditionModel config missing block_out_channels', () => {
+    const result = parseHuggingFaceConfig(JSON.stringify({ _class_name: 'UNet2DConditionModel' }));
+    expect(result.error).toMatch(/block_out_channels/);
   });
 });

@@ -103,6 +103,43 @@ pub async fn save_text_file(
     Ok(Some(path.display().to_string()))
 }
 
+/// Save binary content — a `.zip` project export — to a path the user picks.
+///
+/// Tauri's IPC carries JSON, which has no byte type, so the frontend base64-encodes
+/// the archive before calling this and this decodes it before writing. Same shape
+/// as [`save_text_file`] otherwise, including the "dismissed dialog is not an error"
+/// convention.
+#[tauri::command]
+pub async fn save_binary_file(
+    app: AppHandle,
+    default_name: String,
+    contents_base64: String,
+) -> Result<Option<String>, String> {
+    use base64::Engine;
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(contents_base64)
+        .map_err(|e| format!("corrupt archive data: {e}"))?;
+
+    let (tx, mut rx) = tauri::async_runtime::channel(1);
+
+    app.dialog()
+        .file()
+        .set_file_name(&default_name)
+        .save_file(move |path| {
+            let _ = tx.blocking_send(path);
+        });
+
+    let Some(Some(path)) = rx.recv().await else {
+        return Ok(None);
+    };
+
+    let path = path.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+    app.state::<AuthorizedPaths>().authorize(&path);
+    Ok(Some(path.display().to_string()))
+}
+
 /// Overwrite a file the user has already chosen, without asking again.
 ///
 /// This is the difference between "Save" and "Save As". A design that lives in

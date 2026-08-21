@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { getParamsForFamily, getRequiredParamsForFamily, getOptionalParamsForFamily } from '@/utils/hyperparameterDefs';
 import { ArchitectureFamily } from '@/types/plugins';
 
-const FAMILIES: ArchitectureFamily[] = ['transformer','moe','cnn','diffusion','ssm','gnn','rnn','gan','snn','rl','experimental'];
+const FAMILIES: ArchitectureFamily[] = ['transformer','moe','cnn','diffusion','ssm','gnn','rnn','gan'];
 
 describe('hyperparameter coverage per family', () => {
   it('reports totals', () => {

@@ -780,38 +780,6 @@ const ganBlocks: LayerConfig[] = [
   STRUCT_BLOCKS.reshape,
 ];
 
-// ─── RL BLOCKS ────────────────────────────────────────────
-
-const rlBlocks: LayerConfig[] = [
-  ...IO_BLOCKS,
-  { id: 'linear_projection', type: 'linear_projection', name: 'Linear / FC', icon: 'Layers', description: 'Dense feature layer', defaultParams: { in_features: 256, out_features: 256, bias: true, activation: 'none' }, category: 'Projection', hasActivation: true },
-  { id: 'conv2d', type: 'conv2d', name: 'Conv2D', icon: 'Grid3X3', description: 'Visual feature extraction', defaultParams: { filters: 32, kernel: 8, stride: 4 }, category: 'Convolution', hasActivation: true },
-  { id: 'policy_head', type: 'policy_head', name: 'Policy Head', icon: 'Route', description: 'Action probability distribution', defaultParams: { d_model: 256, action_dim: 18, distribution: 'categorical' }, category: 'RL Core', hasActivation: false, tooltip: 'Outputs π(a|s) action probabilities' },
-  { id: 'value_head', type: 'value_head', name: 'Value Head', icon: 'Activity', description: 'State value estimation V(s)', defaultParams: { d_model: 256, hidden_dim: 256 }, category: 'RL Core', tooltip: 'Estimates expected return' },
-  { id: 'advantage_stream', type: 'advantage_stream', name: 'Advantage Stream', icon: 'GitBranch', description: 'Dueling DQN advantage branch', defaultParams: { d_model: 256, action_dim: 18, hidden_dim: 256 }, category: 'RL Core', tooltip: 'A(s,a) = Q(s,a) - V(s)' },
-  NORM_BLOCKS.layernorm,
-  STRUCT_BLOCKS.residual_add,
-  STRUCT_BLOCKS.flatten,
-  STRUCT_BLOCKS.dropout,
-];
-
-// ─── SNN BLOCKS ───────────────────────────────────────────
-
-const snnBlocks: LayerConfig[] = [
-  ...IO_BLOCKS,
-  { id: 'spike_encoder', type: 'spike_encoder', name: 'Spike Encoder', icon: 'Zap', description: 'Rate/temporal spike encoding', defaultParams: { encoding: 'rate', timesteps: 100 }, category: 'SNN Core', tooltip: 'Converts analog input to spike trains' },
-  { id: 'rate_encoder', type: 'rate_encoder', name: 'Rate Encoder', icon: 'Zap', description: 'Preset-compatible rate encoder alias', defaultParams: { encoding: 'rate', timesteps: 100 }, category: 'SNN Core', tooltip: 'Alias used by reference SNN presets' },
-  { id: 'lif_neuron', type: 'lif_neuron', name: 'LIF Neuron', icon: 'Brain', description: 'Leaky integrate-and-fire neuron', defaultParams: { tau: 10, threshold: 1.0, reset: 0.0 }, category: 'SNN Core', hasActivation: false, tooltip: 'Bio-inspired spiking neuron model' },
-  { id: 'leaky_neuron', type: 'leaky_neuron', name: 'Leaky Neuron', icon: 'Brain', description: 'Leaky spiking neuron', defaultParams: { tau: 5.0, threshold: 0.9, reset: 0.0 }, category: 'SNN Core', tooltip: 'Preset-compatible leaky neuron alias' },
-  { id: 'synaptic_layer', type: 'synaptic_layer', name: 'Synaptic Layer', icon: 'Layers', description: 'Delayed synaptic projection', defaultParams: { in_features: 256, out_features: 256, delay: 1 }, category: 'SNN Core', tooltip: 'Preset-compatible synaptic layer alias' },
-  { id: 'stdp_synapse', type: 'stdp_synapse', name: 'STDP Synapse', icon: 'Network', description: 'Spike-timing dependent plasticity', defaultParams: { in_features: 256, out_features: 256, a_plus: 0.01, a_minus: 0.012, tau_plus: 20, tau_minus: 20 }, category: 'SNN Core', tooltip: 'Hebbian-like learning rule' },
-  { id: 'linear_projection', type: 'linear_projection', name: 'Linear Projection', icon: 'Layers', description: 'Synaptic weight layer', defaultParams: { in_features: 128, out_features: 128, bias: true }, category: 'Projection' },
-  { id: 'conv2d', type: 'conv2d', name: 'Conv2D', icon: 'Grid3X3', description: 'Convolutional spiking layer', defaultParams: { filters: 32, kernel: 3 }, category: 'Convolution' },
-  NORM_BLOCKS.batchnorm,
-  STRUCT_BLOCKS.residual_add,
-  STRUCT_BLOCKS.dropout,
-];
-
 // ─── RNN BLOCKS ───────────────────────────────────────────
 
 const rnnBlocks: LayerConfig[] = [
@@ -894,13 +862,6 @@ const rnnBlocks: LayerConfig[] = [
   NORM_BLOCKS.layernorm,
   STRUCT_BLOCKS.residual_add,
   STRUCT_BLOCKS.dropout,
-];
-
-// ─── EXPERIMENTAL BLOCKS ──────────────────────────────────
-
-const experimentalBlocks: LayerConfig[] = [
-  ...transformerBlocks,
-  ...mambaBlocks.filter(l => !IO_BLOCKS.some(io => io.id === l.id) && !transformerBlocks.some(t => t.id === l.id)),
 ];
 
 // ─── PLUGIN REGISTRY ─────────────────────────────────────
@@ -1022,38 +983,6 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
       { id: 'loss-chart', name: 'Loss Curves', type: 'chart' },
     ],
   },
-  rl: {
-    id: 'rl',
-    config: { id: 'rl', name: 'Reinforcement Learning', description: 'Actor–Critic and policy gradient', icon: 'Gamepad2', color: 'hsl(15, 80%, 52%)' },
-    layers: rlBlocks,
-    tools: [
-      { id: 'policy-viz', name: 'Policy Network', icon: 'Route', description: 'Action distribution', component: 'PolicyVizPanel' },
-      { id: 'value-viz', name: 'Value Network', icon: 'Activity', description: 'Value estimation', component: 'ValueVizPanel' },
-    ],
-    metrics: [
-      { id: 'num-actions', name: 'Action Space', value: 18, status: 'normal' },
-      { id: 'architecture', name: 'Type', value: 'Actor-Critic', status: 'normal' },
-    ],
-    visualizations: [
-      { id: 'reward-chart', name: 'Reward Curve', type: 'chart' },
-    ],
-  },
-  snn: {
-    id: 'snn',
-    config: { id: 'snn', name: 'Spiking Neural Networks', description: 'Bio-inspired spike-based models', icon: 'Brain', color: 'hsl(300, 60%, 50%)' },
-    layers: snnBlocks,
-    tools: [
-      { id: 'spike-viz', name: 'Spike Raster', icon: 'Zap', description: 'Spike timing visualization', component: 'SpikeRasterPanel' },
-      { id: 'membrane-viz', name: 'Membrane Potential', icon: 'Activity', description: 'Neuron membrane dynamics', component: 'MembranePotentialPanel' },
-    ],
-    metrics: [
-      { id: 'timesteps', name: 'Timesteps', value: 100, status: 'normal' },
-      { id: 'threshold', name: 'Threshold', value: '1.0', status: 'normal' },
-    ],
-    visualizations: [
-      { id: 'raster-plot', name: 'Raster Plot', type: 'chart' },
-    ],
-  },
   rnn: {
     id: 'rnn',
     config: { id: 'rnn', name: 'RNN / LSTM / GRU', description: 'Recurrent sequence models', icon: 'Repeat', color: 'hsl(25, 80%, 52%)' },
@@ -1068,20 +997,6 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
     ],
     visualizations: [
       { id: 'gate-viz', name: 'Gate Visualization', type: 'heatmap' },
-    ],
-  },
-  experimental: {
-    id: 'experimental',
-    config: { id: 'experimental', name: 'Experimental', description: 'Early access R&D models', icon: 'FlaskConical', color: 'hsl(280, 70%, 55%)' },
-    layers: experimentalBlocks,
-    tools: [
-      { id: 'neural-ode', name: 'Neural ODE', icon: 'Sigma', description: 'Continuous-depth networks', component: 'NeuralODEPanel' },
-    ],
-    metrics: [
-      { id: 'research-status', name: 'Research Status', value: 'Active', status: 'warning' },
-    ],
-    visualizations: [
-      { id: 'research-flow', name: 'Research Flow', type: 'flow' },
     ],
   },
 };
