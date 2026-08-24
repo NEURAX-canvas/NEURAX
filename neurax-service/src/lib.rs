@@ -463,6 +463,8 @@ pub struct AppState {
     pub user_analyses: Arc<DashMap<String, serde_json::Value>>,
     /// Inference results cache keyed by user_id (for agent to read back)
     pub user_inferences: Arc<DashMap<String, serde_json::Value>>,
+    /// Public, anonymous share links (keyed by the share's short id)
+    pub shares: Arc<DashMap<String, Share>>,
 }
 
 impl AppState {
@@ -476,6 +478,7 @@ impl AppState {
             api_keys: Arc::new(DashMap::new()),
             user_analyses: Arc::new(DashMap::new()),
             user_inferences: Arc::new(DashMap::new()),
+            shares: Arc::new(DashMap::new()),
         }
     }
 }
@@ -3225,6 +3228,284 @@ async fn projects_delete(
     }
 }
 
+// ─── Public Shares ──────────────────────────────────────────────────
+//
+// A share is a published, read-only analysis snapshot: the growth-loop
+// mechanic of turning "I analysed a model" into a link someone else can
+// open with no account and no install. Anonymous by design, on both ends —
+// creating and viewing need no session — so ownership for deletion is
+// proven by possessing `edit_token`, the same model link-sharing tools like
+// Pastebin use, not by being logged in as the right user.
+
+const SHARE_ID_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+/// Short and URL-friendly on purpose — this is meant to be pasted into a
+/// tweet or a Slack message, not to be a UUID.
+fn generate_share_id() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    (0..10)
+        .map(|_| SHARE_ID_ALPHABET[rng.gen_range(0..SHARE_ID_ALPHABET.len())] as char)
+        .collect()
+}
+
+/// A bearer credential, not a lookup key, so it is long and opaque like the
+/// API keys generated above rather than URL-friendly like the share id.
+fn generate_edit_token() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    (0..32)
+        .map(|_| format!("{:02x}", rng.gen::<u8>()))
+        .collect()
+}
+
+/// How much of the original design a public share carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShareMode {
+    /// Numbers only — the full analysis report, no topology. Safe by
+    /// default: nothing about *how* the model is built is disclosed.
+    Card,
+    /// The report plus the full node/connection graph, scrubbed of
+    /// free-text labels, so a viewer can open it in NEURAX and edit it.
+    Full,
+}
+
+/// A published, read-only analysis snapshot.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Share {
+    pub id: String,
+    pub mode: ShareMode,
+    /// Chosen by the sharer at publish time — never the document's own
+    /// name, which may be an internal project codename.
+    pub display_name: String,
+    pub family: Option<String>,
+    /// The full `AnalysisResult` snapshot from the frontend, frozen at
+    /// share time so the link keeps showing what it showed when it was
+    /// published even if the original document later changes. Opaque JSON
+    /// here on purpose — its shape is owned by the frontend, same as
+    /// `AppState::results`.
+    pub report: serde_json::Value,
+    /// `{ nodes, connections, groups }`, present only for `ShareMode::Full`
+    /// and scrubbed server-side before storage — see `scrub_design`. Never
+    /// trust the client to have already redacted this itself.
+    pub design: Option<serde_json::Value>,
+    pub created_at: String,
+    #[serde(skip_serializing)]
+    pub edit_token: String,
+    pub view_count: u64,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CreateShareRequest {
+    mode: ShareMode,
+    display_name: String,
+    family: Option<String>,
+    report: serde_json::Value,
+    design: Option<serde_json::Value>,
+}
+
+#[derive(serde::Serialize)]
+struct CreateShareResponse {
+    id: String,
+    edit_token: String,
+}
+
+#[derive(serde::Serialize)]
+struct ShareResponse {
+    share: Share,
+}
+
+/// Strips fields that could carry a user's free-text notes rather than the
+/// architecture itself: node and group labels (often internal project
+/// codenames) become generic, type-based names, and any custom
+/// hyperparameters attached at the model level are dropped outright rather
+/// than merely hidden. Numeric/structural parameters (hidden_size,
+/// num_layers, kernel_size, ...) are left untouched — sharing those on
+/// purpose is the entire point of `ShareMode::Full`.
+fn scrub_design(design: &mut serde_json::Value) {
+    if let Some(nodes) = design.get_mut("nodes").and_then(|v| v.as_array_mut()) {
+        for node in nodes {
+            if let Some(obj) = node.as_object_mut() {
+                let type_label = obj
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Block")
+                    .to_string();
+                obj.insert(
+                    "name".to_string(),
+                    serde_json::Value::String(format!("{type_label} block")),
+                );
+            }
+        }
+    }
+    if let Some(groups) = design.get_mut("groups").and_then(|v| v.as_array_mut()) {
+        for (i, group) in groups.iter_mut().enumerate() {
+            if let Some(obj) = group.as_object_mut() {
+                obj.insert(
+                    "name".to_string(),
+                    serde_json::Value::String(format!("Group {}", i + 1)),
+                );
+            }
+        }
+    }
+    if let Some(obj) = design.as_object_mut() {
+        obj.remove("customParams");
+    }
+}
+
+async fn shares_create(
+    state: web::Data<AppState>,
+    req: web::Json<CreateShareRequest>,
+) -> impl Responder {
+    if req.display_name.trim().is_empty() {
+        return HttpResponse::build(StatusCode::BAD_REQUEST).body("display_name is required");
+    }
+
+    // A Card share never carries a topology, regardless of what the client
+    // sent — enforced server-side, not just by client intent. A Full share
+    // is scrubbed server-side too, for the same reason.
+    let design = match req.mode {
+        ShareMode::Full => req.design.clone().map(|mut d| {
+            scrub_design(&mut d);
+            d
+        }),
+        ShareMode::Card => None,
+    };
+
+    let id = loop {
+        let candidate = generate_share_id();
+        if !state.shares.contains_key(&candidate) {
+            break candidate;
+        }
+    };
+    let edit_token = generate_edit_token();
+
+    let share = Share {
+        id: id.clone(),
+        mode: req.mode,
+        display_name: req.display_name.trim().to_string(),
+        family: req.family.clone(),
+        report: req.report.clone(),
+        design,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        edit_token: edit_token.clone(),
+        view_count: 0,
+    };
+
+    state.shares.insert(id.clone(), share);
+
+    HttpResponse::Created().json(CreateShareResponse { id, edit_token })
+}
+
+async fn shares_get(state: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+    let id = path.into_inner();
+    match state.shares.get_mut(&id) {
+        Some(mut entry) => {
+            entry.view_count += 1;
+            HttpResponse::Ok().json(ShareResponse {
+                share: entry.value().clone(),
+            })
+        }
+        None => HttpResponse::NotFound().body("Share not found"),
+    }
+}
+
+/// A filename derived from the share's display name, safe on every platform
+/// NEURAX ships to — same character rules as the desktop app's own
+/// `suggestedFileName` in `neuraxFile.ts`, so a link and a local save behave
+/// the same way. Kept here rather than shared with the frontend because the
+/// two run in different languages; a mismatch would only ever affect the
+/// cosmetic filename, never the file's content.
+fn share_download_filename(display_name: &str) -> String {
+    let cleaned: String = display_name
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control() && !"<>:\"/\\|?*".contains(*c))
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("-");
+    let cleaned = cleaned.trim_matches(|c| c == '.' || c == '-');
+    let name = if cleaned.is_empty() {
+        "untitled-design"
+    } else {
+        cleaned
+    };
+    format!("{}.json", &name[..name.len().min(80)])
+}
+
+/// The raw, unwrapped content behind a share — what a URL-based download
+/// should return, as opposed to `shares_get`'s `{ share: ... }` API envelope.
+/// Card shares download just the report; Full shares bundle the (already
+/// scrubbed) design alongside it, since both are needed to actually rebuild
+/// the architecture locally.
+async fn shares_download(state: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
+    let id = path.into_inner();
+    let Some(mut entry) = state.shares.get_mut(&id) else {
+        return HttpResponse::NotFound().body("Share not found");
+    };
+    entry.view_count += 1;
+
+    let filename = share_download_filename(&entry.display_name);
+    let body = match entry.design.clone() {
+        Some(design) => serde_json::json!({
+            "schema_version": "1.0.0",
+            "display_name": entry.display_name,
+            "family": entry.family,
+            "report": entry.report,
+            "design": design,
+        }),
+        None => serde_json::json!({
+            "schema_version": "1.0.0",
+            "display_name": entry.display_name,
+            "family": entry.family,
+            "report": entry.report,
+        }),
+    };
+
+    HttpResponse::Ok()
+        .content_type("application/json")
+        .insert_header((
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{filename}\""),
+        ))
+        .json(body)
+}
+
+async fn shares_delete(
+    state: web::Data<AppState>,
+    http_req: HttpRequest,
+    path: web::Path<String>,
+) -> impl Responder {
+    let id = path.into_inner();
+    let provided_token = http_req
+        .headers()
+        .get("X-Edit-Token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    match state.shares.get(&id) {
+        Some(entry) => {
+            // Constant-time comparison: `edit_token` is a bearer credential,
+            // same reasoning as the webhook signature check elsewhere in
+            // this file.
+            let matches: bool = entry
+                .edit_token
+                .as_bytes()
+                .ct_eq(provided_token.as_bytes())
+                .into();
+            if !matches {
+                return HttpResponse::build(StatusCode::FORBIDDEN).body("Invalid edit token");
+            }
+        }
+        None => return HttpResponse::NotFound().body("Share not found"),
+    }
+
+    state.shares.remove(&id);
+    HttpResponse::NoContent().finish()
+}
+
 // ─── Credits ────────────────────────────────────────────────────────
 
 /// Per-user credit tracking stored in AppState
@@ -4366,6 +4647,11 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/projects/{id}", web::get().to(projects_get))
         .route("/projects/{id}", web::put().to(projects_update))
         .route("/projects/{id}", web::delete().to(projects_delete))
+        // ─── Public Shares (no auth: anonymous by design) ────────
+        .route("/shares", web::post().to(shares_create))
+        .route("/shares/{id}", web::get().to(shares_get))
+        .route("/shares/{id}", web::delete().to(shares_delete))
+        .route("/shares/{id}/download", web::get().to(shares_download))
         .route("/credits", web::get().to(credits_get))
         .route("/compliance/config", web::get().to(compliance_config))
         // ─── API Key Management ─────────────────────────────────
