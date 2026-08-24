@@ -25,7 +25,7 @@ import {
   InitializationConfig,
   HyperparameterConfig,
 } from './weightInitialization';
-import { CanvasNode, Connection } from '@/types/architecture.ts';
+import { CanvasNode, Connection, LayerType } from '@/types/architecture.ts';
 
 /** A LLaMA-2-7B-shaped decoder block — real block types, real param names. */
 const LLAMA_NODES: CanvasNode[] = [
@@ -364,7 +364,7 @@ describe('recommendations still work over a real design', () => {
 /** Build a minimal node list carrying just one real block type — enough to
  * trigger `getRecommendedHyperparams`' family detection without needing a
  * full reference architecture. */
-function nodesOfType(type: string): CanvasNode[] {
+function nodesOfType(type: LayerType): CanvasNode[] {
   return [{ id: 'n1', type, name: type, x: 0, y: 0, params: {} }];
 }
 
