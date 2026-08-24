@@ -13,7 +13,12 @@ pub struct GpuSpec {
     pub memory_gb: u64,
     /// Memory bandwidth in GB/s
     pub memory_bandwidth_gbs: f64,
-    /// TFLOPS for FP64
+    /// TFLOPS for FP64. On datacenter parts with dedicated FP64 Tensor Cores
+    /// (Ampere/Hopper), this is the Tensor-Core-accelerated figure, not the
+    /// lower plain-CUDA-core FP64 rate NVIDIA also publishes for the same
+    /// chip — e.g. A100 publishes both 9.7 (CUDA core) and 19.5 (Tensor
+    /// Core) TFLOPS FP64; this field holds 19.5. Consumer parts have no
+    /// FP64 Tensor Cores, so their figure here is the plain CUDA-core rate.
     pub tflops_fp64: f64,
     /// TFLOPS for FP32
     pub tflops_fp32: f64,
@@ -23,7 +28,10 @@ pub struct GpuSpec {
     pub tflops_bf16: f64,
     /// TFLOPS for INT8
     pub tflops_int8: f64,
-    /// TFLOPS for FP8 (Hopper+)
+    /// TFLOPS for FP8 (Hopper+). Dense (no structured sparsity), matching
+    /// every other `tflops_*` field in this struct — NVIDIA datasheets
+    /// publish a second, exactly-2x "with sparsity" column for FP8/INT8
+    /// that is deliberately not used here.
     #[serde(default)]
     pub tflops_fp8: f64,
     /// Has Tensor Cores

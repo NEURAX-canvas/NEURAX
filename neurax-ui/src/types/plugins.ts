@@ -22,6 +22,8 @@ export interface ArchitectureFamilyConfig {
   name: string;
   description: string;
   icon: string;
+  /** A single emoji distinguishing this family at a glance in pickers/lists. */
+  emoji: string;
   color: string;
 }
 
@@ -63,6 +65,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'Transformer / LLM',
     description: 'Attention-based sequence models',
     icon: 'Sparkles',
+    emoji: '🧱',
     color: 'hsl(199, 89%, 48%)',
   },
   {
@@ -70,6 +73,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'Mixture of Experts',
     description: 'Sparse expert routing models',
     icon: 'Network',
+    emoji: '🧩',
     color: 'hsl(280, 70%, 55%)',
   },
   {
@@ -77,6 +81,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'State Space Models',
     description: 'S4, Mamba, H3 and linear recurrence models',
     icon: 'Workflow',
+    emoji: '🌊',
     color: 'hsl(160, 70%, 45%)',
   },
   {
@@ -84,6 +89,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'CNN / Vision',
     description: 'Convolutional neural networks',
     icon: 'Grid3X3',
+    emoji: '🧊',
     color: 'hsl(210, 70%, 50%)',
   },
   {
@@ -91,6 +97,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'Diffusion Models',
     description: 'Denoising and score-based generative models',
     icon: 'Waves',
+    emoji: '🌀',
     color: 'hsl(38, 92%, 50%)',
   },
   {
@@ -98,6 +105,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'Graph Neural Networks',
     description: 'Node, edge, and graph-level learning',
     icon: 'Share2',
+    emoji: '🕸️',
     color: 'hsl(340, 75%, 55%)',
   },
   {
@@ -105,6 +113,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'GANs',
     description: 'Generative adversarial networks',
     icon: 'Wand2',
+    emoji: '⚔️',
     color: 'hsl(45, 90%, 50%)',
   },
   {
@@ -112,6 +121,7 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     name: 'RNN / LSTM / GRU',
     description: 'Recurrent sequence models',
     icon: 'Repeat',
+    emoji: '🔁',
     color: 'hsl(25, 80%, 52%)',
   },
 ];

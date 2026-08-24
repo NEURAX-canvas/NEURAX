@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { TopNav } from '@/components/layout/TopNav.tsx';
 import { LayerPalette } from '@/components/layout/LayerPalette.tsx';
@@ -7,7 +7,6 @@ import { ArchitectureCanvas } from '@/components/canvas/ArchitectureCanvas.tsx';
 import { RightPanelTabs } from '@/components/panels/RightPanelTabs.tsx';
 import type { RightPanelTabId } from '@/components/panels/RightPanelTabs.tsx';
 import { InspectorPanel } from '@/components/panels/InspectorPanel.tsx';
-import AIChatDrawer from '@/components/panels/AIChatDrawer.tsx';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable.tsx';
 import { Sheet, SheetContent } from '@/components/ui/sheet.tsx';
 import { Button } from '@/components/ui/button.tsx';
@@ -19,17 +18,45 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog.tsx';
-import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
-import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
-import { SharePanel } from '@/components/panels/SharePanel.tsx';
-import { ComparePanel } from '@/components/panels/ComparePanel.tsx';
-import { DocumentationPanel } from '@/components/panels/DocumentationPanel.tsx';
 import { SimulationTargetPanel } from '@/components/panels/SimulationTargetPanel.tsx';
-import { ModelHyperparametersDialog } from '@/components/panels/ModelHyperparametersPanel.tsx';
-import { InferenceIntelligence } from '@/components/inference';
-import { ProductionWorkspace } from '@/components/production/ProductionWorkspace.tsx';
-import { SimulationWorkspace } from '@/components/simulation/SimulationWorkspace.tsx';
-import { TimeMachineWorkspace, type TimeMachineConfig } from '@/components/timemachine/TimeMachineWorkspace.tsx';
+import type { TimeMachineConfig } from '@/components/timemachine/TimeMachineWorkspace.tsx';
+
+// Code-split: none of these render anything at first paint (dialogs/panels
+// gated on `isOpen`, or workspace tabs other than "architecture" hidden via
+// CSS — see WorkspaceTabs' "stay mounted" comment). Loading them lazily keeps
+// their ~4,700 combined lines out of the main chunk without changing when
+// each actually mounts.
+const AIChatDrawer = lazy(() => import('@/components/panels/AIChatDrawer.tsx'));
+const ExportPanel = lazy(() =>
+  import('@/components/panels/ExportPanel.tsx').then((m) => ({ default: m.ExportPanel }))
+);
+const ImportPanel = lazy(() =>
+  import('@/components/panels/ImportPanel.tsx').then((m) => ({ default: m.ImportPanel }))
+);
+const SharePanel = lazy(() =>
+  import('@/components/panels/SharePanel.tsx').then((m) => ({ default: m.SharePanel }))
+);
+const ComparePanel = lazy(() =>
+  import('@/components/panels/ComparePanel.tsx').then((m) => ({ default: m.ComparePanel }))
+);
+const DocumentationPanel = lazy(() =>
+  import('@/components/panels/DocumentationPanel.tsx').then((m) => ({ default: m.DocumentationPanel }))
+);
+const ModelHyperparametersDialog = lazy(() =>
+  import('@/components/panels/ModelHyperparametersPanel.tsx').then((m) => ({ default: m.ModelHyperparametersDialog }))
+);
+const InferenceIntelligence = lazy(() =>
+  import('@/components/inference').then((m) => ({ default: m.InferenceIntelligence }))
+);
+const ProductionWorkspace = lazy(() =>
+  import('@/components/production/ProductionWorkspace.tsx').then((m) => ({ default: m.ProductionWorkspace }))
+);
+const SimulationWorkspace = lazy(() =>
+  import('@/components/simulation/SimulationWorkspace.tsx').then((m) => ({ default: m.SimulationWorkspace }))
+);
+const TimeMachineWorkspace = lazy(() =>
+  import('@/components/timemachine/TimeMachineWorkspace.tsx').then((m) => ({ default: m.TimeMachineWorkspace }))
+);
 
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { VariantPreset } from '@/types/catalog.ts';
@@ -2457,16 +2484,18 @@ params: params as Record<string, ParameterValue>,
       {isChatOpen && !isDesktopLayout ? (
         <Sheet open={isChatOpen} onOpenChange={setIsChatOpen}>
           <SheetContent side="left" className="p-0 w-[360px] sm:w-[420px]">
-            <AIChatDrawer
-              open={isChatOpen}
-              onOpenChange={setIsChatOpen}
-              onAddCredits={undefined}
-              creditsLeft={creditInfo ? creditInfo.limit - creditInfo.used : undefined}
-              creditsLimit={creditInfo?.limit}
-              getSnapshot={agentGetSnapshot}
-              onToolEvent={handleAgentToolEvent}
-              className="h-full"
-            />
+            <Suspense fallback={null}>
+              <AIChatDrawer
+                open={isChatOpen}
+                onOpenChange={setIsChatOpen}
+                onAddCredits={undefined}
+                creditsLeft={creditInfo ? creditInfo.limit - creditInfo.used : undefined}
+                creditsLimit={creditInfo?.limit}
+                getSnapshot={agentGetSnapshot}
+                onToolEvent={handleAgentToolEvent}
+                className="h-full"
+              />
+            </Suspense>
           </SheetContent>
         </Sheet>
       ) : null}
@@ -2476,16 +2505,18 @@ params: params as Record<string, ParameterValue>,
           {isChatOpen ? (
             <>
               <ResizablePanel defaultSize={28} minSize={18} maxSize={42} className="border-r border-border/70 min-w-0">
-                <AIChatDrawer
-                  open={isChatOpen}
-                  onOpenChange={setIsChatOpen}
-                  onAddCredits={undefined}
-                  creditsLeft={creditInfo ? creditInfo.limit - creditInfo.used : undefined}
-                  creditsLimit={creditInfo?.limit}
-                  getSnapshot={agentGetSnapshot}
-                  onToolEvent={handleAgentToolEvent}
-                  className="h-full"
-                />
+                <Suspense fallback={null}>
+                  <AIChatDrawer
+                    open={isChatOpen}
+                    onOpenChange={setIsChatOpen}
+                    onAddCredits={undefined}
+                    creditsLeft={creditInfo ? creditInfo.limit - creditInfo.used : undefined}
+                    creditsLimit={creditInfo?.limit}
+                    getSnapshot={agentGetSnapshot}
+                    onToolEvent={handleAgentToolEvent}
+                    className="h-full"
+                  />
+                </Suspense>
               </ResizablePanel>
               <ResizableHandle withHandle />
             </>
@@ -2657,40 +2688,50 @@ params: params as Record<string, ParameterValue>,
           activeTab={activeWorkspaceTab}
           onTabChange={setActiveWorkspaceTab}
           architectureContent={architectureContent}
-          simulationContent={<SimulationWorkspace nodes={nodes} connections={connections} analysis={analysis} perLayer={perLayer} warnings={warnings} topology={compiledTopology} />}
+          simulationContent={
+            <Suspense fallback={null}>
+              <SimulationWorkspace nodes={nodes} connections={connections} analysis={analysis} perLayer={perLayer} warnings={warnings} topology={compiledTopology} />
+            </Suspense>
+          }
           productionContent={
-            <ProductionWorkspace
-              nodes={nodes}
-              connections={connections}
-              modelName={documentBaseName}
-              architectureFamily={selectedArchitecture}
-              groups={groups}
-              hardware={hwConfig}
-              analysis={analysis}
-              onSaved={(initialization) => {
-                setOpenedInitializationFor(initialization, nodes, connections);
-                markSaved({ nodes, connections, groups });
-              }}
-            />
+            <Suspense fallback={null}>
+              <ProductionWorkspace
+                nodes={nodes}
+                connections={connections}
+                modelName={documentBaseName}
+                architectureFamily={selectedArchitecture}
+                groups={groups}
+                hardware={hwConfig}
+                analysis={analysis}
+                onSaved={(initialization) => {
+                  setOpenedInitializationFor(initialization, nodes, connections);
+                  markSaved({ nodes, connections, groups });
+                }}
+              />
+            </Suspense>
           }
           inferenceContent={
-            <InferenceIntelligence
-              key={`inference-${panelLoadGeneration}`}
-              architectureType={selectedArchitecture}
-              nodes={nodes}
-              connections={connections}
-              initialParams={inferenceParams ?? undefined}
-              onParamsChange={setInferenceParams}
-            />
+            <Suspense fallback={null}>
+              <InferenceIntelligence
+                key={`inference-${panelLoadGeneration}`}
+                architectureType={selectedArchitecture}
+                nodes={nodes}
+                connections={connections}
+                initialParams={inferenceParams ?? undefined}
+                onParamsChange={setInferenceParams}
+              />
+            </Suspense>
           }
           timeMachineContent={
-            <TimeMachineWorkspace
-              key={`timemachine-${panelLoadGeneration}`}
-              nodes={nodes}
-              connections={connections}
-              initialConfig={timeMachineConfig ?? undefined}
-              onConfigChange={setTimeMachineConfig}
-            />
+            <Suspense fallback={null}>
+              <TimeMachineWorkspace
+                key={`timemachine-${panelLoadGeneration}`}
+                nodes={nodes}
+                connections={connections}
+                initialConfig={timeMachineConfig ?? undefined}
+                onConfigChange={setTimeMachineConfig}
+              />
+            </Suspense>
           }
         >
           {null}
@@ -2727,60 +2768,62 @@ params: params as Record<string, ParameterValue>,
         </DialogContent>
       </Dialog>
 
-      <ExportPanel
-        isOpen={showExportPanel}
-        onClose={() => setShowExportPanel(false)}
-        architectureName="NeuraxModel"
-        nodes={nodes}
-        connections={connections}
-        groups={groups}
-        selectedArchitecture={selectedArchitecture}
-        // Only a real, completed analysis — not the zeroed placeholder shown
-        // before the first run — is worth cross-checking generated code
-        // against. `generatedAt` is only ever set by a real analysis result.
-        analysisResult={analysis.generatedAt ? analysis : null}
-      />
+      <Suspense fallback={null}>
+        <ExportPanel
+          isOpen={showExportPanel}
+          onClose={() => setShowExportPanel(false)}
+          architectureName="NeuraxModel"
+          nodes={nodes}
+          connections={connections}
+          groups={groups}
+          selectedArchitecture={selectedArchitecture}
+          // Only a real, completed analysis — not the zeroed placeholder shown
+          // before the first run — is worth cross-checking generated code
+          // against. `generatedAt` is only ever set by a real analysis result.
+          analysisResult={analysis.generatedAt ? analysis : null}
+        />
 
-      <ImportPanel
-        isOpen={showImportPanel}
-        onClose={() => setShowImportPanel(false)}
-        onImport={handleImportArchitecture}
-      />
+        <ImportPanel
+          isOpen={showImportPanel}
+          onClose={() => setShowImportPanel(false)}
+          onImport={handleImportArchitecture}
+        />
 
-      <SharePanel
-        isOpen={showSharePanel}
-        onClose={() => setShowSharePanel(false)}
-        nodes={nodes}
-        connections={connections}
-        groups={groups}
-        selectedArchitecture={selectedArchitecture}
-        analysisResult={analysis.generatedAt ? analysis : null}
-      />
+        <SharePanel
+          isOpen={showSharePanel}
+          onClose={() => setShowSharePanel(false)}
+          nodes={nodes}
+          connections={connections}
+          groups={groups}
+          selectedArchitecture={selectedArchitecture}
+          analysisResult={analysis.generatedAt ? analysis : null}
+        />
 
-      <ComparePanel
-        isOpen={showComparePanel}
-        onClose={() => setShowComparePanel(false)}
-        baseline={comparisonBaseline}
-        candidate={currentVariant}
-        onCapture={handleCaptureBaseline}
-        onClear={() => setComparisonBaseline(null)}
-      />
+        <ComparePanel
+          isOpen={showComparePanel}
+          onClose={() => setShowComparePanel(false)}
+          baseline={comparisonBaseline}
+          candidate={currentVariant}
+          onCapture={handleCaptureBaseline}
+          onClear={() => setComparisonBaseline(null)}
+        />
 
-      <DocumentationPanel
-        isOpen={showDocumentation}
-        onClose={() => setShowDocumentation(false)}
-        initialSectionId={docSectionId}
-      />
+        <DocumentationPanel
+          isOpen={showDocumentation}
+          onClose={() => setShowDocumentation(false)}
+          initialSectionId={docSectionId}
+        />
+
+        <ModelHyperparametersDialog
+          isOpen={showHyperparametersPanel}
+          onClose={() => setShowHyperparametersPanel(false)}
+          family={selectedArchitecture}
+        />
+      </Suspense>
 
       <SimulationTargetPanel
         isOpen={showTargetPanel}
         onClose={() => setShowTargetPanel(false)}
-      />
-
-      <ModelHyperparametersDialog
-        isOpen={showHyperparametersPanel}
-        onClose={() => setShowHyperparametersPanel(false)}
-        family={selectedArchitecture}
       />
 
     </div>
