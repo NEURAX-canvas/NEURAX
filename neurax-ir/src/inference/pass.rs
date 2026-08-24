@@ -40,7 +40,14 @@ impl InferencePass {
         };
         let hallucination = Self::compute_hallucination_risk(params, model);
         let attention = Self::compute_attention_focus(params);
-        let state_stability = Self::compute_state_stability(params);
+        let state_stability = if matches!(
+            params.architecture_family.to_lowercase().as_str(),
+            "ssm" | "mamba"
+        ) {
+            Some(Self::compute_state_stability(params))
+        } else {
+            None
+        };
         let context_deg = Self::compute_context_degradation(params, model);
         let volatility = Self::compute_sampling_volatility(params);
         let router = if params.architecture_family.to_lowercase() == "moe" {
@@ -257,21 +264,18 @@ impl InferencePass {
     }
 
     // ── Widget 6 : State Stability (SSM) ─────────────────────────────────────
+    //
+    // Only called for the SSM/Mamba family (see the `matches!` guard at the
+    // call site) — a Transformer/MoE/diffusion model has no sequential
+    // hidden state for "coherence across sequence length" to describe, so
+    // there used to be a per-family constant here standing in for one
+    // (0.85 for transformer, a flat 0.82 for MoE, 0.90 for diffusion): a
+    // precise-looking number for a quantity that, outside SSM, is not a real
+    // property of the model.
 
     fn compute_state_stability(p: &InferenceParams) -> f64 {
-        let base = match p.architecture_family.to_lowercase().as_str() {
-            "ssm" | "mamba" => {
-                let seq_ratio = p.prompt_length as f64 / 8192.0;
-                1.0 - (seq_ratio.min(0.80)) * 0.40
-            }
-            "transformer" => {
-                let kv_bonus = if p.kv_cache_reuse { 0.10 } else { 0.0 };
-                0.85 + kv_bonus
-            }
-            "moe" => 0.82,
-            "diffusion" => 0.90, // diffusion models: state stability not sequential
-            _ => 0.80,
-        };
+        let seq_ratio = p.prompt_length as f64 / 8192.0;
+        let base = 1.0 - (seq_ratio.min(0.80)) * 0.40;
 
         let stress_penalty = if p.long_context_simulation { 0.15 } else { 0.0 };
         (base - stress_penalty).clamp(0.10, 1.0)
@@ -395,18 +399,21 @@ impl InferencePass {
             .clamp(0.0, 1.0);
         let overconfidence = Self::score_to_risk(overconf_score);
 
-        // Collapse (MoE) : risque de convergence vers peu d'experts
-        let collapse_score = if p.architecture_family.to_lowercase() == "moe" {
-            match p.moe_router_mode.as_deref().unwrap_or("top-k") {
+        // Collapse (MoE) : risque de convergence vers peu d'experts.
+        // A dense model has no router to collapse — `None`, not the flat
+        // 0.05-floor "low" every non-MoE architecture used to report as if
+        // the question meaningfully applied to it too.
+        let collapse = if p.architecture_family.to_lowercase() == "moe" {
+            let collapse_score = match p.moe_router_mode.as_deref().unwrap_or("top-k") {
                 "top-k" => 0.10,
                 "expert-choice" => 0.25,
                 "soft" => 0.40,
                 _ => 0.15,
-            }
+            };
+            Some(Self::score_to_risk(collapse_score))
         } else {
-            0.05
+            None
         };
-        let collapse = Self::score_to_risk(collapse_score);
 
         // Degeneration : répétition + température élevée
         let degen_score = ((2.0 - p.repetition_penalty).max(0.0) * 0.40 + p.temperature * 0.20
@@ -494,6 +501,44 @@ mod tests {
         let r = InferencePass::run(&p);
         assert!(r.router_stability.is_some());
         assert_eq!(r.router_stability.unwrap().distribution.len(), 8);
+    }
+
+    #[test]
+    fn test_state_stability_only_for_ssm() {
+        let mut p = default_params();
+        p.architecture_family = "transformer".to_string();
+        let r = InferencePass::run(&p);
+        assert!(
+            r.state_stability.is_none(),
+            "a Transformer has no sequential hidden state for this to describe"
+        );
+
+        p.architecture_family = "moe".to_string();
+        let r = InferencePass::run(&p);
+        assert!(r.state_stability.is_none());
+
+        p.architecture_family = "mamba".to_string();
+        let r = InferencePass::run(&p);
+        assert!(r.state_stability.is_some());
+
+        p.architecture_family = "ssm".to_string();
+        let r = InferencePass::run(&p);
+        assert!(r.state_stability.is_some());
+    }
+
+    #[test]
+    fn test_collapse_risk_only_for_moe() {
+        let mut p = default_params();
+        p.architecture_family = "transformer".to_string();
+        let r = InferencePass::run(&p);
+        assert!(
+            r.risk_overview.collapse.is_none(),
+            "a dense model has no router to collapse"
+        );
+
+        p.architecture_family = "moe".to_string();
+        let r = InferencePass::run(&p);
+        assert!(r.risk_overview.collapse.is_some());
     }
 
     #[test]
