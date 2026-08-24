@@ -479,7 +479,16 @@ function ModelGroundingBanner({ profile }: {
   );
 }
 
-function InferenceRiskOverview({ risks }: { risks: Record<string, InferenceRiskLevel> }) {
+function InferenceRiskOverview({
+  risks,
+}: {
+  // `collapse` is `null`/`undefined` outside MoE — a dense model has no
+  // router to collapse (see `InferenceReport['risk_overview']`'s field doc
+  // in neuraxApi.ts). Typed to admit that rather than casting it away,
+  // since the row is filtered out below precisely because the value can
+  // genuinely be absent.
+  risks: Record<string, InferenceRiskLevel | null | undefined>;
+}) {
   const riskLabels: Record<string, { label: string; tooltip: string }> = {
     coherence: { 
       label: 'Coherence Risk', 
@@ -507,7 +516,9 @@ function InferenceRiskOverview({ risks }: { risks: Record<string, InferenceRiskL
       </h3>
       
       <div className="space-y-2">
-        {Object.entries(risks).map(([key, level]) => (
+        {Object.entries(risks)
+          .filter((entry): entry is [string, InferenceRiskLevel] => entry[1] != null)
+          .map(([key, level]) => (
           <Tooltip key={key}>
             <TooltipTrigger asChild>
               <div className="flex items-center justify-between p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors cursor-help">
@@ -588,8 +599,12 @@ export function BehaviorDashboard({ architectureType, report, loading, error }: 
             {/* Widget 5 — Attention Focus */}
             <AttentionFocusStrip attention={report.attention_focus} />
 
-            {/* Widget 6 — State Stability */}
-            <StateStabilityPanel stability={report.state_stability} />
+            {/* Widget 6 — State Stability (SSM/Mamba only). A Transformer,
+                MoE or diffusion model has no sequential hidden state for
+                this to describe. */}
+            {typeof report.state_stability === 'number' && (
+              <StateStabilityPanel stability={report.state_stability} />
+            )}
 
             {/* Widget 7 — Context Degradation */}
             <ContextDegradationMeter percentage={report.context_degradation} />
@@ -609,7 +624,7 @@ export function BehaviorDashboard({ architectureType, report, loading, error }: 
             )}
 
             {/* Widget 10 — Inference Risk Overview */}
-            <InferenceRiskOverview risks={report.risk_overview as Record<string, InferenceRiskLevel>} />
+            <InferenceRiskOverview risks={report.risk_overview} />
 
             {/* Widget 11 — KV Cache Cost. The most trustworthy card here: pure
                 arithmetic over the design's real dimensions, no coefficient. */}

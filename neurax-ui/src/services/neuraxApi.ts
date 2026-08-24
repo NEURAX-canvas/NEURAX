@@ -311,14 +311,17 @@ export interface InferenceReport {
   noise_schedule?: number[];
   hallucination_risk: { risk: InferenceRiskLevel; confidence: number };
   attention_focus: number[];
-  state_stability: number;
+  /** SSM/Mamba only — a Transformer/MoE/diffusion model has no sequential
+   * hidden state for "coherence across sequence length" to describe. */
+  state_stability?: number;
   context_degradation: number;
   sampling_volatility: { diversity: number; determinism: number };
   router_stability?: { stability: number; distribution: number[] };
   risk_overview: {
     coherence: InferenceRiskLevel;
     overconfidence: InferenceRiskLevel;
-    collapse: InferenceRiskLevel;
+    /** MoE only — a dense model has no router to collapse. */
+    collapse?: InferenceRiskLevel;
     degeneration: InferenceRiskLevel;
   };
   /** `undefined` when no design was supplied — sampling behaviour alone. */

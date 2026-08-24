@@ -177,7 +177,11 @@ pub struct KvCacheCost {
 pub struct RiskOverview {
     pub coherence: RiskLevel,
     pub overconfidence: RiskLevel,
-    pub collapse: RiskLevel,
+    /// Expert-collapse risk — only a real question for a Mixture-of-Experts
+    /// model. `None` for every other family rather than the flat, floor-value
+    /// "low" a dense model used to report regardless of whether it has a
+    /// router at all.
+    pub collapse: Option<RiskLevel>,
     pub degeneration: RiskLevel,
 }
 
@@ -194,8 +198,11 @@ pub struct InferenceReport {
     pub hallucination_risk: HallucinationRisk,
     /// Widget 5 — Attention Focus (12 tokens)
     pub attention_focus: Vec<f64>,
-    /// Widget 6 — State Stability / SSM [0, 1]
-    pub state_stability: f64,
+    /// Widget 6 — State Stability / SSM [0, 1]. `None` outside the SSM/Mamba
+    /// family: "hidden state coherence across sequence length" describes a
+    /// state-space recurrence a Transformer/MoE/diffusion model doesn't
+    /// have, so there is nothing real for a number here to mean for them.
+    pub state_stability: Option<f64>,
     /// Widget 7 — Context Degradation : % de fenêtre effective restante
     pub context_degradation: f64,
     /// Widget 8 — Sampling Volatility
