@@ -869,7 +869,7 @@ const rnnBlocks: LayerConfig[] = [
 export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   transformer: {
     id: 'transformer',
-    config: { id: 'transformer', name: 'Transformer / LLM', description: 'Attention-based sequence models', icon: 'Sparkles', color: 'hsl(199, 89%, 48%)' },
+    config: { id: 'transformer', name: 'Transformer / LLM', description: 'Attention-based sequence models', icon: 'Sparkles', emoji: '🧱', color: 'hsl(199, 89%, 48%)' },
     layers: transformerBlocks,
     tools: [
       { id: 'attention-viz', name: 'Attention Heads', icon: 'Focus', description: 'Visualize attention patterns', component: 'AttentionHeadsPanel' },
@@ -888,7 +888,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   moe: {
     id: 'moe',
-    config: { id: 'moe', name: 'Mixture of Experts', description: 'Sparse expert routing models', icon: 'Network', color: 'hsl(280, 70%, 55%)' },
+    config: { id: 'moe', name: 'Mixture of Experts', description: 'Sparse expert routing models', icon: 'Network', emoji: '🧩', color: 'hsl(280, 70%, 55%)' },
     layers: moeBlocks,
     tools: [
       { id: 'routing-viz', name: 'Expert Routing', icon: 'Route', description: 'Token-to-expert routing', component: 'ExpertRoutingPanel' },
@@ -905,7 +905,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   ssm: {
     id: 'ssm',
-    config: { id: 'ssm', name: 'State Space Models', description: 'S4, Mamba, H3, and linear recurrence', icon: 'Workflow', color: 'hsl(160, 70%, 45%)' },
+    config: { id: 'ssm', name: 'State Space Models', description: 'S4, Mamba, H3, and linear recurrence', icon: 'Workflow', emoji: '🌊', color: 'hsl(160, 70%, 45%)' },
     layers: [...ssmBlocks, ...mambaBlocks.filter(l => !ssmBlocks.some(s => s.id === l.id))],
     tools: [
       { id: 'state-transition', name: 'State Transitions', icon: 'Workflow', description: 'State transition diagrams', component: 'StateTransitionPanel' },
@@ -921,7 +921,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   cnn: {
     id: 'cnn',
-    config: { id: 'cnn', name: 'CNN / Vision', description: 'Convolutional neural networks', icon: 'Grid3X3', color: 'hsl(210, 70%, 50%)' },
+    config: { id: 'cnn', name: 'CNN / Vision', description: 'Convolutional neural networks', icon: 'Grid3X3', emoji: '🧊', color: 'hsl(210, 70%, 50%)' },
     layers: cnnBlocks,
     tools: [
       { id: 'feature-maps', name: 'Feature Maps', icon: 'Grid3X3', description: 'Visualize conv features', component: 'FeatureMapsPanel' },
@@ -937,7 +937,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   diffusion: {
     id: 'diffusion',
-    config: { id: 'diffusion', name: 'Diffusion Models', description: 'Denoising and score-based generative', icon: 'Waves', color: 'hsl(38, 92%, 50%)' },
+    config: { id: 'diffusion', name: 'Diffusion Models', description: 'Denoising and score-based generative', icon: 'Waves', emoji: '🌀', color: 'hsl(38, 92%, 50%)' },
     layers: diffusionBlocks,
     tools: [
       { id: 'noise-schedule', name: 'Noise Schedule', icon: 'Waves', description: 'Noise schedule visualization', component: 'NoiseSchedulePanel' },
@@ -953,7 +953,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   gnn: {
     id: 'gnn',
-    config: { id: 'gnn', name: 'Graph Neural Networks', description: 'Node, edge, and graph learning', icon: 'Share2', color: 'hsl(340, 75%, 55%)' },
+    config: { id: 'gnn', name: 'Graph Neural Networks', description: 'Node, edge, and graph learning', icon: 'Share2', emoji: '🕸️', color: 'hsl(340, 75%, 55%)' },
     layers: gnnBlocks,
     tools: [
       { id: 'graph-input', name: 'Graph Structure', icon: 'Share2', description: 'Node & edge config', component: 'GraphInputPanel' },
@@ -969,7 +969,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   gan: {
     id: 'gan',
-    config: { id: 'gan', name: 'GANs', description: 'Generative adversarial networks', icon: 'Wand2', color: 'hsl(45, 90%, 50%)' },
+    config: { id: 'gan', name: 'GANs', description: 'Generative adversarial networks', icon: 'Wand2', emoji: '⚔️', color: 'hsl(45, 90%, 50%)' },
     layers: ganBlocks,
     tools: [
       { id: 'gen-disc', name: 'Gen ↔ Disc', icon: 'ArrowLeftRight', description: 'Generator-Discriminator flow', component: 'GenDiscPanel' },
@@ -985,7 +985,7 @@ export const PLUGINS: Record<ArchitectureFamily, ArchitecturePlugin> = {
   },
   rnn: {
     id: 'rnn',
-    config: { id: 'rnn', name: 'RNN / LSTM / GRU', description: 'Recurrent sequence models', icon: 'Repeat', color: 'hsl(25, 80%, 52%)' },
+    config: { id: 'rnn', name: 'RNN / LSTM / GRU', description: 'Recurrent sequence models', icon: 'Repeat', emoji: '🔁', color: 'hsl(25, 80%, 52%)' },
     layers: rnnBlocks,
     tools: [
       { id: 'gate-analysis', name: 'Gate Analysis', icon: 'Repeat', description: 'LSTM/GRU gate visualization', component: 'GateAnalysisPanel' },
