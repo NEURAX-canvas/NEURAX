@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Leaf, Database, Activity, Info, Check, Copy, Save, Sparkles, ChevronDown, ChevronRight, Settings2, GraduationCap, Layers3 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
@@ -22,6 +22,7 @@ import {
   buildInitializationRecord,
   getRecommendedInit,
   getRecommendedHyperparams,
+  detectHyperparamFamily,
   HyperparameterConfig,
 } from '@/utils/weightInitialization.ts';
 import { serializeDesign, suggestedFileName, InitializationRecord } from '@/utils/neuraxFile.ts';
@@ -79,15 +80,63 @@ export function ProductionWorkspace({
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const recommendedMethod = useMemo(() => getRecommendedInit(nodes), [nodes]);
-  const recommendedHyperparams = useMemo(() => getRecommendedHyperparams(nodes, connections), [nodes, connections]);
+  // Only a real, completed analysis' count is trustworthy enough to steer a
+  // recommendation — the zeroed placeholder shown before the first
+  // "Run Analysis" has no real count to give, same `generatedAt` guard
+  // `ExportPanel`/`SharePanel` use for the same reason.
+  const compiledTotalParams = analysis?.generatedAt ? analysis.totalParams : undefined;
+  const recommendedHyperparams = useMemo(
+    () => getRecommendedHyperparams(nodes, connections, compiledTotalParams),
+    [nodes, connections, compiledTotalParams],
+  );
+  const hyperparamFamily = useMemo(() => detectHyperparamFamily(nodes), [nodes]);
 
-  // Editable hyperparams initialized from recommendations
-  const [hyperparams, setHyperparams] = useState<HyperparameterConfig>(recommendedHyperparams);
+  // Editable hyperparams, initialised from recommendations.
+  const [hyperparams, setHyperparamsState] = useState<HyperparameterConfig>(recommendedHyperparams);
 
-  // Sync when nodes change
-  useMemo(() => {
-    setHyperparams(recommendedHyperparams);
-  }, [recommendedHyperparams]);
+  // Whether the user has touched a hyperparameter field directly, as
+  // opposed to it being set by the recommender. Tracked so an edit
+  // unrelated to the recommendation — moving a block, tweaking a different
+  // layer's params — can't silently discard a deliberate manual choice.
+  //
+  // This used to sync on every `recommendedHyperparams` change unconditionally,
+  // from inside a `useMemo` — a side effect (`setHyperparams`) run from a hook
+  // React only guarantees to be pure, and with no way to distinguish "the
+  // architecture actually changed family" from "an edit happened to touch
+  // `nodes`". A user who nudged Learning Rate then added one unrelated block
+  // had their slider silently reset on the next render.
+  const hasCustomizedHyperparams = useRef(false);
+  const lastHyperparamFamily = useRef(hyperparamFamily);
+
+  useEffect(() => {
+    // A genuine family change (e.g. the canvas went from a plain CNN to a
+    // GAN) always applies the new recommendation and clears any prior
+    // customisation — the old manual tweaks were for a different recipe
+    // entirely, keeping them would silently apply a GNN learning rate to a
+    // GAN. Anything short of that only re-syncs while nothing has been
+    // customised yet.
+    const familyChanged = lastHyperparamFamily.current !== hyperparamFamily;
+    if (familyChanged || !hasCustomizedHyperparams.current) {
+      setHyperparamsState(recommendedHyperparams);
+      hasCustomizedHyperparams.current = false;
+    }
+    lastHyperparamFamily.current = hyperparamFamily;
+  }, [recommendedHyperparams, hyperparamFamily]);
+
+  /** Any manual edit — the sliders and the optimizer select all go through
+   * this, not `setHyperparamsState` directly, so customisation is tracked
+   * consistently rather than at each call site. */
+  const setHyperparams = (updater: HyperparameterConfig | ((h: HyperparameterConfig) => HyperparameterConfig)) => {
+    hasCustomizedHyperparams.current = true;
+    setHyperparamsState(updater);
+  };
+
+  /** "Reset to Recommended" explicitly un-customises — the next
+   * architecture change should go back to auto-syncing. */
+  const resetToRecommended = () => {
+    hasCustomizedHyperparams.current = false;
+    setHyperparamsState(recommendedHyperparams);
+  };
 
   const architecture = useMemo(() => {
     if (nodes.length === 0) return null;
@@ -326,6 +375,38 @@ export function ProductionWorkspace({
               <SliderField label="Warmup Steps" value={[hyperparams.warmupSteps]} onChange={([v]) => setHyperparams(h => ({ ...h, warmupSteps: Math.round(v) }))} min={0} max={5000} step={50} format={(v) => String(Math.round(v))} />
               <SliderField label="Gradient Clipping" value={[hyperparams.gradientClipping]} onChange={([v]) => setHyperparams(h => ({ ...h, gradientClipping: v }))} min={0.1} max={5.0} step={0.1} format={(v) => v.toFixed(1)} />
 
+              {/* Family-specific fields — only present when the recommender
+                  (`getRecommendedHyperparams`) actually detected that family
+                  on the canvas. See its own source comments for the paper
+                  each default comes from. */}
+              {hyperparams.routerAuxLossCoefficient !== undefined && (
+                <SliderField
+                  label="Router Aux Loss Coefficient"
+                  value={[hyperparams.routerAuxLossCoefficient]}
+                  onChange={([v]) => setHyperparams(h => ({ ...h, routerAuxLossCoefficient: v }))}
+                  min={0} max={0.1} step={0.001}
+                  format={(v) => v.toFixed(3)}
+                />
+              )}
+              {hyperparams.emaDecay !== undefined && (
+                <SliderField
+                  label="EMA Decay"
+                  value={[hyperparams.emaDecay]}
+                  onChange={([v]) => setHyperparams(h => ({ ...h, emaDecay: v }))}
+                  min={0.9} max={0.9999} step={0.0001}
+                  format={(v) => v.toFixed(4)}
+                />
+              )}
+              {hyperparams.discriminatorLearningRate !== undefined && (
+                <SliderField
+                  label="Discriminator Learning Rate"
+                  value={[hyperparams.discriminatorLearningRate]}
+                  onChange={([v]) => setHyperparams(h => ({ ...h, discriminatorLearningRate: v }))}
+                  min={0.00001} max={0.01} step={0.00001}
+                  format={(v) => v.toExponential(1)}
+                />
+              )}
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-muted-foreground">Optimizer</Label>
@@ -342,7 +423,7 @@ export function ProductionWorkspace({
                 </Select>
               </div>
 
-              <Button variant="ghost" size="sm" className="w-full text-[10px] text-success hover:text-success" onClick={() => setHyperparams(recommendedHyperparams)}>
+              <Button variant="ghost" size="sm" className="w-full text-[10px] text-success hover:text-success" onClick={resetToRecommended}>
                 <Sparkles className="w-3 h-3 mr-1" /> Reset to Recommended
               </Button>
             </div>
