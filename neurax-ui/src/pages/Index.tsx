@@ -33,6 +33,9 @@ const ExportPanel = lazy(() =>
 const ImportPanel = lazy(() =>
   import('@/components/panels/ImportPanel.tsx').then((m) => ({ default: m.ImportPanel }))
 );
+const SharePanel = lazy(() =>
+  import('@/components/panels/SharePanel.tsx').then((m) => ({ default: m.SharePanel }))
+);
 const ComparePanel = lazy(() =>
   import('@/components/panels/ComparePanel.tsx').then((m) => ({ default: m.ComparePanel }))
 );
@@ -854,6 +857,7 @@ const Index = () => {
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
+  const [showSharePanel, setShowSharePanel] = useState(false);
   const [showTargetPanel, setShowTargetPanel] = useState(false);
   const [showHyperparametersPanel, setShowHyperparametersPanel] = useState(false);
 
@@ -2642,6 +2646,7 @@ params: params as Record<string, ParameterValue>,
         onSaveCanvas={handleSaveCanvas}
         onExport={() => setShowExportPanel(true)}
         onImport={() => setShowImportPanel(true)}
+        onShare={() => setShowSharePanel(true)}
         onOpenDesign={() => void handleOpenDesign()}
         onSaveDesign={() => void handleSaveDesign()}
         documentName={documentName}
@@ -2782,6 +2787,16 @@ params: params as Record<string, ParameterValue>,
           isOpen={showImportPanel}
           onClose={() => setShowImportPanel(false)}
           onImport={handleImportArchitecture}
+        />
+
+        <SharePanel
+          isOpen={showSharePanel}
+          onClose={() => setShowSharePanel(false)}
+          nodes={nodes}
+          connections={connections}
+          groups={groups}
+          selectedArchitecture={selectedArchitecture}
+          analysisResult={analysis.generatedAt ? analysis : null}
         />
 
         <ComparePanel

@@ -33,6 +33,23 @@ const NEURAX_API_BASE = resolveApiBase(
   normalizeLocalApiBase(import.meta.env.VITE_NEURAX_API_URL ?? 'http://127.0.0.1:9098'),
 );
 
+/**
+ * Base URL of NEURAX's public hosted API — used only for endpoints that must
+ * be reachable by someone other than whoever is running this code, like a
+ * public share link.
+ *
+ * Deliberately does NOT go through `resolveApiBase`. On desktop that
+ * resolves to the embedded, loopback-only service (see
+ * `desktopRuntime.ts`'s `isDesktop`/`resolveApiBase` — the desktop's own
+ * server only ever binds `127.0.0.1`), which cannot serve a link to anyone
+ * but the machine it runs on. A share created from the desktop app has to
+ * reach the same public API a browser session would, not the local instance
+ * that dies the moment the app closes.
+ */
+const NEURAX_HOSTED_API_BASE = normalizeLocalApiBase(
+  import.meta.env.VITE_NEURAX_API_URL ?? 'http://127.0.0.1:9098',
+);
+
 let accessToken: string | null = null;
 
 export function setNeuraxAccessToken(token: string | null) {
@@ -830,5 +847,115 @@ export async function exportToGitHub(
   return request<ExportGitHubResponse>('/export/github', {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+// ─── Public Shares ──────────────────────────────────────────────────────
+//
+// Anonymous, read-with-no-account links — see `neurax-service`'s
+// `Share`/`ShareMode` for the data model these mirror. Uses
+// `NEURAX_HOSTED_API_BASE`, not `request()`, for the reason documented on
+// that constant above.
+
+export type ShareMode = 'card' | 'full';
+
+/** The report is an opaque snapshot of `AnalysisResult` — its shape is owned
+ * by the frontend, the backend never inspects it, so there is nothing to
+ * gain from re-typing every field here. */
+export type ShareReport = Record<string, unknown>;
+
+export interface ShareDesign {
+  nodes: unknown[];
+  connections: unknown[];
+  groups: unknown[];
+}
+
+export interface Share {
+  id: string;
+  mode: ShareMode;
+  display_name: string;
+  family: string | null;
+  report: ShareReport;
+  design: ShareDesign | null;
+  created_at: string;
+  view_count: number;
+}
+
+async function requestHosted<T>(path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`${NEURAX_HOSTED_API_BASE}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(init?.headers ?? {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => null);
+    throw new NeuraxApiError(res.status, res.statusText, body);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+/** The page a viewer actually opens — this app's own origin, not the API's. */
+export function shareViewUrl(id: string): string {
+  return `${window.location.origin}/s/${id}`;
+}
+
+/** A direct link to `GET /shares/{id}/download` — usable as a plain `href`,
+ * not just from a fetch call, since it is meant to trigger a real browser
+ * download. */
+export function shareDownloadUrl(id: string): string {
+  return `${NEURAX_HOSTED_API_BASE}/shares/${id}/download`;
+}
+
+export interface CreateShareParams {
+  mode: ShareMode;
+  /** Chosen by the sharer at publish time — never pass the document's own
+   * internal name here without letting the user review/edit it first; it
+   * may be an internal project codename. */
+  displayName: string;
+  family?: string | null;
+  report: ShareReport;
+  /** Required for `mode: 'full'`, ignored for `mode: 'card'` — the backend
+   * enforces this server-side regardless of what is sent. */
+  design?: ShareDesign | null;
+}
+
+export interface CreateShareResult {
+  id: string;
+  /** Bearer credential for `deleteShare` — shown to the user once, at
+   * creation time, exactly like an API key. There is no way to recover it
+   * later; losing it means the share can never be taken down. */
+  editToken: string;
+  url: string;
+}
+
+export async function createShare(params: CreateShareParams): Promise<CreateShareResult> {
+  const { id, edit_token } = await requestHosted<{ id: string; edit_token: string }>(
+    '/shares',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        mode: params.mode,
+        display_name: params.displayName,
+        family: params.family ?? null,
+        report: params.report,
+        design: params.mode === 'full' ? (params.design ?? null) : null,
+      }),
+    },
+  );
+  return { id, editToken: edit_token, url: shareViewUrl(id) };
+}
+
+export async function getShare(id: string): Promise<Share> {
+  const { share } = await requestHosted<{ share: Share }>(`/shares/${id}`);
+  return share;
+}
+
+export async function deleteShare(id: string, editToken: string): Promise<void> {
+  await requestHosted<void>(`/shares/${id}`, {
+    method: 'DELETE',
+    headers: { 'X-Edit-Token': editToken },
   });
 }
