@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0.0",
+  "model": {
+    "name": "AWD-LSTM-PTB",
+    "type": "rnn",
+    "layers": [
+      {"id": "embed", "layer_type": "embedding", "params": {"vocab_size": 10000, "hidden_size": 400}},
+      {"id": "lstm_0", "layer_type": "lstm_block", "params": {"hidden_size": 400, "rnn_hidden_size": 1150}},
+      {"id": "lstm_1", "layer_type": "lstm_block", "params": {"hidden_size": 1150, "rnn_hidden_size": 1150}},
+      {"id": "lstm_2", "layer_type": "lstm_block", "params": {"hidden_size": 1150, "rnn_hidden_size": 400}}
+    ]
+  },
+  "training": {
+    "batch_size": 20,
+    "sequence_length": 70,
+    "precision": "fp32",
+    "learning_rate": 30.0,
+    "num_epochs": 500
+  },
+  "hardware": {
+    "gpus": [{"name": "V100", "memory_gb": 16, "count": 1}]
+  },
+  "data": {
+    "dataset_size": 929589,
+    "vocab_size": 10000,
+    "num_classes": 0
+  }
+}
