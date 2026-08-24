@@ -44,6 +44,15 @@ interface GitHubExportPanelProps {
   nodes: CanvasNode[];
   connections: Connection[];
   modelName?: string;
+  /**
+   * A verified, runnable project (`src/model.py`, `train.py`, ...) to push
+   * instead of the topology-only default — from `ExportPanel`'s "Full
+   * Project" tab, already generated and cross-checked against the analysis
+   * before this panel ever sees it. `buildFiles` still refuses to invent
+   * anything on its own; this is the one path that has already earned the
+   * exception, by construction, not by trust.
+   */
+  projectFiles?: ExportGitHubFile[];
 }
 
 
@@ -79,7 +88,8 @@ export function GitHubExportPanel({
   onClose,
   nodes,
   connections,
-  modelName = 'GeneratedModel'
+  modelName = 'GeneratedModel',
+  projectFiles,
 }: GitHubExportPanelProps) {
   const { toast } = useToast();
   // GitHub connection state
@@ -88,11 +98,16 @@ export function GitHubExportPanel({
 
   // Export configuration
   const [selectedRepo, setSelectedRepo] = useState('');
-  const [branch, setBranch] = useState('main');
+  // Left blank by default rather than hardcoded to "main": an unset branch
+  // tells the backend to use whatever the repository's actual default
+  // branch is (creating the repository first if it doesn't exist yet) —
+  // typing one here overrides that.
+  const [branch, setBranch] = useState('');
   const [directory, setDirectory] = useState('models/');
   const [commitMessage, setCommitMessage] = useState(`Add ${modelName} architecture from NEURAX`);
   const [createPR, setCreatePR] = useState(false);
   const [prBranch, setPrBranch] = useState(`neurax/${modelName.toLowerCase().replace(/\s+/g, '-')}`);
+  const [makePrivate, setMakePrivate] = useState(true);
 
   // Selected formats
 
@@ -156,8 +171,12 @@ export function GitHubExportPanel({
   const buildFiles = useCallback((): ExportGitHubFile[] => {
     const dir = directory.replace(/\/+$/, ''); // strip trailing slash
     const slug = modelName.toLowerCase().replace(/\s+/g, '_');
-    const ir = compileToNeuraxIR(nodes, connections);
 
+    if (projectFiles && projectFiles.length > 0) {
+      return projectFiles.map((f) => ({ ...f, path: `${dir}/${f.path}` }));
+    }
+
+    const ir = compileToNeuraxIR(nodes, connections);
     return [
       {
         path: `${dir}/${slug}.neurax.json`,
@@ -168,7 +187,7 @@ export function GitHubExportPanel({
         content: buildReadme(modelName, nodes.length, connections.length),
       },
     ];
-  }, [directory, nodes, connections, modelName]);
+  }, [directory, nodes, connections, modelName, projectFiles]);
 
   const handleExport = async () => {
     if (!selectedRepo) {
@@ -191,7 +210,8 @@ export function GitHubExportPanel({
         files,
         github_token: githubToken,
         repo: selectedRepo,
-        branch: branch || 'main',
+        branch: branch.trim() || undefined,
+        private: makePrivate,
         commit_message: commitMessage,
         create_pr: createPR,
         pr_branch: createPR ? prBranch : undefined,
@@ -352,17 +372,23 @@ export function GitHubExportPanel({
                 </div>
               </div>
 
-              {/* What gets pushed. Fixed, because it is the only thing NEURAX
-                  can put in a repository truthfully: the topology it analyses,
-                  and a README that says so. */}
+              {/* What gets pushed. Either the topology + README — the only
+                  thing NEURAX can put in a repository truthfully by default
+                  — or, when `projectFiles` was handed in already generated
+                  and verified, the real runnable project. Never anything
+                  invented in between. */}
               <div className="space-y-2">
                 <Label className="text-sm font-medium">Files</Label>
                 <div className="rounded-md border border-border bg-muted/40 p-3 text-xs space-y-1">
-                  <div className="font-mono">{directory.replace(/\/+$/, '')}/{modelName.toLowerCase().replace(/\s+/g, '_')}.neurax.json</div>
-                  <div className="font-mono">{directory.replace(/\/+$/, '')}/README.md</div>
+                  {(projectFiles && projectFiles.length > 0 ? projectFiles : buildFiles()).map((f) => (
+                    <div key={f.path} className="font-mono">
+                      {directory.replace(/\/+$/, '')}/{f.path.replace(/^\/+/, '')}
+                    </div>
+                  ))}
                   <p className="text-muted-foreground pt-1">
-                    The topology exactly as the compiler analyses it, re-openable in
-                    the studio and analysable with the CLI.
+                    {projectFiles && projectFiles.length > 0
+                      ? 'A verified, runnable project — the generated code was already cross-checked against the analysis before reaching this dialog.'
+                      : 'The topology exactly as the compiler analyses it, re-openable in the studio and analysable with the CLI.'}
                   </p>
                 </div>
               </div>
@@ -378,9 +404,13 @@ export function GitHubExportPanel({
                       value={branch}
                       onChange={(e) => setBranch(e.target.value)}
                       className="pl-9"
-                      placeholder="main"
+                      placeholder="auto-detected"
                     />
                   </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    Leave blank to use the repository's actual default branch — NEURAX creates
+                    the repository if it doesn't exist yet, so there's nothing to set up first.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm">Directory</Label>
@@ -404,6 +434,23 @@ export function GitHubExportPanel({
                   onChange={(e) => setCommitMessage(e.target.value)}
                   placeholder="Add model architecture"
                 />
+              </div>
+
+              {/* Private-by-default. Only matters if NEURAX ends up creating the
+                  repository — an existing one keeps whatever visibility it
+                  already has, this cannot change that. */}
+              <div className="flex items-center justify-between p-3 rounded-lg border border-border">
+                <div className="space-y-0.5">
+                  <Label className="text-sm font-medium flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5" />
+                    Private, if NEURAX creates the repository
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Only applies when the repository above doesn't exist yet — an existing
+                    repository's visibility is never changed
+                  </p>
+                </div>
+                <Switch checked={makePrivate} onCheckedChange={setMakePrivate} />
               </div>
 
               {/* Create PR Option */}

@@ -9,6 +9,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-08
+
+### Changed
+- **Reduced to 8 fully-supported architecture families** — Transformer, CNN,
+  MoE, SSM, Diffusion, GAN, GNN, RNN. Reinforcement Learning, Spiking Neural
+  Networks and the "Experimental" catch-all were removed: neither the
+  backend `LayerType` enum nor `neurax-formulas` had dedicated coverage for
+  any of them, so every block in those families silently cost 0 regardless
+  of the design. A family in the picker with no real formula behind it is
+  worse than one that isn't offered. 24 reference templates removed with
+  them (88 → 64), matching the families that remain.
+- Every family kept now has full, audited metric coverage: every
+  parameter-bearing block type used across all 64 reference templates
+  resolves to a real formula, not the generic zero-cost fallback. Verified
+  by compiling all 64 templates and listing every block that still fell
+  through — every one left was legitimately parameter-free (dropout,
+  residual adds, reshapes, activations, positional-encoding markers), not a
+  missed formula.
+
+### Fixed
+- **GNN was not actually compiled.** `graph_conv`, `gat_attention` and
+  `message_passing` — the layer types every real GNN reference template
+  uses — had no dedicated backend `LayerType`, so `graph_conv`/
+  `message_passing` fell to the generic zero-cost type and `gat_attention`
+  silently costed a plain transformer attention block instead of a real GAT.
+  Separately, the graph size (`num_nodes`/`num_edges`) the hardware panel
+  already computed was never actually reaching the backend — written onto a
+  local object nothing serialized, so no GNN FLOPs calculation ever saw a
+  real node/edge count regardless. Fixed on both sides: new `GraphConvNet`/
+  `GraphAttentionNet`/`MessagePassing` backend types wired to real formulas
+  (`neurax-formulas::gnn`), and the graph size now reaches
+  `GlobalResolutionContext` the same way `node_features`/`edge_features`
+  already did.
+- Diffusion's `mmdit_block` (Stable Diffusion 3 / FLUX's core block),
+  `unet_mid`, `unet_latent`, `unet_eff`, `refiner` and `caption_refiner`
+  fell to the generic zero-cost type. GAN's `synthesis_block` and `to_rgb`
+  (both real convolutions in StyleGAN) did too. All six now route to the
+  real formula the equivalent, already-verified block type uses.
+- HuggingFace import now reads **CNN** (ResNet, RegNet, ConvNeXt,
+  EfficientNet — configs fetched live from the Hub while building this) and
+  a **diffusion pipeline's UNet** (Stable Diffusion's `model_index.json` is
+  followed to `unet/config.json` automatically — a repo ID alone is enough,
+  the same as a language model). GAN, RNN and GNN stay unsupported for
+  import: verified live against the Hub that none of the three has a
+  standardised `config.json` convention to read.
+- `neurax-agent`'s natural-language budget parser missed a real, common way
+  clients state a resource ceiling — "runs on 3GB of RAM" / "tourne sur
+  3 giga" — because it only recognised "under X" / "moins de X" phrasing.
+  The constraint was dropped silently, not flagged as unparsed. Now
+  recognised in both languages.
+
+### Added
+- Export a complete, runnable PyTorch project — not just the topology.
+  `model.py` (real `nn.Module`s generated from the same formulas behind the
+  numbers already on screen, verified against the analysis before being
+  offered), `train.py` wired to the hyperparameters already set, a
+  generated README, and `requirements.txt` — as a downloadable `.zip` or
+  pushed straight to GitHub. Every generated file is watermarked with
+  whether it was verified or not; nothing is shipped silently unverified.
+- The GitHub export target creates the destination repository if it
+  doesn't exist yet (private by default), and seeds the first commit by
+  hand via the Git Data API when a repository exists but has never had one
+  — both used to surface as an opaque 404 partway through the export.
+- Gruvbox — light and dark — is now NEURAX's own theme, replacing a generic
+  indigo default with the palette the spider mark already used. Four more
+  palettes (Molten Core, Signal & Static, Web & Amber, Slate & Ember), each
+  with full semantic coverage (destructive/warning/success/info and all 8
+  chart colors), not just a background and a primary color.
+- Chart lines and areas mark their current point with a real emphasized
+  dot on hover, instead of recharts' unstyled default. Time Machine's
+  charts (cost projection, carbon footprint, cost breakdown) now follow the
+  active theme's semantic colors instead of fixed hues that ignored it.
+
 ## [0.9.0] — 2026-08
 
 ### Added

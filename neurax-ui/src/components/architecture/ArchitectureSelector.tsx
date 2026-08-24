@@ -28,7 +28,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip.tsx';
-import { Badge } from '@/components/ui/badge.tsx';
 import { cn } from '@/lib/utils.ts';
 
 const iconMap: Record<string, LucideIcon> = {
@@ -46,18 +45,6 @@ const iconMap: Record<string, LucideIcon> = {
   Brain,
 };
 
-// Extended families with experimental
-const EXTENDED_FAMILIES = [
-  ...ARCHITECTURE_FAMILIES,
-  {
-    id: 'experimental' as ArchitectureFamily,
-    name: 'Experimental',
-    description: 'Early access R&D models',
-    icon: 'FlaskConical',
-    color: 'hsl(280, 70%, 55%)',
-  },
-];
-
 interface ArchitectureSelectorProps {
   value: ArchitectureFamily;
   onChange: (value: ArchitectureFamily) => void;
@@ -67,14 +54,14 @@ interface ArchitectureSelectorProps {
 export function ArchitectureSelector({ value, onChange, className }: ArchitectureSelectorProps) {
   const { currentPlan } = usePlan();
   
-  const currentFamily = EXTENDED_FAMILIES.find(f => f.id === value);
+  const currentFamily = ARCHITECTURE_FAMILIES.find(f => f.id === value);
   const CurrentIcon = currentFamily ? iconMap[currentFamily.icon] : Sparkles;
 
-  const accessibleFamilies = EXTENDED_FAMILIES.filter(f => 
+  const accessibleFamilies = ARCHITECTURE_FAMILIES.filter(f => 
     canAccessArchitecture(currentPlan, f.id)
   );
   
-  const lockedFamilies = EXTENDED_FAMILIES.filter(f => 
+  const lockedFamilies = ARCHITECTURE_FAMILIES.filter(f => 
     !canAccessArchitecture(currentPlan, f.id)
   );
 
@@ -116,36 +103,25 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
       <SelectContent className="bg-popover border-border z-50">
         {accessibleFamilies.map((family) => {
           const Icon = iconMap[family.icon] || Sparkles;
-          const isExperimental = family.id === 'experimental';
-          
+
           return (
-            <SelectItem 
-              key={family.id} 
+            <SelectItem
+              key={family.id}
               value={family.id}
               className="cursor-pointer focus:bg-secondary"
             >
               <div className="flex items-center gap-3 py-0.5">
-                <div 
+                <div
                   className="w-6 h-6 rounded flex items-center justify-center"
                   style={{ backgroundColor: `${family.color}20` }}
                 >
-                  <Icon 
-                    className="w-4 h-4" 
+                  <Icon
+                    className="w-4 h-4"
                     style={{ color: family.color }}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{family.name}</span>
-                    {isExperimental && (
-                      <Badge 
-                        variant="outline" 
-                        className="text-[8px] px-1 py-0 h-4 bg-amber-500/10 text-amber-400 border-amber-500/30"
-                      >
-                        EARLY ACCESS
-                      </Badge>
-                    )}
-                  </div>
+                  <span className="text-sm font-medium">{family.name}</span>
                   <span className="text-[10px] text-muted-foreground">{family.description}</span>
                 </div>
               </div>
@@ -161,8 +137,8 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
             </div>
             {lockedFamilies.map((family) => {
               const Icon = iconMap[family.icon] || Sparkles;
-              const requiredPlan = ['snn', 'experimental'].includes(family.id) ? 'ELITE' : 'ARCHITECT';
-              
+              const requiredPlan = 'ARCHITECT';
+
               return (
                 <Tooltip key={family.id}>
                   <TooltipTrigger asChild>

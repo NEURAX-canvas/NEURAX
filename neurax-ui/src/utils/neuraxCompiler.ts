@@ -1129,6 +1129,31 @@ function toParserLayerType(blockType: string): string {
     return 'custom';
   }
 
+  // Graph Neural Networks — explicit, not left to the generic `attention`/
+  // `custom` fuzzy fallbacks below. `gat_attention` used to fall into
+  // `.includes('attention')` and cost a plain transformer attention block;
+  // `message_passing` matched nothing at all and fell all the way through
+  // to `custom` (0 parameters, 0 FLOPs) regardless of the design. Both now
+  // reach the real GCN/GAT/message-passing formulas in neurax-formulas.
+  if (normalized === 'graph_conv' || normalized === 'gcn_conv' || normalized === 'gcn') {
+    return 'graph_conv';
+  }
+  if (
+    normalized === 'graph_attention' ||
+    normalized === 'gat_attention' ||
+    normalized === 'gat_conv'
+  ) {
+    return 'graph_attention';
+  }
+  if (
+    normalized === 'message_passing' ||
+    normalized === 'mpnn' ||
+    normalized === 'graph_sage' ||
+    normalized === 'graphsage'
+  ) {
+    return 'message_passing';
+  }
+
   if (
     normalized === 'embedding' ||
     normalized === 'token_embedding' ||
@@ -1369,8 +1394,22 @@ function toParserLayerType(blockType: string): string {
   if (normalized.includes('up_block') || normalized.includes('upsample')) {
     return 'up_block';
   }
-  if (normalized.includes('mid_block')) {
+  if (normalized.includes('mid_block') || normalized === 'unet_mid') {
     return 'mid_block';
+  }
+  // MM-DiT (Stable Diffusion 3 / FLUX's joint image+text attention block)
+  // and the UNet variants below used to match nothing here and fall to
+  // `custom` — 0 parameters regardless of the design. Routed to the generic
+  // diffusion block formula (real, if not block-specific) rather than left
+  // at zero.
+  if (
+    normalized === 'mmdit_block' ||
+    normalized === 'unet_latent' ||
+    normalized === 'unet_eff' ||
+    normalized === 'refiner' ||
+    normalized === 'caption_refiner'
+  ) {
+    return 'unet_block';
   }
   if (normalized.includes('timestep') || normalized === 'time_embedding') {
     return normalized.includes('projection') ? 'timestep_block' : 'time_embedding';
@@ -1390,6 +1429,15 @@ function toParserLayerType(blockType: string): string {
     return 'resnet_block';
   }
 
+  // StyleGAN's synthesis network and its `to_rgb` projection — both real
+  // convolutions in the actual architecture, both used to fall to `custom`
+  // (0 parameters) because neither name contains "generator" or "conv".
+  if (normalized === 'synthesis_block') {
+    return 'generator_block';
+  }
+  if (normalized === 'to_rgb' || normalized === 'from_rgb') {
+    return 'conv';
+  }
   if (normalized.includes('generator')) {
     return 'generator_block';
   }
@@ -1478,15 +1526,7 @@ function flattenBlocks(blocks: NeuraxBlock[]): NeuraxBlock[] {
 }
 
 function toParserModelType(family: ArchitectureFamily): string {
-  switch (family) {
-    case 'rl':
-    case 'snn':
-      return 'rnn';
-    case 'experimental':
-      return 'transformer';
-    default:
-      return family;
-  }
+  return family;
 }
 
 // ─── Main compiler ────────────────────────────────────────────────
@@ -2348,6 +2388,15 @@ export function compileToNeuraxIR(
   if (ffnDim != null) global_params.ffn_dim = ffnDim;
   if (numExperts != null) global_params.num_experts = numExperts;
   if (topK != null) global_params.top_k = topK;
+  // GNN graph size — read by the backend's message-passing/GCN/GAT FLOPs
+  // formulas (edge count sets how many messages actually get passed). These
+  // used to only ever be written onto a local `env` object that nothing
+  // downstream of this function ever read; `global_params` is the field the
+  // backend's `GlobalResolutionContext` actually parses (`get_u64("num_nodes")`).
+  if (numNodes != null) global_params.num_nodes = numNodes;
+  if (numEdges != null) global_params.num_edges = numEdges;
+  if (nodeFeatDim != null) global_params.node_features = nodeFeatDim;
+  if (edgeFeatDim != null) global_params.edge_features = edgeFeatDim;
 
   // Settings that describe the training regime rather than the tensor shapes.
   // They ride in global_params, which the backend keeps as a flattened

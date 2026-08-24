@@ -1,6 +1,13 @@
 import { LayerConfig } from './architecture.ts';
 
-export type ArchitectureFamily = 
+// Exactly the 8 families the compiler fully supports — every metric, not
+// just parameter count. `rl`, `snn` and `experimental` used to be options
+// here with no dedicated backend formulas behind them at all (verified
+// against `neurax_parser::LayerType` and `neurax-formulas` before removing
+// them) — a family in this list that the compiler can't really analyse is
+// worse than one that isn't offered, the same principle already applied to
+// HuggingFace import and to code generation elsewhere in this codebase.
+export type ArchitectureFamily =
   | 'transformer'
   | 'moe'
   | 'ssm'
@@ -8,10 +15,7 @@ export type ArchitectureFamily =
   | 'diffusion'
   | 'gnn'
   | 'gan'
-  | 'rl'
-  | 'snn'
-  | 'rnn'
-  | 'experimental';
+  | 'rnn';
 
 export interface ArchitectureFamilyConfig {
   id: ArchitectureFamily;
@@ -102,20 +106,6 @@ export const ARCHITECTURE_FAMILIES: ArchitectureFamilyConfig[] = [
     description: 'Generative adversarial networks',
     icon: 'Wand2',
     color: 'hsl(45, 90%, 50%)',
-  },
-  {
-    id: 'rl',
-    name: 'Reinforcement Learning',
-    description: 'Actor-critic, value, and policy networks',
-    icon: 'Gamepad2',
-    color: 'hsl(15, 80%, 52%)',
-  },
-  {
-    id: 'snn',
-    name: 'Spiking Neural Networks',
-    description: 'Bio-inspired spike-based models',
-    icon: 'Brain',
-    color: 'hsl(300, 60%, 50%)',
   },
   {
     id: 'rnn',

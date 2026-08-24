@@ -15,6 +15,8 @@ import {
   Github,
   Loader2,
   FileCode2,
+  AlertTriangle,
+  FolderTree,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils.ts';
@@ -22,6 +24,7 @@ import { toToml } from '@/utils/tomlExport.ts';
 import { saveTextFile } from '@/services/desktopRuntime.ts';
 import { Button } from '@/components/ui/button.tsx';
 import { Badge } from '@/components/ui/badge.tsx';
+import { Label } from '@/components/ui/label.tsx';
 import {
   Dialog,
   DialogContent,
@@ -31,12 +34,13 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.tsx';
 import { useToast } from '@/hooks/use-toast.ts';
-import { CanvasNode, Connection, NodeGroup } from '@/types/architecture.ts';
+import { CanvasNode, Connection, NodeGroup, AnalysisResult } from '@/types/architecture.ts';
 import { ArchitectureFamily } from '@/types/plugins.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
 import { GitHubExportPanel } from './GitHubExportPanel.tsx';
 import { ExportAssistant } from './ExportAssistant.tsx';
+import { buildProjectFiles, downloadProjectZip, ProjectExportResult } from '@/utils/projectExport.ts';
 
 const iconMap: Record<string, React.ElementType> = {
   FileJson,
@@ -85,6 +89,11 @@ interface ExportPanelProps {
   connections?: Connection[];
   groups?: NodeGroup[];
   selectedArchitecture?: ArchitectureFamily;
+  /** The analysis already on screen — used to cross-check that the code this
+   * panel generates implies the same parameter count, not a different model
+   * wearing the same name. Absent (e.g. nothing analysed yet) just skips
+   * the check rather than blocking on it. */
+  analysisResult?: AnalysisResult | null;
 }
 
 // Mock code previews
@@ -97,15 +106,29 @@ export function ExportPanel({
   nodes = [],
   connections = [],
   groups = [],
-  selectedArchitecture = 'transformer'
+  selectedArchitecture = 'transformer',
+  analysisResult = null,
 }: ExportPanelProps) {
   const [selectedFormat, setSelectedFormat] = useState<string>('json');
   const [copied, setCopied] = useState(false);
   const [showGitHubExport, setShowGitHubExport] = useState(false);
+  // Which "Push to GitHub" button was clicked — the topology-only default in
+  // the Export Formats tab, or the verified project from the Full Project
+  // tab. Determines whether GitHubExportPanel gets the generated code.
+  const [githubExportMode, setGithubExportMode] = useState<'topology' | 'project'>('topology');
   const [showAssistant, setShowAssistant] = useState<string | null>(null);
+  const [isZipping, setIsZipping] = useState(false);
   const { toast } = useToast();
 
   const { config: hwConfig } = useHardware();
+
+  // Regenerated on every render from the current canvas + hyperparameters —
+  // the same principle as the metrics already on screen: nothing here is
+  // cached, so there is nothing that can go stale between an edit and an
+  // export. Only computed when the panel actually needs it (nodes present).
+  const project: ProjectExportResult | null = nodes.length > 0
+    ? buildProjectFiles(nodes, connections, hwConfig, selectedArchitecture, architectureName, analysisResult)
+    : null;
 
   // Compile NEURAX IR JSON from canvas graph
   const neuraxIR = compileToNeuraxIR(nodes, connections, {
@@ -185,6 +208,7 @@ export function ExportPanel({
     }
 
     if (format.id === 'github') {
+      setGithubExportMode('topology');
       setShowGitHubExport(true);
       return;
     }
@@ -225,6 +249,28 @@ export function ExportPanel({
     });
   };
 
+  const handleDownloadProject = async () => {
+    if (!project) return;
+    setIsZipping(true);
+    try {
+      const result = await downloadProjectZip(project);
+      if (result.saved) {
+        toast({
+          title: 'Project exported',
+          description: result.path ?? `${project.slug}.zip`,
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Export failed',
+        description: error instanceof Error ? error.message : String(error),
+        variant: 'destructive',
+      });
+    } finally {
+      setIsZipping(false);
+    }
+  };
+
   const handleCopyCode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopied(true);
@@ -252,7 +298,7 @@ export function ExportPanel({
           </DialogHeader>
 
           <Tabs defaultValue="formats" className="flex-1 overflow-hidden flex flex-col">
-            <TabsList className="grid grid-cols-4 w-full">
+            <TabsList className="grid grid-cols-5 w-full">
               <TabsTrigger value="formats">Export Formats</TabsTrigger>
               <TabsTrigger value="neurax" className="flex items-center gap-1">
                 <FileJson className="w-3 h-3 text-primary" />
@@ -261,6 +307,10 @@ export function ExportPanel({
               <TabsTrigger value="toml" className="flex items-center gap-1">
                 <FileCode2 className="w-3 h-3 text-primary" />
                 TOML
+              </TabsTrigger>
+              <TabsTrigger value="project" className="flex items-center gap-1">
+                <Code className="w-3 h-3 text-primary" />
+                Full Project
               </TabsTrigger>
             </TabsList>
 
@@ -311,7 +361,7 @@ export function ExportPanel({
                 </Button>
                 <Button
                   variant="outline"
-                  onClick={() => setShowGitHubExport(true)}
+                  onClick={() => { setGithubExportMode('topology'); setShowGitHubExport(true); }}
                 >
                   <Github className="w-4 h-4 mr-2" />
                   Push to GitHub
@@ -439,6 +489,110 @@ export function ExportPanel({
               </div>
             </TabsContent>
 
+            <TabsContent value="project" className="flex-1 overflow-y-auto p-1 space-y-4">
+              {!project ? (
+                <div className="text-sm text-muted-foreground p-4">
+                  Add layers to the canvas to generate a project.
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <FolderTree className="w-4 h-4 text-primary" />
+                    <span className="text-sm font-medium">Runnable model + training project</span>
+                    <Badge variant="outline" className="text-[9px] bg-success/10 text-success border-success/30">
+                      Compiled from canvas
+                    </Badge>
+                  </div>
+
+                  {project.codegen.fullySupported && !analysisResult ? (
+                    <div className="rounded-lg border border-border bg-muted/40 p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                      <div className="text-xs">
+                        <div className="font-medium">
+                          Not yet cross-checked — {project.codegen.totalParams.toLocaleString('en-US')} parameters generated
+                        </div>
+                        <div className="text-muted-foreground mt-0.5">
+                          Run an analysis first so this export can be verified against it — an unverified
+                          export is not the same guarantee as the numbers already shown elsewhere in NEURAX.
+                        </div>
+                      </div>
+                    </div>
+                  ) : project.codegen.fullySupported ? (
+                    <div className="rounded-lg border border-success/30 bg-success/10 p-3 flex items-start gap-2">
+                      <Check className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                      <div className="text-xs">
+                        <div className="font-medium text-success">
+                          Every layer translated — {project.codegen.totalParams.toLocaleString('en-US')} parameters generated
+                        </div>
+                        <div className="text-muted-foreground mt-0.5">
+                          {project.verification.matches
+                            ? `Matches NEURAX's analysis (within ${(project.verification.deltaPct * 100).toFixed(2)}%, ${project.attempts} attempt${project.attempts === 1 ? '' : 's'}). The code is a faithful reflection of the compiled design.`
+                            : `Differs from NEURAX's analysis by ${(project.verification.deltaPct * 100).toFixed(1)}% — do not train from this export until that is resolved.`}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+                      <div className="text-xs">
+                        <div className="font-medium text-warning">
+                          {project.codegen.unsupportedTypes.length} block type(s) not translated
+                        </div>
+                        <div className="text-muted-foreground mt-0.5">
+                          <code className="bg-muted px-1 rounded">{project.codegen.unsupportedTypes.join('`, `')}</code>{' '}
+                          fall outside NEURAX's verified code-generation set (transformer / MoE / SSM / CNN-ResNet).
+                          They raise <code className="bg-muted px-1 rounded">NotImplementedError</code> in the generated
+                          file rather than silently doing nothing — fill them in by hand, or simplify the design.
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium">Files</Label>
+                    <div className="rounded-md border border-border bg-muted/40 p-3 text-xs space-y-1 font-mono">
+                      {project.files.map((f) => (
+                        <div key={f.path}>{f.path}</div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-auto bg-background rounded-lg border border-border max-h-64">
+                    <pre className="p-4 text-xs font-mono text-muted-foreground whitespace-pre overflow-x-auto">
+                      {project.codegen.code}
+                    </pre>
+                  </div>
+
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleCopyCode(project.codegen.code)}
+                    >
+                      {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+                      Copy model.py
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setGithubExportMode('project'); setShowGitHubExport(true); }}
+                    >
+                      <Github className="w-4 h-4 mr-2" />
+                      Push to GitHub
+                    </Button>
+                    <Button size="sm" onClick={handleDownloadProject} disabled={isZipping}>
+                      {isZipping ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4 mr-2" />
+                      )}
+                      {isZipping ? 'Zipping...' : `Download ${project.slug}.zip`}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+
           </Tabs>
 
           {/* GitHub Export Panel */}
@@ -448,6 +602,11 @@ export function ExportPanel({
             nodes={nodes}
             connections={connections}
             modelName={architectureName}
+            projectFiles={
+              githubExportMode === 'project' && project?.codegen.fullySupported
+                ? project.files
+                : undefined
+            }
           />
         </DialogContent>
       </Dialog>

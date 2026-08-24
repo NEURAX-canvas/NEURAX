@@ -7,8 +7,25 @@ use crate::tensor::Shape;
 use crate::tensor::TensorIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
-use neurax_formulas::{attention, cnn_blocks, embedding, mlp, moe, normalization};
+use neurax_formulas::{attention, cnn_blocks, embedding, gnn, mlp, moe, normalization};
 use neurax_parser::LayerType;
+
+/// Reads a `usize` out of a `global_params.extra` map, falling back when the
+/// key is absent or not a plain non-negative integer — the same map
+/// `GlobalResolutionContext` reads `num_nodes`/`num_edges` from, so a GNN
+/// design's real graph size (if the client supplied one) reaches its FLOPs
+/// the same way it reaches everything else this map backs.
+fn extra_usize(
+    extra: &std::collections::HashMap<String, serde_json::Value>,
+    key: &str,
+    default: usize,
+) -> usize {
+    extra
+        .get(key)
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .unwrap_or(default)
+}
 
 /// Operator pass implementation
 pub struct OperatorPass;
@@ -651,6 +668,50 @@ fn decompose_layer_to_ops(
                 layer_id: layer.id.clone(),
                 input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
                 output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // Graph Neural Networks — real FLOPs (`neurax-formulas::gnn`), reading
+        // the graph size from `global_params.extra` (`num_nodes`/`num_edges`),
+        // the same map `GlobalResolutionContext` reads for the params side.
+        // Falls back to the Cora citation-graph benchmark's real size — the
+        // same default this analyser's own hyperparameter panel already
+        // assumes for a GNN design with no explicit graph size — rather than
+        // an arbitrary round number.
+        LayerType::GraphConvNet | LayerType::MessagePassing => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
+            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
+            let flops = gnn::gcn_flops(num_nodes, in_features, out_features, num_edges);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
+                output_shape: Shape::known(vec![num_nodes, out_features]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::GraphAttentionNet => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            let num_heads = layer.params.num_heads.unwrap_or(8);
+            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
+            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
+            let flops = gnn::gat_flops(num_nodes, in_features, out_features, num_edges, num_heads);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
+                output_shape: Shape::known(vec![num_nodes, out_features]),
                 flops,
                 param_count: layer.param_count,
                 activation_memory: 0,

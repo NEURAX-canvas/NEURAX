@@ -9,23 +9,39 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu.tsx';
 
+const LABELS: Record<Theme, string> = {
+  light: 'Light — Gruvbox',
+  dark: 'Dark — Gruvbox',
+  molten: 'Molten Core',
+  signal: 'Signal & Static',
+  amber: 'Web & Amber',
+  slate: 'Slate & Ember',
+  nord: 'Nord',
+  onedark: 'One Dark',
+  kanagawa: 'Kanagawa',
+  catppuccin: 'Catppuccin',
+  tokyonight: 'Tokyo Night',
+  everforest: 'Everforest',
+  dracula: 'Dracula',
+  nightfox: 'Nightfox',
+  'rose-pine': 'Rosé Pine',
+  'solarized-dark': 'Solarized Dark',
+};
+
+// Exactly the 6 NEURAX palettes — every semantic color slot filled
+// explicitly for each (see index.css). The other themes index.css defines
+// (nord, onedark, kanagawa, catppuccin, tokyonight, everforest, dracula,
+// nightfox, rose-pine, solarized-dark) are left out of this list on
+// purpose: several only define background/card/primary/border/sidebar/
+// canvas and fall back to `.dark`'s destructive/warning/success/info/
+// chart-* otherwise — a real inconsistency once actually selected, and
+// not one this change is fixing.
+const ORDERED_THEMES: Theme[] = ['light', 'dark', 'molten', 'signal', 'amber', 'slate'];
+
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
 
-  const label = (t: Theme) => {
-    switch (t) {
-      case 'light':
-        return 'Light';
-      case 'dark':
-        return 'Dark';
-      case 'gruvbox':
-        return 'Gruvbox';
-      case 'nord':
-        return 'Nord';
-      case 'onedark':
-        return 'One Dark';
-    }
-  };
+  const label = (t: Theme) => LABELS[t];
 
   return (
     <DropdownMenu>
@@ -42,9 +58,9 @@ export function ThemeToggle() {
         </TooltipContent>
       </Tooltip>
 
-      <DropdownMenuContent align="end">
-        {(['light', 'dark', 'gruvbox', 'nord', 'onedark'] as Theme[]).map((t) => (
-          <DropdownMenuItem key={t} onClick={() => setTheme(t)}>
+      <DropdownMenuContent align="end" className="max-h-80 overflow-y-auto">
+        {ORDERED_THEMES.map((t) => (
+          <DropdownMenuItem key={t} onClick={() => setTheme(t)} className={t === theme ? 'font-semibold' : undefined}>
             {label(t)}
           </DropdownMenuItem>
         ))}

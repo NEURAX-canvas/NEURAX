@@ -43,7 +43,7 @@ Not sure yet? Read the install script before running it — one file, plain shel
 
 ## What it gives you
 
-Drag blocks onto a canvas, or load one of 88 real reference architectures — LLM, diffusion, MoE, and more — and get:
+Drag blocks onto a canvas, or load one of 64 real reference architectures across the 8 architecture families the compiler fully supports — LLM, diffusion, MoE, and more — and get:
 
 - **Will it fit?** Peak VRAM, activations, optimizer state — to the byte.
 - **What will it cost?** Training time, dollars, energy, CO₂ — on the hardware you actually have.

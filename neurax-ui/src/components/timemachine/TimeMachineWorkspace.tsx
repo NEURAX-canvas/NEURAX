@@ -17,6 +17,7 @@ import {
   Tooltip as RechartsTooltip
 } from 'recharts';
 import { CanvasNode, Connection } from '@/types/architecture.ts';
+import { chartActiveDot } from '@/components/simulation/shared/index.ts';
 import {
   runTimeMachine,
   TimeMachineProjection,
@@ -379,8 +380,8 @@ function TimelineView({ timeline, budgetMax }: { timeline: ScenarioPoint[]; budg
         <h3 className="text-sm font-semibold text-foreground">Multi-Scenario Cost Projection</h3>
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
           <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary" /> Nominal (75%)</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400" /> Optimistic (15%)</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400" /> Pessimistic (10%)</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(var(--info))]" /> Optimistic (15%)</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(var(--warning))]" /> Pessimistic (10%)</span>
         </div>
       </div>
       <div className="h-80 min-h-[200px] bg-card rounded-lg border border-border p-4">
@@ -390,9 +391,9 @@ function TimelineView({ timeline, budgetMax }: { timeline: ScenarioPoint[]; budg
             <XAxis dataKey="year" stroke="hsl(var(--muted-foreground))" fontSize={11} />
             <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
             <ReferenceLine y={monthlyBudget} stroke="hsl(var(--destructive))" strokeDasharray="6 3" label={{ value: 'Budget limit', fill: 'hsl(var(--destructive))', fontSize: 10 }} />
-            <Line type="monotone" dataKey="pessimistic" stroke="hsl(25, 95%, 53%)" strokeWidth={1.5} strokeDasharray="4 2" name="Pessimistic" dot={false} />
-            <Line type="monotone" dataKey="nominal" stroke="hsl(var(--primary))" strokeWidth={2.5} name="Nominal" dot={<BreakingDot />} />
-            <Line type="monotone" dataKey="optimistic" stroke="hsl(210, 80%, 60%)" strokeWidth={1.5} strokeDasharray="4 2" name="Optimistic" dot={false} />
+            <Line type="monotone" dataKey="pessimistic" stroke="hsl(var(--warning))" strokeWidth={1.5} strokeDasharray="4 2" name="Pessimistic" dot={false} activeDot={chartActiveDot('hsl(var(--warning))')} />
+            <Line type="monotone" dataKey="nominal" stroke="hsl(var(--primary))" strokeWidth={2.5} name="Nominal" dot={<BreakingDot />} activeDot={chartActiveDot('hsl(var(--primary))')} />
+            <Line type="monotone" dataKey="optimistic" stroke="hsl(var(--info))" strokeWidth={1.5} strokeDasharray="4 2" name="Optimistic" dot={false} activeDot={chartActiveDot('hsl(var(--info))')} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <RechartsTooltip content={<CustomTooltip />} />
           </LineChart>
@@ -430,10 +431,10 @@ function BreakdownView({ data }: { data: CostBreakdown[] }) {
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="year" stroke="hsl(var(--muted-foreground))" fontSize={11} />
             <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
-            <Area type="monotone" dataKey="compute" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} name="Compute" />
-            <Area type="monotone" dataKey="storage" stackId="1" stroke="hsl(210, 80%, 60%)" fill="hsl(210, 80%, 60%)" fillOpacity={0.5} name="Storage" />
-            <Area type="monotone" dataKey="network" stackId="1" stroke="hsl(150, 60%, 45%)" fill="hsl(150, 60%, 45%)" fillOpacity={0.4} name="Network" />
-            <Area type="monotone" dataKey="egress" stackId="1" stroke="hsl(40, 90%, 55%)" fill="hsl(40, 90%, 55%)" fillOpacity={0.3} name="Egress" />
+            <Area type="monotone" dataKey="compute" stackId="1" stroke="hsl(var(--primary))" fill="hsl(var(--primary))" fillOpacity={0.6} name="Compute" activeDot={chartActiveDot('hsl(var(--primary))')} />
+            <Area type="monotone" dataKey="storage" stackId="1" stroke="hsl(var(--info))" fill="hsl(var(--info))" fillOpacity={0.5} name="Storage" activeDot={chartActiveDot('hsl(var(--info))')} />
+            <Area type="monotone" dataKey="network" stackId="1" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.4} name="Network" activeDot={chartActiveDot('hsl(var(--success))')} />
+            <Area type="monotone" dataKey="egress" stackId="1" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.3} name="Egress" activeDot={chartActiveDot('hsl(var(--warning))')} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
           </AreaChart>
         </ResponsiveContainer>
@@ -452,9 +453,9 @@ function CarbonView({ data }: { data: CarbonPoint[] }) {
             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
             <XAxis dataKey="year" stroke="hsl(var(--muted-foreground))" fontSize={11} />
             <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} />
-            <Area type="monotone" dataKey="baseline" stroke="hsl(0, 70%, 55%)" fill="hsl(0, 70%, 55%)" fillOpacity={0.3} name="Baseline" />
-            <Area type="monotone" dataKey="optimized" stroke="hsl(40, 90%, 55%)" fill="hsl(40, 90%, 55%)" fillOpacity={0.3} name="Optimized" />
-            <Area type="monotone" dataKey="withGreenRegions" stroke="hsl(140, 70%, 45%)" fill="hsl(140, 70%, 45%)" fillOpacity={0.4} name="Green Regions" />
+            <Area type="monotone" dataKey="baseline" stroke="hsl(var(--destructive))" fill="hsl(var(--destructive))" fillOpacity={0.3} name="Baseline" activeDot={chartActiveDot('hsl(var(--destructive))')} />
+            <Area type="monotone" dataKey="optimized" stroke="hsl(var(--warning))" fill="hsl(var(--warning))" fillOpacity={0.3} name="Optimized" activeDot={chartActiveDot('hsl(var(--warning))')} />
+            <Area type="monotone" dataKey="withGreenRegions" stroke="hsl(var(--success))" fill="hsl(var(--success))" fillOpacity={0.4} name="Green Regions" activeDot={chartActiveDot('hsl(var(--success))')} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
           </AreaChart>
         </ResponsiveContainer>

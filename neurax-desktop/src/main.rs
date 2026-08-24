@@ -77,6 +77,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::desktop_info,
             commands::save_text_file,
+            commands::save_binary_file,
             commands::write_text_file,
             commands::open_text_file,
         ])

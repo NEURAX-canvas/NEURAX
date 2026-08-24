@@ -106,6 +106,43 @@ export async function saveTextFile(
 }
 
 /**
+ * Save binary content — a `.zip` project export — to a path the user names.
+ *
+ * Same contract as [`saveTextFile`], for content that isn't text. Tauri's IPC
+ * only carries JSON, so the desktop path base64-encodes the bytes before
+ * sending them across; the browser path never needs to, a `Blob` takes the
+ * bytes directly.
+ */
+export async function saveBinaryFile(
+  bytes: Uint8Array,
+  filename: string,
+  mimeType = 'application/zip',
+): Promise<SaveResult> {
+  if (isDesktop()) {
+    const { invoke } = await import('@tauri-apps/api/core');
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const contentsBase64 = btoa(binary);
+    const path = await invoke<string | null>('save_binary_file', {
+      defaultName: filename,
+      contentsBase64,
+    });
+    return path ? { saved: true, path } : { saved: false };
+  }
+
+  const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  return { saved: true };
+}
+
+/**
  * Overwrite a file already open, without a dialog.
  *
  * This is what makes Ctrl+S mean "save", rather than "save as" every time. It

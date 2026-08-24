@@ -9,6 +9,7 @@ import {
   ChartCard,
   ChartContainer,
   chartTooltipStyle,
+  chartActiveDot,
   CHART_MARGINS,
   ChartErrorBoundary,
   EmptyChartState,
@@ -128,7 +129,7 @@ function VramByLayer({ data, hasLiveMap }: { data: ReturnType<typeof buildVramDa
             />
             <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={v => `${v}MB`} />
             <Tooltip contentStyle={chartTooltipStyle()} formatter={(v: number) => [`${v} MB`, 'VRAM']} />
-            <Area type="monotone" dataKey="vramMb" name="VRAM" stroke="hsl(var(--chart-1))" fill="url(#plVram)" />
+            <Area type="monotone" dataKey="vramMb" name="VRAM" stroke="hsl(var(--chart-1))" fill="url(#plVram)" dot={false} activeDot={chartActiveDot('hsl(var(--chart-1))')} />
           </AreaChart>
         </ResponsiveContainer>
       </ChartContainer>
@@ -162,7 +163,7 @@ function LatencyPerLayer({ data, hasLiveMap }: { data: ReturnType<typeof buildLa
             />
             <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={v => `${v}ms`} />
             <Tooltip contentStyle={chartTooltipStyle()} formatter={(v: number) => [`${v} ms`, 'Latency']} />
-            <Line type="monotone" dataKey="latency" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--chart-3))', stroke: 'none' }} />
+            <Line type="monotone" dataKey="latency" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--chart-3))', stroke: 'none' }} activeDot={{ ...chartActiveDot('hsl(var(--chart-3))'), r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
       </ChartContainer>

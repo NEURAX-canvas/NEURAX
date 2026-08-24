@@ -406,8 +406,15 @@ impl GlobalResolutionContext {
             image_height: data.image_height.map(|v| v as u64),
             image_width: data.image_width.map(|v| v as u64),
             image_channels: data.image_channels.map(|v| v as u64),
-            num_nodes: None, // not in current DataConfig
-            num_edges: None,
+            // Same source as `node_features`/`edge_features` two lines up —
+            // `global_params.extra` — not `DataConfig`. The frontend already
+            // computes these (`numNodes`/`numEdges` in the hardware panel)
+            // but only ever wrote them onto a throwaway env object that
+            // nothing serialized; `num_nodes: None` here was that same gap's
+            // other half, and the reason no GNN template's FLOPs could ever
+            // reflect a real graph size.
+            num_nodes: get_u64("num_nodes"),
+            num_edges: get_u64("num_edges"),
 
             dtype_bytes,
             grad_dtype_bytes: 4, // always fp32

@@ -812,6 +812,9 @@ export interface ExportGitHubRequest {
   commit_message?: string;
   create_pr?: boolean;
   pr_branch?: string;
+  /** Visibility to create the repository with, if it doesn't already exist.
+   * Ignored when it does. Defaults to private server-side if omitted. */
+  private?: boolean;
 }
 
 export interface ExportGitHubResponse {

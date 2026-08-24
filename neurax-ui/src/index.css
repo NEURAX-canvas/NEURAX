@@ -8,185 +8,149 @@
 
 @layer base {
   :root {
-    /* ── Pure White Theme — tout dérivé du blanc ── */
-    --background: 0 0% 100%;
-    --foreground: 220 14% 10%;
+    /* ── Gruvbox Light — the mark's own palette, worn by the product ──
+     * Values are exact HSL conversions of real Gruvbox hex (bg0_h #f9f5d7,
+     * bg1 #ebdbb2, fg1 #3c3836, gold #b57614, ...), not approximated —
+     * the same colors the NEURAX spider mark already uses, finally shared
+     * by the interface around it instead of sitting on a generic indigo. */
+    --background: 53 74% 91%;
+    --foreground: 20 5% 22%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 14% 10%;
+    --card: 48 87% 88%;
+    --card-foreground: 20 5% 22%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 14% 10%;
+    --popover: 46 67% 84%;
+    --popover-foreground: 20 5% 22%;
 
-    /* Indigo-500 comme primary (brand) */
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
+    /* Gruvbox gold, darkened for contrast on a light ground */
+    --primary: 37 80% 39%;
+    --primary-foreground: 48 87% 94%;
 
-    --secondary: 220 10% 96%;
-    --secondary-foreground: 220 14% 10%;
+    --secondary: 43 59% 81%;
+    --secondary-foreground: 20 5% 22%;
 
-    --muted: 220 10% 96%;
-    --muted-foreground: 220 10% 46%;
+    --muted: 43 59% 81%;
+    --muted-foreground: 28 11% 44%;
 
-    --accent: 239 84% 67%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 37 80% 39%;
+    --accent-foreground: 48 87% 94%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
+    --destructive: 358 100% 31%;
+    --destructive-foreground: 48 87% 94%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 220 14% 10%;
+    --warning: 19 97% 35%;
+    --warning-foreground: 48 87% 94%;
 
-    --success: 160 60% 39%;
-    --success-foreground: 0 0% 100%;
+    --success: 57 79% 26%;
+    --success-foreground: 48 87% 94%;
 
-    --info: 199 70% 50%;
-    --info-foreground: 0 0% 100%;
+    --info: 190 89% 25%;
+    --info-foreground: 48 87% 94%;
 
-    --border: 220 10% 90%;
-    --input: 220 10% 96%;
-    --ring: 239 84% 67%;
+    --border: 40 38% 73%;
+    --input: 43 59% 81%;
+    --ring: 37 80% 39%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 99%;
-    --sidebar-foreground: 220 14% 20%;
-    --sidebar-primary: 239 84% 67%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 10% 96%;
-    --sidebar-accent-foreground: 220 14% 10%;
-    --sidebar-border: 220 10% 92%;
-    --sidebar-ring: 239 84% 67%;
+    --sidebar-background: 46 67% 84%;
+    --sidebar-foreground: 20 5% 22%;
+    --sidebar-primary: 37 80% 39%;
+    --sidebar-primary-foreground: 48 87% 94%;
+    --sidebar-accent: 43 59% 81%;
+    --sidebar-accent-foreground: 20 5% 22%;
+    --sidebar-border: 40 38% 73%;
+    --sidebar-ring: 37 80% 39%;
 
-    /* Canvas specific - Pure white board */
-    --canvas-bg: 0 0% 99%;
-    --canvas-grid: 220 10% 92%;
-    --canvas-node: 0 0% 100%;
-    --canvas-node-border: 220 10% 85%;
-    --canvas-connection: 239 84% 60%;
+    /* Canvas specific */
+    --canvas-bg: 53 74% 91%;
+    --canvas-grid: 40 38% 73%;
+    --canvas-node: 48 87% 88%;
+    --canvas-node-border: 40 38% 73%;
+    --canvas-connection: 37 80% 39%;
 
     /* Panel specific */
-    --panel-header: 220 10% 97%;
+    --panel-header: 46 67% 84%;
 
-    /* Chart colors - harmonisés avec le thème indigo */
-    --chart-1: 239 84% 67%;
-    --chart-2: 160 84% 39%;
-    --chart-3: 37 92% 50%;
-    --chart-4: 0 84% 60%;
-    --chart-5: 271 91% 65%;
-    --chart-6: 175 59% 40%;
-    --chart-7: 12 76% 61%;
-    --chart-8: 330 81% 60%;
+    /* Chart colors — Gruvbox's own accent set, not a separate palette */
+    --chart-1: 37 80% 39%;
+    --chart-2: 57 79% 26%;
+    --chart-3: 19 97% 35%;
+    --chart-4: 358 100% 31%;
+    --chart-5: 322 39% 40%;
+    --chart-6: 143 30% 37%;
+    --chart-7: 190 89% 25%;
+    --chart-8: 28 11% 44%;
   }
 
   .dark {
-    /* Dark Theme — refined deep space */
-    --background: 240 6% 4%;
-    --foreground: 0 0% 96%;
+    /* ── Gruvbox Dark — same exact conversions, dark half of the pair ── */
+    --background: 0 0% 16%;
+    --foreground: 43 59% 81%;
 
-    --card: 240 4% 6%;
-    --card-foreground: 0 0% 96%;
+    --card: 20 5% 22%;
+    --card-foreground: 43 59% 81%;
 
-    --popover: 240 4% 8%;
-    --popover-foreground: 0 0% 96%;
-    --primary: 239 84% 67%;
-    --primary-foreground: 0 0% 100%;
+    --popover: 22 7% 29%;
+    --popover-foreground: 43 59% 81%;
 
-    --secondary: 240 4% 10%;
-    --secondary-foreground: 0 0% 90%;
+    --primary: 40 73% 49%;
+    --primary-foreground: 0 0% 16%;
 
-    --muted: 240 4% 12%;
-    --muted-foreground: 0 0% 45%;
+    --secondary: 22 7% 29%;
+    --secondary-foreground: 43 59% 81%;
 
-    --accent: 239 84% 60%;
-    --accent-foreground: 0 0% 100%;
+    --muted: 22 7% 29%;
+    --muted-foreground: 35 17% 59%;
 
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
+    /* Burnt orange, distinct from the gold primary — the logo carries both. */
+    --accent: 24 88% 45%;
+    --accent-foreground: 0 0% 16%;
 
-    --warning: 38 92% 50%;
-    --warning-foreground: 220 14% 6%;
+    --destructive: 6 96% 59%;
+    --destructive-foreground: 0 0% 16%;
 
-    --success: 160 60% 45%;
-    --success-foreground: 220 14% 6%;
+    --warning: 42 95% 58%;
+    --warning-foreground: 0 0% 16%;
 
-    --info: 199 70% 50%;
-    --info-foreground: 220 14% 6%;
+    --success: 61 66% 44%;
+    --success-foreground: 0 0% 16%;
 
-    --border: 220 14% 16%;
-    --input: 220 14% 14%;
-    --ring: 220 10% 60%;
+    --info: 157 16% 58%;
+    --info-foreground: 0 0% 16%;
 
-    --sidebar-background: 220 14% 7%;
-    --sidebar-foreground: 0 0% 90%;
-    --sidebar-primary: 220 10% 70%;
-    --sidebar-primary-foreground: 220 14% 6%;
-    --sidebar-accent: 220 14% 12%;
-    --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 220 14% 14%;
-    --sidebar-ring: 220 10% 60%;
+    --border: 27 10% 36%;
+    --input: 22 7% 29%;
+    --ring: 40 73% 49%;
 
-    --canvas-bg: 220 14% 5%;
-    --canvas-grid: 220 14% 12%;
-    --canvas-node: 220 14% 9%;
-    --canvas-node-border: 220 14% 18%;
-    --canvas-connection: 220 10% 55%;
+    --sidebar-background: 20 5% 22%;
+    --sidebar-foreground: 43 59% 81%;
+    --sidebar-primary: 40 73% 49%;
+    --sidebar-primary-foreground: 0 0% 16%;
+    --sidebar-accent: 22 7% 29%;
+    --sidebar-accent-foreground: 43 59% 81%;
+    --sidebar-border: 27 10% 36%;
+    --sidebar-ring: 40 73% 49%;
 
-    --panel-header: 220 14% 9%;
+    /* The deepest Gruvbox tone (bg0_h) — also the favicon's own background,
+     * so the canvas "well" and the app icon read as the same material. */
+    --canvas-bg: 195 6% 12%;
+    --canvas-grid: 27 10% 36%;
+    --canvas-node: 20 5% 22%;
+    --canvas-node-border: 27 10% 36%;
+    --canvas-connection: 40 73% 49%;
 
-    /* Chart colors */
-    --chart-1: 199 89% 56%;
-    --chart-2: 160 84% 45%;
-    --chart-3: 37 92% 55%;
-    --chart-4: 0 84% 60%;
-    --chart-5: 271 91% 70%;
-    --chart-6: 175 59% 45%;
-    --chart-7: 12 76% 64%;
-    --chart-8: 330 81% 64%;
-  }
+    --panel-header: 22 7% 29%;
 
-  .dark.theme-gruvbox {
-    --background: 45 12% 9%;
-    --foreground: 40 33% 88%;
-
-    --card: 45 12% 11%;
-    --card-foreground: 40 33% 88%;
-
-    --popover: 45 12% 12%;
-    --popover-foreground: 40 33% 88%;
-
-    --primary: 35 65% 62%;
-    --primary-foreground: 45 12% 9%;
-
-    --secondary: 45 10% 16%;
-    --secondary-foreground: 40 33% 88%;
-
-    --muted: 45 10% 16%;
-    --muted-foreground: 40 12% 65%;
-
-    --accent: 20 60% 55%;
-    --accent-foreground: 45 12% 9%;
-
-    --border: 45 8% 20%;
-    --input: 45 10% 16%;
-    --ring: 35 65% 62%;
-
-    --sidebar-background: 45 12% 10%;
-    --sidebar-foreground: 40 33% 88%;
-    --sidebar-primary: 35 65% 62%;
-    --sidebar-primary-foreground: 45 12% 9%;
-    --sidebar-accent: 45 10% 16%;
-    --sidebar-accent-foreground: 40 33% 88%;
-    --sidebar-border: 45 8% 18%;
-    --sidebar-ring: 35 65% 62%;
-
-    --canvas-bg: 45 12% 8%;
-    --canvas-grid: 45 8% 16%;
-    --canvas-node: 45 12% 12%;
-    --canvas-node-border: 45 8% 22%;
-    --canvas-connection: 35 35% 70%;
-
-    --panel-header: 45 12% 12%;
+    /* Chart colors — Gruvbox's bright accent set */
+    --chart-1: 42 95% 58%;
+    --chart-2: 61 66% 44%;
+    --chart-3: 27 99% 55%;
+    --chart-4: 6 96% 59%;
+    --chart-5: 344 47% 68%;
+    --chart-6: 104 35% 62%;
+    --chart-7: 157 16% 58%;
+    --chart-8: 35 17% 59%;
   }
 
   .dark.theme-nord {
@@ -491,6 +455,223 @@
     --canvas-node-border: 192 30% 30%;
     --canvas-connection: 205 50% 60%;
     --panel-header: 192 100% 14%;
+  }
+
+  /* Molten Core — heat as the point: NEURAX exists to stop you burning
+   * GPU-hours, so the palette runs orange-to-red with one deliberate cool
+   * accent (a muted teal) reserved for "safe" states, never spent on
+   * anything else. Every semantic slot below is filled explicitly — the
+   * pre-existing theme blocks above this one leave destructive/warning/
+   * success/info/chart-* unset and silently inherit `.dark`'s, which this
+   * repo's own Gruvbox fix (see history) exists specifically to avoid. */
+  .dark.theme-molten {
+    --background: 30 11% 7%;
+    --foreground: 32 38% 92%;
+    --card: 26 12% 11%;
+    --card-foreground: 32 38% 92%;
+    --popover: 33 9% 19%;
+    --popover-foreground: 32 38% 92%;
+    --primary: 27 99% 55%;
+    --primary-foreground: 30 11% 7%;
+    --secondary: 33 9% 19%;
+    --secondary-foreground: 32 38% 92%;
+    --muted: 33 9% 19%;
+    --muted-foreground: 29 11% 56%;
+    --accent: 6 96% 59%;
+    --accent-foreground: 30 11% 7%;
+    --destructive: 6 96% 59%;
+    --destructive-foreground: 30 11% 7%;
+    --warning: 40 73% 49%;
+    --warning-foreground: 30 11% 7%;
+    --success: 157 16% 58%;
+    --success-foreground: 30 11% 7%;
+    --info: 157 16% 58%;
+    --info-foreground: 30 11% 7%;
+    --border: 33 9% 19%;
+    --input: 33 9% 19%;
+    --ring: 27 99% 55%;
+    --sidebar-background: 26 12% 11%;
+    --sidebar-foreground: 32 38% 92%;
+    --sidebar-primary: 27 99% 55%;
+    --sidebar-primary-foreground: 30 11% 7%;
+    --sidebar-accent: 33 9% 19%;
+    --sidebar-accent-foreground: 32 38% 92%;
+    --sidebar-border: 33 9% 19%;
+    --sidebar-ring: 27 99% 55%;
+    --canvas-bg: 20 13% 5%;
+    --canvas-grid: 33 9% 19%;
+    --canvas-node: 26 12% 11%;
+    --canvas-node-border: 33 9% 19%;
+    --canvas-connection: 27 99% 55%;
+    --panel-header: 33 9% 19%;
+    --chart-1: 27 99% 55%;
+    --chart-2: 6 96% 59%;
+    --chart-3: 40 73% 49%;
+    --chart-4: 157 16% 58%;
+    --chart-5: 27 99% 45%;
+    --chart-6: 6 96% 49%;
+    --chart-7: 40 73% 39%;
+    --chart-8: 29 11% 56%;
+  }
+
+  /* Signal & Static — instrument-panel restraint: near-monochrome graphite,
+   * one phosphor-green accent, nothing decorative. Danger stays a plain,
+   * unambiguous red even though it breaks the theme's own restraint —
+   * exactly as the palette gallery specified. */
+  .dark.theme-signal {
+    --background: 200 10% 6%;
+    --foreground: 204 15% 87%;
+    --card: 210 8% 10%;
+    --card-foreground: 204 15% 87%;
+    --popover: 206 8% 16%;
+    --popover-foreground: 204 15% 87%;
+    --primary: 154 69% 55%;
+    --primary-foreground: 200 10% 6%;
+    --secondary: 206 8% 16%;
+    --secondary-foreground: 204 15% 87%;
+    --muted: 206 8% 16%;
+    --muted-foreground: 206 6% 51%;
+    --accent: 151 62% 44%;
+    --accent-foreground: 200 10% 6%;
+    --destructive: 1 83% 63%;
+    --destructive-foreground: 200 10% 6%;
+    --warning: 47 78% 59%;
+    --warning-foreground: 200 10% 6%;
+    --success: 154 69% 55%;
+    --success-foreground: 200 10% 6%;
+    --info: 151 62% 44%;
+    --info-foreground: 200 10% 6%;
+    --border: 206 8% 16%;
+    --input: 206 8% 16%;
+    --ring: 154 69% 55%;
+    --sidebar-background: 210 8% 10%;
+    --sidebar-foreground: 204 15% 87%;
+    --sidebar-primary: 154 69% 55%;
+    --sidebar-primary-foreground: 200 10% 6%;
+    --sidebar-accent: 206 8% 16%;
+    --sidebar-accent-foreground: 204 15% 87%;
+    --sidebar-border: 206 8% 16%;
+    --sidebar-ring: 154 69% 55%;
+    --canvas-bg: 210 9% 4%;
+    --canvas-grid: 206 8% 16%;
+    --canvas-node: 210 8% 10%;
+    --canvas-node-border: 206 8% 16%;
+    --canvas-connection: 154 69% 55%;
+    --panel-header: 206 8% 16%;
+    --chart-1: 154 69% 55%;
+    --chart-2: 151 62% 44%;
+    --chart-3: 47 78% 59%;
+    --chart-4: 1 83% 63%;
+    --chart-5: 154 40% 40%;
+    --chart-6: 206 6% 51%;
+    --chart-7: 151 62% 34%;
+    --chart-8: 47 50% 45%;
+  }
+
+  /* Web & Amber — spider silk caught in light, the literal read of the
+   * mark: amber and honey tones, a muted teal reserved for "verified". */
+  .dark.theme-amber {
+    --background: 24 13% 8%;
+    --foreground: 36 47% 90%;
+    --card: 27 15% 12%;
+    --card-foreground: 36 47% 90%;
+    --popover: 30 18% 19%;
+    --popover-foreground: 36 47% 90%;
+    --primary: 42 93% 46%;
+    --primary-foreground: 24 13% 8%;
+    --secondary: 30 18% 19%;
+    --secondary-foreground: 36 47% 90%;
+    --muted: 30 18% 19%;
+    --muted-foreground: 33 20% 58%;
+    --accent: 37 86% 39%;
+    --accent-foreground: 24 13% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 24 13% 8%;
+    --warning: 41 98% 40%;
+    --warning-foreground: 24 13% 8%;
+    --success: 167 22% 40%;
+    --success-foreground: 24 13% 8%;
+    --info: 167 22% 40%;
+    --info-foreground: 24 13% 8%;
+    --border: 30 18% 19%;
+    --input: 30 18% 19%;
+    --ring: 42 93% 46%;
+    --sidebar-background: 27 15% 12%;
+    --sidebar-foreground: 36 47% 90%;
+    --sidebar-primary: 42 93% 46%;
+    --sidebar-primary-foreground: 24 13% 8%;
+    --sidebar-accent: 30 18% 19%;
+    --sidebar-accent-foreground: 36 47% 90%;
+    --sidebar-border: 30 18% 19%;
+    --sidebar-ring: 42 93% 46%;
+    --canvas-bg: 24 19% 5%;
+    --canvas-grid: 30 18% 19%;
+    --canvas-node: 27 15% 12%;
+    --canvas-node-border: 30 18% 19%;
+    --canvas-connection: 42 93% 46%;
+    --panel-header: 30 18% 19%;
+    --chart-1: 42 93% 46%;
+    --chart-2: 37 86% 39%;
+    --chart-3: 41 98% 40%;
+    --chart-4: 0 72% 51%;
+    --chart-5: 167 22% 40%;
+    --chart-6: 42 60% 60%;
+    --chart-7: 37 50% 30%;
+    --chart-8: 33 20% 58%;
+  }
+
+  /* Slate & Ember — the neutral graphite most dev tools already ship,
+   * plus one brand color spent with care, and normal cool semantics
+   * (a real blue for info) since this theme doesn't restrict itself to
+   * the warm family the way the other three do. */
+  .dark.theme-slate {
+    --background: 225 7% 11%;
+    --foreground: 240 6% 90%;
+    --card: 225 5% 15%;
+    --card-foreground: 240 6% 90%;
+    --popover: 220 5% 22%;
+    --popover-foreground: 240 6% 90%;
+    --primary: 40 73% 49%;
+    --primary-foreground: 225 7% 11%;
+    --secondary: 220 5% 22%;
+    --secondary-foreground: 240 6% 90%;
+    --muted: 220 5% 22%;
+    --muted-foreground: 225 4% 56%;
+    --accent: 198 93% 60%;
+    --accent-foreground: 225 7% 11%;
+    --destructive: 0 91% 71%;
+    --destructive-foreground: 225 7% 11%;
+    --warning: 43 96% 56%;
+    --warning-foreground: 225 7% 11%;
+    --success: 142 69% 58%;
+    --success-foreground: 225 7% 11%;
+    --info: 198 93% 60%;
+    --info-foreground: 225 7% 11%;
+    --border: 220 5% 22%;
+    --input: 220 5% 22%;
+    --ring: 40 73% 49%;
+    --sidebar-background: 225 5% 15%;
+    --sidebar-foreground: 240 6% 90%;
+    --sidebar-primary: 40 73% 49%;
+    --sidebar-primary-foreground: 225 7% 11%;
+    --sidebar-accent: 220 5% 22%;
+    --sidebar-accent-foreground: 240 6% 90%;
+    --sidebar-border: 220 5% 22%;
+    --sidebar-ring: 40 73% 49%;
+    --canvas-bg: 225 9% 9%;
+    --canvas-grid: 220 5% 22%;
+    --canvas-node: 225 5% 15%;
+    --canvas-node-border: 220 5% 22%;
+    --canvas-connection: 40 73% 49%;
+    --panel-header: 220 5% 22%;
+    --chart-1: 40 73% 49%;
+    --chart-2: 198 93% 60%;
+    --chart-3: 142 69% 58%;
+    --chart-4: 0 91% 71%;
+    --chart-5: 43 96% 56%;
+    --chart-6: 198 60% 40%;
+    --chart-7: 40 40% 30%;
+    --chart-8: 225 4% 56%;
   }
 }
 

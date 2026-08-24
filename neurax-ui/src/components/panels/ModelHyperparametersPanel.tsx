@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import {
   Sliders, Maximize, Minimize, Server, Database, Cpu, HardDrive, Activity,
-  BrainCircuit, Gauge, FlaskConical, Layers, Zap, CheckCircle2,
+  BrainCircuit, Gauge, FlaskConical, Layers, CheckCircle2,
   AlertTriangle, Info, BookOpen, ArrowRight, Sparkles, Boxes, Network, Plus, Trash2, Search,
 } from 'lucide-react';
 
@@ -28,9 +28,6 @@ const FAMILY_META: Record<ArchitectureFamily, { label: string; color: string; ic
   gnn:          { label: 'Graph Neural Nets',   color: '#fb4934', icon: Boxes,       blocks: '~46' },
   gan:          { label: 'GAN / Adversarial',   color: '#fabd2f', icon: FlaskConical,blocks: '~82' },
   rnn:          { label: 'RNN / LSTM / GRU',    color: '#fe8019', icon: Activity,    blocks: '~70' },
-  rl:           { label: 'Reinforcement Learn', color: '#cc241d', icon: Gauge,       blocks: '~12' },
-  snn:          { label: 'Spiking Neural Nets', color: '#d3869b', icon: Zap,         blocks: '~12' },
-  experimental: { label: 'Experimental',        color: '#8f3f71', icon: FlaskConical,blocks: '∞' },
 };
 
 function PriorityBadge({ priority }: { priority: HyperparameterDef['priority'] }) {
@@ -398,7 +395,7 @@ function CustomParamsSection({
 function NeuraxIrPreview({ config, family }: { config: Partial<HardwareConfig>; family: ArchitectureFamily }) {
   const [showPreview, setShowPreview] = useState(false);
   const previewJson = useMemo(() => {
-    const mt = family === 'rl' ? 'rnn' : family === 'snn' ? 'ssm' : family === 'experimental' ? 'transformer' : family;
+    const mt = family;
     return {
       schema_version: '1.0.0',
       model: {

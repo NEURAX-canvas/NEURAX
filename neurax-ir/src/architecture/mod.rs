@@ -343,6 +343,24 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             // VAE encoder/decoder: multiple convs (simplified)
             conv::conv2d_params(in_ch, out_ch, 3, 3, 1, false)
         }
+        // Graph Neural Networks — real formulas (`neurax-formulas::gnn`),
+        // wired here for the first time: these three used to fall through to
+        // `Custom` with no `param_count` supplied, costing 0 regardless of
+        // the design. `MessagePassing` reuses the GCN linear-transform shape
+        // rather than a dedicated formula — exact for GraphSAGE/RGCN-style
+        // layers, an approximation for GIN's 2-layer MLP aggregator, but a
+        // real, non-zero number either way.
+        LayerType::GraphConvNet | LayerType::MessagePassing => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            gnn::gcn_params(in_features, out_features, layer.params.bias)
+        }
+        LayerType::GraphAttentionNet => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            let num_heads = layer.params.num_heads.unwrap_or(8);
+            gnn::gat_params(in_features, out_features, num_heads, layer.params.bias)
+        }
         // Custom layer - use param_count if provided, else estimate from shapes
         LayerType::Custom => {
             // An explicit count wins; otherwise evaluate a `params` equation if
@@ -781,5 +799,128 @@ mod moe_decomposed_tests {
             .find(|l| l.layer_type == LayerType::MoeCombine)
             .expect("combine layer present");
         assert_eq!(calculate_layer_params(combine_layer), 0);
+    }
+}
+
+#[cfg(test)]
+mod gnn_tests {
+    //! `graph_conv`/`graph_attention`/`message_passing` used to fall through
+    //! to `Custom` with no `param_count` supplied — 0 parameters and 0 FLOPs
+    //! regardless of the design. This is the exact shape NEURAX's own GCN
+    //! (Cora) reference template compiles to — two `graph_conv` layers with
+    //! real feature dimensions and a dropout in between — not a simplified
+    //! stand-in, and the expected values are the real `gnn::gcn_params`
+    //! formula evaluated by hand, not copied from this code's own output.
+    use super::*;
+    use neurax_parser::parse_model_config;
+
+    fn gcn_cora_json() -> String {
+        r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "GCN (Cora)",
+                "type": "gnn",
+                "global_params": { "num_nodes": 2708, "num_edges": 10556, "node_features": 64 },
+                "layers": [
+                    {"id": "gc1", "layer_type": "graph_conv", "params": {"in_features": 1433, "out_features": 16}},
+                    {"id": "drop", "layer_type": "custom", "params": {"rate": 0.5}},
+                    {"id": "gc2", "layer_type": "graph_conv", "params": {"in_features": 16, "out_features": 7}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#
+        .to_string()
+    }
+
+    #[test]
+    fn gcn_layer_costs_a_real_linear_transform_not_zero() {
+        let config = parse_model_config(&gcn_cora_json()).unwrap();
+        let gc1 = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.id == "gc1")
+            .expect("first graph_conv layer present");
+        assert_eq!(gc1.layer_type, LayerType::GraphConvNet);
+        // 1433 * 16 weight + 16 bias (bias defaults true when unspecified) —
+        // `neurax-formulas::gnn::gcn_params(1433, 16, true)` by hand.
+        assert_eq!(calculate_layer_params(gc1), 1433 * 16 + 16);
+    }
+
+    #[test]
+    fn second_gcn_layer_uses_its_own_shape_not_the_first_layers() {
+        let config = parse_model_config(&gcn_cora_json()).unwrap();
+        let gc2 = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.id == "gc2")
+            .expect("second graph_conv layer present");
+        assert_eq!(calculate_layer_params(gc2), 16 * 7 + 7);
+    }
+
+    #[test]
+    fn dropout_between_gcn_layers_carries_no_parameters() {
+        let config = parse_model_config(&gcn_cora_json()).unwrap();
+        let drop = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.id == "drop")
+            .expect("dropout layer present");
+        assert_eq!(calculate_layer_params(drop), 0);
+    }
+
+    #[test]
+    fn gat_layer_accounts_for_per_head_attention_params() {
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "GAT test",
+                "type": "gnn",
+                "global_params": { "num_nodes": 2708, "num_edges": 10556 },
+                "layers": [
+                    {"id": "gat1", "layer_type": "gat_attention", "params": {"in_features": 1433, "out_features": 64, "num_heads": 8}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+        let gat = &config.model.layers[0];
+        // `gat_attention` must resolve to the dedicated GAT type, not the
+        // generic transformer `Attention` it used to fall into via fuzzy
+        // substring matching (`.includes("attention")`).
+        assert_eq!(gat.layer_type, LayerType::GraphAttentionNet);
+        assert_eq!(
+            calculate_layer_params(gat),
+            neurax_formulas::gnn::gat_params(1433, 64, 8, true)
+        );
+        assert!(calculate_layer_params(gat) > 0);
+    }
+
+    #[test]
+    fn message_passing_no_longer_falls_through_to_custom() {
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "MPNN test",
+                "type": "gnn",
+                "global_params": { "num_nodes": 2708, "num_edges": 10556 },
+                "layers": [
+                    {"id": "mp1", "layer_type": "message_passing", "params": {"in_features": 64, "out_features": 64}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+        let mp = &config.model.layers[0];
+        assert_eq!(mp.layer_type, LayerType::MessagePassing);
+        // The bug this guards: this used to parse as `Custom` with no
+        // `param_count` supplied, and cost exactly 0 — indistinguishable
+        // from a layer that is genuinely parameter-free.
+        assert!(calculate_layer_params(mp) > 0);
     }
 }

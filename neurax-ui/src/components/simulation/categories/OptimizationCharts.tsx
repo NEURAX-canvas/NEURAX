@@ -14,6 +14,7 @@ import {
   ChartCard,
   ChartContainer,
   chartTooltipStyle,
+  chartActiveDot,
   CHART_MARGINS,
   ChartErrorBoundary,
   EmptyChartState,
@@ -158,8 +159,8 @@ export function OptimizationCharts({
                     formatter={(value: number, name: string) => [`${value.toFixed(2)} TFLOP/s`, name === 'memoryRoof' ? 'Memory roof' : 'Compute roof']}
                   />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="memoryRoof" name="Memory roof" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} />
-                  <Line type="monotone" dataKey="computeRoof" name="Compute roof" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="memoryRoof" name="Memory roof" stroke="hsl(var(--chart-4))" strokeWidth={2} dot={false} activeDot={chartActiveDot('hsl(var(--chart-4))')} />
+                  <Line type="monotone" dataKey="computeRoof" name="Compute roof" stroke="hsl(var(--chart-2))" strokeWidth={2} dot={false} activeDot={chartActiveDot('hsl(var(--chart-2))')} />
                   {achievedTflops !== null && (
                     <ReferenceDot
                       x={Math.max(analysis.arithmeticIntensity, 0.1)}
@@ -204,7 +205,7 @@ export function OptimizationCharts({
                   />
                   <Legend wrapperStyle={{ fontSize: '11px' }} />
                   <Bar yAxisId="left" dataKey="flops" name="Layer FLOPs" fill="hsl(var(--chart-1))" radius={[3, 3, 0, 0]} />
-                  <Line yAxisId="right" type="monotone" dataKey="cumulativePct" name="Cumulative %" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--chart-3))' }} />
+                  <Line yAxisId="right" type="monotone" dataKey="cumulativePct" name="Cumulative %" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={{ r: 3, fill: 'hsl(var(--chart-3))' }} activeDot={{ ...chartActiveDot('hsl(var(--chart-3))'), r: 6 }} />
                 </ComposedChart>
               </ResponsiveContainer>
             </ChartContainer>

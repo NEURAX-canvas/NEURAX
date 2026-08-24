@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from requirements import extract_budget
 
 MB = 1024 ** 2
+GB = 1024 ** 3
 
 
 def test_reads_the_size_budget_from_the_users_own_words():
@@ -33,6 +34,28 @@ def test_french_phrasings():
         ("inferieur a 2 mo", 2 * MB),
     ]:
         assert extract_budget(text).max_size_bytes == expected, text
+
+
+def test_runs_on_phrasing_states_a_ceiling_not_just_moins_de():
+    # The bug this guards: a real client request ("a light, compact model
+    # that understands images and text, that will run on 3GB of RAM and be
+    # able to run on a smartphone") named its RAM ceiling by saying what the
+    # model must fit *inside*, not by saying "under" — and that phrasing
+    # matched nothing at all before this test existed, silently dropping the
+    # constraint the client actually stated.
+    fr = extract_budget(
+        "je veux un modele leger et compact qui va comprendre les images et "
+        "le texte qui va tourner sur 3giga de ram et qui va etre capable de "
+        "fonctionner sur smartphone"
+    )
+    assert fr.max_size_bytes == 3 * GB
+    assert fr.target_device == "phone"
+
+    en = extract_budget("a compact vision-language model that runs on 2GB of RAM")
+    assert en.max_size_bytes == 2 * GB
+
+    assert extract_budget("small enough to fit in 512MB").max_size_bytes == 512 * MB
+    assert extract_budget("doit tenir dans 256 mo").max_size_bytes == 256 * MB
 
 
 def test_latency_budget():

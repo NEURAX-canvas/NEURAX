@@ -204,8 +204,44 @@ export async function fetchHubConfig(input: string): Promise<
     // 404 on `main`: fall through and try `master` before giving up.
   }
 
+  // No root `config.json` — a diffusers pipeline (Stable Diffusion and
+  // friends) doesn't have one; it has `model_index.json` naming several
+  // sub-models, each in its own subfolder. `unet/config.json` is the one
+  // NEURAX actually reads (see `parseDiffusionUnetConfig`), so a pipeline
+  // repo ID alone is enough — the same one-paste experience as a language
+  // model, not a second fetch the user has to know to do by hand.
+  for (const branch of ['main', 'master']) {
+    const indexUrl = `https://huggingface.co/${repoId}/raw/${branch}/model_index.json`;
+    let indexResponse: Response;
+    try {
+      indexResponse = await fetch(indexUrl, { signal: AbortSignal.timeout(15_000) });
+    } catch {
+      continue;
+    }
+    if (!indexResponse.ok) continue;
+
+    const unetUrl = `https://huggingface.co/${repoId}/raw/${branch}/unet/config.json`;
+    let unetResponse: Response;
+    try {
+      unetResponse = await fetch(unetUrl, { signal: AbortSignal.timeout(15_000) });
+    } catch (err) {
+      return {
+        ok: false,
+        error: `Found "${repoId}"'s model_index.json but could not fetch its unet/config.json: ${err instanceof Error ? err.message : String(err)}.`,
+      };
+    }
+    if (unetResponse.ok) {
+      const contents = await unetResponse.text();
+      return { ok: true, result: { repoId, contents } };
+    }
+    return {
+      ok: false,
+      error: `"${repoId}" is a diffusers pipeline but has no unet/config.json (checked "${branch}") — it may not be a UNet-based diffusion pipeline NEURAX can read.`,
+    };
+  }
+
   return {
     ok: false,
-    error: `No config.json found at "${repoId}" on either "main" or "master". Check the ID is exact (case matters) — visit huggingface.co/${repoId} to confirm it exists and is a model, not a dataset or Space.`,
+    error: `No config.json or model_index.json found at "${repoId}" on either "main" or "master". Check the ID is exact (case matters) — visit huggingface.co/${repoId} to confirm it exists and is a model, not a dataset or Space.`,
   };
 }

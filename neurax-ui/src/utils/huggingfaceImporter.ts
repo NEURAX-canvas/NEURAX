@@ -210,11 +210,7 @@ const ENCODER_TYPES = new Set([
  * the generic field-not-found error, just without a name for what it is.
  */
 const KNOWN_UNSUPPORTED_MODEL_TYPES: Record<string, string> = {
-  resnet: 'CNN (ResNet)',
-  convnext: 'CNN (ConvNeXt)',
   convnextv2: 'CNN (ConvNeXt V2)',
-  regnet: 'CNN (RegNet)',
-  efficientnet: 'CNN (EfficientNet)',
   mobilenet_v1: 'CNN (MobileNet)',
   mobilenet_v2: 'CNN (MobileNet)',
   mobilevit: 'CNN (MobileViT)',
@@ -466,6 +462,403 @@ function readShape(
 // aliases were derived from real configs rather than the spec.
 
 const MAMBA_MODEL_TYPES = new Set(['mamba', 'mamba2']);
+
+// ── CNN import ───────────────────────────────────────────────────────────
+//
+// A fourth family, alongside transformer/MoE and Mamba/Mamba-2. ResNet,
+// RegNet, ConvNeXt and EfficientNet all ship a `config.json` on the Hub —
+// fetched live (`microsoft/resnet-50`, `facebook/regnet-y-040`,
+// `facebook/convnext-tiny-224`, `google/efficientnet-b0`) and read
+// field-by-field while writing this, the same discipline as the transformer
+// and Mamba paths. The graph this emits is deliberately the exact node
+// shape `data/modelTemplates.ts`'s own ResNet-50/EfficientNet-B0/ConvNeXt-
+// Tiny reference templates already use (`bottleneck_block` with
+// `{planes, blocks, stride, expansion}`, `mbconv_block` with per-stage
+// `{in_channels, out_channels, kernel_size, expand_ratio, se_ratio,
+// num_blocks}`, `convnext_block` with `{dim, num_blocks, kernel_size,
+// downsample}`) — the shapes the compiler's accuracy tests already measure,
+// not a new, unmeasured encoding.
+//
+// Deliberately not attempted: MobileNet, MobileViT, ConvNeXt V2 — no live
+// config was read for these while writing this importer, so they stay in
+// `KNOWN_UNSUPPORTED_MODEL_TYPES` rather than guess at a schema.
+
+const CNN_MODEL_TYPES = new Set(['resnet', 'regnet', 'convnext', 'efficientnet']);
+
+interface CnnStage {
+  planes: number;
+  blocks: number;
+  stride: number;
+  // EfficientNet (MBConv) only — one stage per entry in its per-stage arrays.
+  inChannels?: number;
+  kernelSize?: number;
+  expandRatio?: number;
+  seRatio?: number;
+}
+
+interface CnnShape {
+  modelType: 'resnet' | 'regnet' | 'convnext' | 'efficientnet';
+  name: string;
+  numChannels: number;
+  stemOutChannels: number;
+  stages: CnnStage[];
+  numLabels: number;
+  activation: string;
+}
+
+function readCnnShape(
+  config: RawConfig,
+  fallbackName: string,
+): { shape: CnnShape; assumptions: string[] } | { error: string } {
+  const assumptions: string[] = [];
+  const modelType = (str(config, 'model_type') ?? '') as CnnShape['modelType'];
+  const numChannels = num(config, 'num_channels') ?? 3;
+  const activation = str(config, 'hidden_act') ?? 'relu';
+  const numLabels = (() => {
+    const id2label = config.id2label;
+    if (id2label && typeof id2label === 'object') {
+      return Object.keys(id2label as Record<string, unknown>).length;
+    }
+    assumptions.push('Class count absent; assumed 1000 (ImageNet-1k, the near-universal default).');
+    return 1000;
+  })();
+
+  const name = str(config, '_name_or_path', 'name_or_path') ?? fallbackName;
+
+  if (modelType === 'resnet' || modelType === 'regnet') {
+    const depths = config.depths;
+    const hiddenSizes = config.hidden_sizes;
+    if (!Array.isArray(depths) || !Array.isArray(hiddenSizes) || depths.length === 0) {
+      return { error: `No stage depths/hidden_sizes in this ${modelType} config.` };
+    }
+    const stemOutChannels = num(config, 'embedding_size') ?? 64;
+    const stages: CnnStage[] = depths.map((blocks, i) => ({
+      planes: Number(hiddenSizes[i]),
+      blocks: Number(blocks),
+      stride: i === 0 ? 1 : 2,
+    }));
+    return { shape: { modelType, name, numChannels, stemOutChannels, stages, numLabels, activation }, assumptions };
+  }
+
+  if (modelType === 'convnext') {
+    const depths = config.depths;
+    const hiddenSizes = config.hidden_sizes;
+    if (!Array.isArray(depths) || !Array.isArray(hiddenSizes) || depths.length === 0) {
+      return { error: 'No stage depths/hidden_sizes in this ConvNeXt config.' };
+    }
+    const patchSize = num(config, 'patch_size') ?? 4;
+    const stages: CnnStage[] = depths.map((blocks, i) => ({
+      planes: Number(hiddenSizes[i]),
+      blocks: Number(blocks),
+      stride: i === 0 ? 1 : 2,
+      kernelSize: 7,
+    }));
+    return {
+      shape: { modelType, name, numChannels, stemOutChannels: patchSize, stages, numLabels, activation: str(config, 'hidden_act') ?? 'gelu' },
+      assumptions,
+    };
+  }
+
+  // EfficientNet — every stage is its own entry across seven parallel arrays,
+  // not a `depths`/`hidden_sizes` pair the way the others are.
+  const inChannels = config.in_channels;
+  const outChannels = config.out_channels;
+  const kernelSizes = config.kernel_sizes;
+  const expandRatios = config.expand_ratios;
+  const numBlockRepeats = config.num_block_repeats;
+  const strides = config.strides;
+  if (
+    !Array.isArray(inChannels) || !Array.isArray(outChannels) ||
+    !Array.isArray(kernelSizes) || !Array.isArray(expandRatios) ||
+    !Array.isArray(numBlockRepeats) || !Array.isArray(strides) ||
+    inChannels.length === 0
+  ) {
+    return { error: 'EfficientNet config is missing one of its per-stage arrays (in_channels, out_channels, kernel_sizes, expand_ratios, num_block_repeats, strides).' };
+  }
+  const seRatio = num(config, 'squeeze_expansion_ratio') ?? 0.25;
+  const stemOutChannels = Number(inChannels[0]);
+  const stages: CnnStage[] = inChannels.map((_, i) => ({
+    planes: Number(outChannels[i]),
+    blocks: Number(numBlockRepeats[i]),
+    stride: Number(strides[i]),
+    inChannels: Number(inChannels[i]),
+    kernelSize: Number(kernelSizes[i]),
+    expandRatio: Number(expandRatios[i]),
+    seRatio,
+  }));
+  return {
+    shape: { modelType, name, numChannels, stemOutChannels, stages, numLabels, activation: str(config, 'hidden_act') ?? 'swish' },
+    assumptions,
+  };
+}
+
+function buildCnnGraph(shape: CnnShape): { nodes: CanvasNode[]; connections: Connection[] } {
+  const nodes: CanvasNode[] = [];
+  const connections: Connection[] = [];
+  let nodeSeq = 0;
+  let connSeq = 0;
+  const add = (type: LayerType, name: string, x: number, params: Record<string, unknown>): string => {
+    const id = `hf-n${++nodeSeq}`;
+    nodes.push({ id, type, name, x, y: 140, params: params as CanvasNode['params'] });
+    return id;
+  };
+  const link = (from: string, to: string) => connections.push({ id: `hf-c${++connSeq}`, from, to });
+
+  let x = 50;
+  const input = add('input', 'Input Image', x, {});
+  x += 200;
+
+  let prev = input;
+  if (shape.modelType === 'convnext') {
+    const stem = add('stem_block', `Stem: ${shape.stemOutChannels}, patch ${shape.stages[0]?.kernelSize ?? 4}`, x, {
+      out_channels: shape.stemOutChannels,
+      kernel_size: 4,
+      stride: 4,
+    });
+    link(prev, stem);
+    prev = stem;
+    x += 200;
+  } else {
+    const stem = add('stem_block', `Stem: 7×7 Conv (${shape.stemOutChannels})`, x, {
+      out_channels: shape.stemOutChannels,
+      kernel_size: 7,
+      stride: 2,
+    });
+    link(prev, stem);
+    x += 200;
+    const pool = add('max_pool', '3×3 Max Pool (stride 2)', x, { kernel_size: 3, stride: 2, padding: 1 });
+    link(stem, pool);
+    prev = pool;
+    x += 200;
+  }
+
+  for (const [i, stage] of shape.stages.entries()) {
+    let stageNode: string;
+    if (shape.modelType === 'resnet' || shape.modelType === 'regnet') {
+      stageNode = add(
+        'bottleneck_block',
+        `Stage ${i + 1}: ${stage.blocks}× Bottleneck (${stage.planes})`,
+        x,
+        { planes: stage.planes, blocks: stage.blocks, stride: stage.stride, expansion: 4 },
+      );
+    } else if (shape.modelType === 'convnext') {
+      stageNode = add(
+        'convnext_block',
+        `Stage ${i + 1}: ${stage.blocks}× ConvNeXt Block (${stage.planes})`,
+        x,
+        { dim: stage.planes, num_blocks: stage.blocks, kernel_size: 7, downsample: i > 0 },
+      );
+    } else {
+      stageNode = add(
+        'mbconv_block',
+        `MBConv${stage.expandRatio} (${stage.planes}), k${stage.kernelSize}×${stage.kernelSize} ×${stage.blocks}`,
+        x,
+        {
+          in_channels: stage.inChannels, out_channels: stage.planes, kernel_size: stage.kernelSize,
+          expand_ratio: stage.expandRatio, se_ratio: stage.seRatio, stride: stage.stride, num_blocks: stage.blocks,
+        },
+      );
+    }
+    link(prev, stageNode);
+    prev = stageNode;
+    x += 200;
+  }
+
+  const pool = add('global_pool', 'Global Average Pool', x, {});
+  link(prev, pool);
+  x += 200;
+
+  const head = add('classification_head', `Classifier (${shape.numLabels})`, x, { num_labels: shape.numLabels });
+  link(pool, head);
+  x += 200;
+
+  const output = add('output', 'Output', x, {});
+  link(head, output);
+
+  return { nodes, connections };
+}
+
+function buildCnnHardwareConfig(shape: CnnShape): Partial<HardwareConfig> {
+  return {
+    inChannels: shape.numChannels,
+    numClasses: shape.numLabels,
+    convActivation: shape.activation,
+  };
+}
+
+function parseCnnConfig(config: RawConfig, fallbackName: string): HuggingFaceImportResult {
+  const empty = { nodes: [], connections: [], notes: [], assumptions: [] };
+  const read = readCnnShape(config, fallbackName);
+  if ('error' in read) {
+    return { ...empty, modelName: fallbackName, error: read.error };
+  }
+  const { shape, assumptions } = read;
+  const { nodes, connections } = buildCnnGraph(shape);
+
+  const totalBlocks = shape.stages.reduce((sum, s) => sum + s.blocks, 0);
+  const notes: string[] = [
+    `${shape.modelType.toUpperCase()}: ${shape.stages.length} stages, ${totalBlocks} blocks total, ` +
+      `${shape.numChannels} input channels, ${shape.numLabels.toLocaleString('en-US')} classes.`,
+  ];
+
+  return {
+    nodes,
+    connections,
+    modelName: shape.name,
+    family: 'cnn' as ArchitectureFamily,
+    hardwareConfig: buildCnnHardwareConfig(shape),
+    notes,
+    assumptions,
+  };
+}
+
+// ── Diffusion (UNet) import ─────────────────────────────────────────────
+//
+// A diffusion pipeline is several separate models (UNet, VAE, text
+// encoder), each its own config file under a subfolder — `model_index.json`
+// names them, `unet/config.json` holds the one that actually does the
+// denoising and carries the overwhelming majority of the pipeline's
+// parameters. This reads that file — real, live-verified against
+// `runwayml/stable-diffusion-v1-5`'s `unet/config.json` (`block_out_channels:
+// [320,640,1280,1280]`, `layers_per_block: 2`, `cross_attention_dim: 768`) —
+// on its own, the same way a language model's `config.json` is read on its
+// own without also fetching its tokenizer. VAE and text-encoder parameter
+// counts aren't included: not a rounding error (the UNet dominates a real
+// pipeline's training-time cost, which is what NEURAX exists to estimate)
+// but a real, stated gap, not silently absorbed into the UNet's number.
+
+function readDiffusionUnetShape(
+  config: RawConfig,
+  fallbackName: string,
+): { shape: DiffusionUnetShape; assumptions: string[] } | { error: string } {
+  const assumptions: string[] = [];
+  const blockOutChannels = config.block_out_channels;
+  if (!Array.isArray(blockOutChannels) || blockOutChannels.length === 0) {
+    return { error: 'No block_out_channels in this UNet config.' };
+  }
+  const inChannels = num(config, 'in_channels') ?? 4;
+  const outChannels = num(config, 'out_channels') ?? inChannels;
+  const layersPerBlock = num(config, 'layers_per_block') ?? 2;
+  const crossAttentionDim = num(config, 'cross_attention_dim');
+  const downBlockTypes = Array.isArray(config.down_block_types)
+    ? (config.down_block_types as unknown[]).map(String)
+    : [];
+  const hasCrossAttention = downBlockTypes.some((t) => t.includes('CrossAttn')) || crossAttentionDim !== undefined;
+
+  if (crossAttentionDim === undefined && hasCrossAttention) {
+    assumptions.push('down_block_types names a cross-attention block but cross_attention_dim is absent; cross-attention width omitted from the block params.');
+  }
+
+  const name = str(config, '_name_or_path', 'name_or_path') ?? fallbackName;
+  return {
+    shape: {
+      name,
+      channels: blockOutChannels.map(Number),
+      inChannels,
+      outChannels,
+      layersPerBlock,
+      crossAttentionDim: crossAttentionDim ?? null,
+      hasCrossAttention,
+    },
+    assumptions,
+  };
+}
+
+interface DiffusionUnetShape {
+  name: string;
+  channels: number[];
+  inChannels: number;
+  outChannels: number;
+  layersPerBlock: number;
+  crossAttentionDim: number | null;
+  hasCrossAttention: boolean;
+}
+
+function buildDiffusionUnetGraph(shape: DiffusionUnetShape): { nodes: CanvasNode[]; connections: Connection[] } {
+  const nodes: CanvasNode[] = [];
+  const connections: Connection[] = [];
+  let nodeSeq = 0;
+  let connSeq = 0;
+  const add = (type: LayerType, name: string, x: number, params: Record<string, unknown>): string => {
+    const id = `hf-n${++nodeSeq}`;
+    nodes.push({ id, type, name, x, y: 140, params: params as CanvasNode['params'] });
+    return id;
+  };
+  const link = (from: string, to: string) => connections.push({ id: `hf-c${++connSeq}`, from, to });
+
+  const input = add('input', 'Noised Latent', 50, {});
+  const crossAttnParams = shape.hasCrossAttention && shape.crossAttentionDim
+    ? { cross_attention_dim: shape.crossAttentionDim }
+    : {};
+
+  const encoder = add('unet_encoder', `UNet Encoder (${shape.channels.length}× down)`, 250, {
+    in_channels: shape.inChannels,
+    channels: shape.channels,
+    num_res_blocks: shape.layersPerBlock,
+    ...crossAttnParams,
+  });
+  link(input, encoder);
+
+  const mid = add('unet_mid', 'UNet Middle', 450, {
+    channels: shape.channels[shape.channels.length - 1],
+    with_attention: true,
+    ...crossAttnParams,
+  });
+  link(encoder, mid);
+
+  const decoder = add('unet_decoder', `UNet Decoder (${shape.channels.length}× up)`, 650, {
+    out_channels: shape.outChannels,
+    channels: [...shape.channels].reverse(),
+    num_res_blocks: shape.layersPerBlock + 1,
+    ...crossAttnParams,
+  });
+  link(mid, decoder);
+
+  const output = add('output', 'Predicted Noise', 850, {});
+  link(decoder, output);
+
+  return { nodes, connections };
+}
+
+function buildDiffusionUnetHardwareConfig(shape: DiffusionUnetShape): Partial<HardwareConfig> {
+  return {
+    inChannels: shape.inChannels,
+    outChannels: shape.outChannels,
+    modelChannels: shape.channels[0],
+    numResBlocks: shape.layersPerBlock,
+    channelMult: shape.channels.map((c) => c / shape.channels[0]).join(','),
+    ...(shape.crossAttentionDim ? { crossAttentionDim: shape.crossAttentionDim } : {}),
+  };
+}
+
+function parseDiffusionUnetConfig(config: RawConfig, fallbackName: string): HuggingFaceImportResult {
+  const empty = { nodes: [], connections: [], notes: [], assumptions: [] };
+  const read = readDiffusionUnetShape(config, fallbackName);
+  if ('error' in read) {
+    return { ...empty, modelName: fallbackName, error: read.error };
+  }
+  const { shape, assumptions } = read;
+  const { nodes, connections } = buildDiffusionUnetGraph(shape);
+
+  const notes: string[] = [
+    `UNet: ${shape.channels.length} resolution levels (${shape.channels.join(' → ')} channels), ` +
+      `${shape.layersPerBlock} residual blocks per level` +
+      (shape.hasCrossAttention && shape.crossAttentionDim ? `, cross-attention width ${shape.crossAttentionDim}` : '') +
+      '.',
+    'Only the UNet (the denoising network) is imported — the VAE and text encoder are separate models in ' +
+      'the pipeline, not read here, so this parameter count is the UNet\'s alone, not the full pipeline\'s.',
+  ];
+
+  return {
+    nodes,
+    connections,
+    modelName: shape.name,
+    family: 'diffusion' as ArchitectureFamily,
+    hardwareConfig: buildDiffusionUnetHardwareConfig(shape),
+    notes,
+    assumptions,
+  };
+}
 
 interface MambaShape {
   modelType: 'mamba' | 'mamba2';
@@ -1009,14 +1402,17 @@ export function parseHuggingFaceConfig(
   // below would blame a field name mismatch for a family this importer
   // was never going to read.
   const diffusersClass = str(top, '_class_name');
+  if (diffusersClass === 'UNet2DConditionModel' || diffusersClass === 'UNet2DModel') {
+    return parseDiffusionUnetConfig(top, fallbackName);
+  }
   if (diffusersClass) {
     return {
       ...empty,
       modelName: fallbackName,
       error:
-        `"${diffusersClass}" is a diffusers pipeline component, not a language model config. ` +
-        'NEURAX imports transformer and Mamba/Mamba-2 language models from HuggingFace; ' +
-        'diffusion architectures aren\'t read from the Hub yet — build one on the canvas from the Diffusion family instead.',
+        `"${diffusersClass}" is a diffusers pipeline component NEURAX doesn't read — only the UNet ` +
+        '(UNet2DConditionModel/UNet2DModel) is imported today, not the VAE, text encoder, or scheduler. ' +
+        'Fetch the pipeline\'s unet/config.json specifically, or build the rest on the canvas from the Diffusion family.',
     };
   }
 
@@ -1024,12 +1420,18 @@ export function parseHuggingFaceConfig(
   if (MAMBA_MODEL_TYPES.has(topModelType)) {
     return parseMambaConfig(top, fallbackName);
   }
+  if (CNN_MODEL_TYPES.has(topModelType)) {
+    return parseCnnConfig(top, fallbackName);
+  }
 
   const { config, nested, incomplete } = textConfig(top);
 
   const nestedModelType = (str(config, 'model_type') ?? '').toLowerCase();
   if (MAMBA_MODEL_TYPES.has(nestedModelType)) {
     return parseMambaConfig(config, fallbackName);
+  }
+  if (CNN_MODEL_TYPES.has(nestedModelType)) {
+    return parseCnnConfig(config, fallbackName);
   }
 
   const unsupportedFamily = KNOWN_UNSUPPORTED_MODEL_TYPES[nestedModelType || topModelType];
@@ -1039,7 +1441,7 @@ export function parseHuggingFaceConfig(
       modelName: fallbackName,
       error:
         `This is a ${unsupportedFamily} model ("model_type": "${nestedModelType || topModelType}"). ` +
-        'NEURAX imports transformer and Mamba/Mamba-2 language models from HuggingFace — ' +
+        'NEURAX imports transformer and MoE language models, Mamba/Mamba-2, and ResNet/RegNet/ConvNeXt/EfficientNet CNNs from HuggingFace — ' +
         `${unsupportedFamily} architectures aren't read from the Hub yet.`,
     };
   }

@@ -210,12 +210,15 @@ export function CanvasNode({
       className={cn(
         "absolute select-none transition-all duration-200 ease-out",
         "bg-card",
-        "border-2 border-border rounded-2xl",
-        "shadow-lg",
-        "hover:shadow-xl hover:border-primary/40",
+        "border-2 border-border rounded-xl",
+        // Flat at rest, elevated only on hover/selection — the shadow now
+        // signals a state change instead of sitting under every block all
+        // the time, which read as decoration rather than information.
+        "shadow-sm",
+        "hover:shadow-lg hover:border-primary/40",
         "cursor-move",
         "min-w-[200px]",
-        isSelected && "border-primary shadow-xl ring-4 ring-primary/20",
+        isSelected && "border-primary shadow-lg ring-4 ring-primary/20",
         isMultiSelected && "ring-4 ring-primary/30 ring-offset-2 ring-offset-background"
       )}
       style={{
@@ -243,7 +246,7 @@ export function CanvasNode({
       <div
         className={cn(
           "flex items-center gap-3 px-4 py-3 bg-secondary/30",
-          hasBody ? "border-b border-border rounded-t-2xl" : "rounded-2xl",
+          hasBody ? "border-b border-border rounded-t-xl" : "rounded-xl",
         )}
       >
         <div
@@ -268,7 +271,7 @@ export function CanvasNode({
 
       {/* Parameters */}
       {hasBody && (
-        <div className="px-4 py-3 space-y-1.5 bg-card rounded-b-2xl">
+        <div className="px-4 py-3 space-y-1.5 bg-card rounded-b-xl">
           {formatParams()}
 
           {shapeEntries.length > 0 && (
