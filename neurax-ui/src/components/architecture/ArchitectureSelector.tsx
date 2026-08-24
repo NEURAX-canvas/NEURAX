@@ -1,19 +1,4 @@
-import { 
-  Sparkles, 
-  Network, 
-  Workflow, 
-  Wand2, 
-  Share2,
-  Lock,
-  FlaskConical,
-  Grid3X3,
-  Gamepad2,
-  Repeat,
-  Zap,
-  Waves,
-  Brain,
-  LucideIcon
-} from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { ArchitectureFamily, ARCHITECTURE_FAMILIES } from '@/types/plugins.ts';
 import { usePlan } from '@/contexts/PlanContext.tsx';
 import { canAccessArchitecture } from '@/types/plans.ts';
@@ -30,21 +15,6 @@ import {
 } from '@/components/ui/tooltip.tsx';
 import { cn } from '@/lib/utils.ts';
 
-const iconMap: Record<string, LucideIcon> = {
-  Sparkles,
-  Network,
-  Workflow,
-  Wand2,
-  Share2,
-  FlaskConical,
-  Grid3X3,
-  Gamepad2,
-  Repeat,
-  Zap,
-  Waves,
-  Brain,
-};
-
 interface ArchitectureSelectorProps {
   value: ArchitectureFamily;
   onChange: (value: ArchitectureFamily) => void;
@@ -55,7 +25,6 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
   const { currentPlan } = usePlan();
   
   const currentFamily = ARCHITECTURE_FAMILIES.find(f => f.id === value);
-  const CurrentIcon = currentFamily ? iconMap[currentFamily.icon] : Sparkles;
 
   const accessibleFamilies = ARCHITECTURE_FAMILIES.filter(f => 
     canAccessArchitecture(currentPlan, f.id)
@@ -87,13 +56,10 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
         */}
         <div className="flex items-center gap-2 min-w-0">
           <div
-            className="w-5 h-5 rounded flex items-center justify-center shrink-0"
+            className="w-5 h-5 rounded flex items-center justify-center shrink-0 text-[13px] leading-none"
             style={{ backgroundColor: `${currentFamily?.color}20` }}
           >
-            <CurrentIcon
-              className="w-3.5 h-3.5"
-              style={{ color: currentFamily?.color }}
-            />
+            {currentFamily?.emoji ?? '🧠'}
           </div>
           <span className="truncate text-sm font-medium">
             {currentFamily?.name ?? 'Select architecture'}
@@ -101,33 +67,26 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
         </div>
       </SelectTrigger>
       <SelectContent className="bg-popover border-border z-50">
-        {accessibleFamilies.map((family) => {
-          const Icon = iconMap[family.icon] || Sparkles;
-
-          return (
-            <SelectItem
-              key={family.id}
-              value={family.id}
-              className="cursor-pointer focus:bg-secondary"
-            >
-              <div className="flex items-center gap-3 py-0.5">
-                <div
-                  className="w-6 h-6 rounded flex items-center justify-center"
-                  style={{ backgroundColor: `${family.color}20` }}
-                >
-                  <Icon
-                    className="w-4 h-4"
-                    style={{ color: family.color }}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium">{family.name}</span>
-                  <span className="text-[10px] text-muted-foreground">{family.description}</span>
-                </div>
+        {accessibleFamilies.map((family) => (
+          <SelectItem
+            key={family.id}
+            value={family.id}
+            className="cursor-pointer focus:bg-secondary"
+          >
+            <div className="flex items-center gap-3 py-0.5">
+              <div
+                className="w-6 h-6 rounded flex items-center justify-center text-[15px] leading-none"
+                style={{ backgroundColor: `${family.color}20` }}
+              >
+                {family.emoji}
               </div>
-            </SelectItem>
-          );
-        })}
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">{family.name}</span>
+                <span className="text-[10px] text-muted-foreground">{family.description}</span>
+              </div>
+            </div>
+          </SelectItem>
+        ))}
 
         {lockedFamilies.length > 0 && (
           <>
@@ -136,21 +95,17 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
               Upgrade to unlock
             </div>
             {lockedFamilies.map((family) => {
-              const Icon = iconMap[family.icon] || Sparkles;
               const requiredPlan = 'ARCHITECT';
 
               return (
                 <Tooltip key={family.id}>
                   <TooltipTrigger asChild>
                     <div className="flex items-center gap-3 py-1.5 px-2 opacity-50 cursor-not-allowed">
-                      <div 
-                        className="w-6 h-6 rounded flex items-center justify-center"
+                      <div
+                        className="w-6 h-6 rounded flex items-center justify-center text-[15px] leading-none"
                         style={{ backgroundColor: `${family.color}10` }}
                       >
-                        <Icon 
-                          className="w-4 h-4" 
-                          style={{ color: family.color }}
-                        />
+                        {family.emoji}
                       </div>
                       <div className="flex flex-col flex-1">
                         <span className="text-sm font-medium">{family.name}</span>
