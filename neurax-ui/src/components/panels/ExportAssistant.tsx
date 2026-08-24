@@ -144,7 +144,6 @@ export function ExportAssistant({
   const [trainingLoop, setTrainingLoop] = useState<TrainingLoop>('minimal');
   const [includeTests, setIncludeTests] = useState(false);
 
-  // Mock model stats from nodes
   const activations = new Set<string>();
   let hasAttention = false;
   nodes.forEach((n) => {

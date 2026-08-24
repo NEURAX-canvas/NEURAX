@@ -96,9 +96,6 @@ interface ExportPanelProps {
   analysisResult?: AnalysisResult | null;
 }
 
-// Mock code previews
-
-
 export function ExportPanel({
   isOpen,
   onClose,
