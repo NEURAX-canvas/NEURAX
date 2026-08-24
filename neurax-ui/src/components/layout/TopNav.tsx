@@ -18,6 +18,7 @@ import {
   GitCompare,
   HelpCircle,
   Pencil,
+  Share2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button.tsx';
 import { Input } from '@/components/ui/input.tsx';
@@ -48,6 +49,7 @@ interface TopNavProps {
   onSaveCanvas?: () => void;
   onExport?: () => void;
   onImport?: () => void;
+  onShare?: () => void;
 
   // ─── Document ───────────────────────────────────────────────
   /** Open a `.neurax` design from disk. */
@@ -173,6 +175,7 @@ export function TopNav({
   onSaveCanvas,
   onExport,
   onImport,
+  onShare,
   onOpenDesign,
   onSaveDesign,
   documentName,
@@ -459,6 +462,16 @@ export function TopNav({
             variant="ghost"
             size="sm"
             className="text-muted-foreground hover:text-foreground"
+            onClick={onShare}
+            title="Publish a public link to this analysis"
+          >
+            <Share2 className="w-4 h-4 mr-1.5" />
+            Share
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
             onClick={onExport}
           >
             Export
@@ -633,6 +646,9 @@ export function TopNav({
               </Button>
               <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onSelectTarget?.(); setMobileMenuOpen(false); }}>
                 <Cpu className="w-4 h-4 mr-2" /> Simulation Target
+              </Button>
+              <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onShare?.(); setMobileMenuOpen(false); }}>
+                <Share2 className="w-4 h-4 mr-2" /> Share
               </Button>
               <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { onExport?.(); setMobileMenuOpen(false); }}>
                 <ChevronDown className="w-4 h-4 mr-2" /> Export

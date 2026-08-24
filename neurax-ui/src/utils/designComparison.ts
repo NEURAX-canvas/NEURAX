@@ -32,7 +32,7 @@ export interface DesignVariant {
 }
 
 /** How a metric should read, and which direction is an improvement. */
-type Unit = 'count' | 'bytes' | 'flops' | 'ms' | 'usd' | 'hours' | 'kwh' | 'kg' | 'ratio' | 'percent';
+export type Unit = 'count' | 'bytes' | 'flops' | 'ms' | 'usd' | 'hours' | 'kwh' | 'kg' | 'ratio' | 'percent';
 
 /** Whether a smaller number is better, a larger one, or neither. */
 type Better = 'lower' | 'higher' | 'neutral';

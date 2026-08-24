@@ -23,6 +23,7 @@ import { Suspense, lazy } from "react";
 const Landing = lazy(() => import("./pages/Landing.tsx"));
 const Index = lazy(() => import("./pages/Index.tsx"));
 const Account = lazy(() => import("./pages/Account.tsx"));
+const SharedReport = lazy(() => import("./pages/SharedReport.tsx"));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 
 /** Shown while a route's chunk loads — from local disk in the desktop app,
@@ -70,6 +71,10 @@ const App = () => (
                   <Route path="/" element={<HomeRoute />} />
                   <Route path="/app" element={<ProtectedRoute><Index /></ProtectedRoute>} />
                   <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
+                  {/* Public by design — no ProtectedRoute. A share link must open
+                      for anyone, with no account, same as the backend endpoint
+                      it reads from. */}
+                  <Route path="/s/:id" element={<SharedReport />} />
                   {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                   <Route path="*" element={<NotFound />} />
                 </Routes>

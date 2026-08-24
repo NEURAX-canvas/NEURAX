@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/dialog.tsx';
 import { ExportPanel } from '@/components/panels/ExportPanel.tsx';
 import { ImportPanel } from '@/components/panels/ImportPanel.tsx';
+import { SharePanel } from '@/components/panels/SharePanel.tsx';
 import { ComparePanel } from '@/components/panels/ComparePanel.tsx';
 import { DocumentationPanel } from '@/components/panels/DocumentationPanel.tsx';
 import { SimulationTargetPanel } from '@/components/panels/SimulationTargetPanel.tsx';
@@ -829,6 +830,7 @@ const Index = () => {
   const [showNewCanvasDialog, setShowNewCanvasDialog] = useState(false);
   const [showExportPanel, setShowExportPanel] = useState(false);
   const [showImportPanel, setShowImportPanel] = useState(false);
+  const [showSharePanel, setShowSharePanel] = useState(false);
   const [showTargetPanel, setShowTargetPanel] = useState(false);
   const [showHyperparametersPanel, setShowHyperparametersPanel] = useState(false);
 
@@ -2613,6 +2615,7 @@ params: params as Record<string, ParameterValue>,
         onSaveCanvas={handleSaveCanvas}
         onExport={() => setShowExportPanel(true)}
         onImport={() => setShowImportPanel(true)}
+        onShare={() => setShowSharePanel(true)}
         onOpenDesign={() => void handleOpenDesign()}
         onSaveDesign={() => void handleSaveDesign()}
         documentName={documentName}
@@ -2742,6 +2745,16 @@ params: params as Record<string, ParameterValue>,
         isOpen={showImportPanel}
         onClose={() => setShowImportPanel(false)}
         onImport={handleImportArchitecture}
+      />
+
+      <SharePanel
+        isOpen={showSharePanel}
+        onClose={() => setShowSharePanel(false)}
+        nodes={nodes}
+        connections={connections}
+        groups={groups}
+        selectedArchitecture={selectedArchitecture}
+        analysisResult={analysis.generatedAt ? analysis : null}
       />
 
       <ComparePanel

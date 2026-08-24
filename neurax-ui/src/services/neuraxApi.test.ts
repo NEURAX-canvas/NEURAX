@@ -28,6 +28,11 @@ import {
   deleteProject,
   getCredits,
   getComplianceConfig,
+  createShare,
+  getShare,
+  deleteShare,
+  shareViewUrl,
+  shareDownloadUrl,
 } from './neuraxApi';
 
 // Set a test token so we don't need real auth
@@ -199,6 +204,78 @@ describe('neuraxApi', () => {
       expect(options.method).toBe('DELETE');
 
       fetchSpy.mockRestore();
+    });
+  });
+
+  describe('public shares', () => {
+    it('createShare posts to /shares and turns the response into a full URL', async () => {
+      const fetchSpy = mockFetch({ id: 'abc123', edit_token: 'secret-token' }, 201);
+
+      const result = await createShare({
+        mode: 'card',
+        displayName: 'LLaMA-2 70B',
+        report: { totalParams: 70_000_000_000 },
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/shares');
+      expect(options.method).toBe('POST');
+      const body = JSON.parse(options.body as string);
+      expect(body.mode).toBe('card');
+      expect(body.display_name).toBe('LLaMA-2 70B');
+
+      expect(result.id).toBe('abc123');
+      expect(result.editToken).toBe('secret-token');
+      expect(result.url).toBe(shareViewUrl('abc123'));
+
+      fetchSpy.mockRestore();
+    });
+
+    it('createShare drops the design when mode is card, even if one was passed', async () => {
+      const fetchSpy = mockFetch({ id: 'abc123', edit_token: 'tok' }, 201);
+
+      await createShare({
+        mode: 'card',
+        displayName: 'x',
+        report: {},
+        design: { nodes: [{ id: 'n1' }], connections: [], groups: [] },
+      });
+
+      const [, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      const body = JSON.parse(options.body as string);
+      expect(body.design).toBeNull();
+
+      fetchSpy.mockRestore();
+    });
+
+    it('getShare unwraps the { share } envelope', async () => {
+      const share = { id: 'abc123', mode: 'card', display_name: 'x', view_count: 3 };
+      const fetchSpy = mockFetch({ share });
+
+      const result = await getShare('abc123');
+
+      expect((fetchSpy.mock.calls[0][0] as string)).toContain('/shares/abc123');
+      expect(result.view_count).toBe(3);
+
+      fetchSpy.mockRestore();
+    });
+
+    it('deleteShare sends the edit token as a header, not the body', async () => {
+      const fetchSpy = mockFetch(undefined, 204);
+
+      await deleteShare('abc123', 'secret-token');
+
+      const [url, options] = fetchSpy.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain('/shares/abc123');
+      expect(options.method).toBe('DELETE');
+      expect((options.headers as Record<string, string>)['X-Edit-Token']).toBe('secret-token');
+
+      fetchSpy.mockRestore();
+    });
+
+    it('shareDownloadUrl points at the download endpoint, not the API-envelope one', () => {
+      expect(shareDownloadUrl('abc123')).toContain('/shares/abc123/download');
     });
   });
 
