@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0.0",
+  "model": {
+    "name": "GCN-ogbn-arxiv",
+    "type": "gnn",
+    "layers": [
+      {"id": "conv1", "layer_type": "graph_conv", "params": {"in_features": 128, "out_features": 256, "bias": true}},
+      {"id": "bn1", "layer_type": "normalization", "params": {"hidden_size": 256}},
+      {"id": "conv2", "layer_type": "graph_conv", "params": {"in_features": 256, "out_features": 256, "bias": true}},
+      {"id": "bn2", "layer_type": "normalization", "params": {"hidden_size": 256}},
+      {"id": "conv3", "layer_type": "graph_conv", "params": {"in_features": 256, "out_features": 40, "bias": true}}
+    ]
+  },
+  "training": {
+    "batch_size": 1,
+    "sequence_length": 1,
+    "precision": "fp32",
+    "learning_rate": 0.01,
+    "num_epochs": 500
+  },
+  "hardware": {
+    "gpus": [{"name": "T4", "memory_gb": 16, "count": 1}]
+  },
+  "data": {
+    "dataset_size": 169343,
+    "vocab_size": 0,
+    "num_classes": 40
+  }
+}

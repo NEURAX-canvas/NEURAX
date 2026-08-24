@@ -77,6 +77,24 @@ const REFERENCES: &[Reference] = &[
         tolerance: 0.05,
     },
     Reference {
+        file: "gcn_ogbn_arxiv.json",
+        // Not just cited — independently re-derived from the OGB reference
+        // implementation's exact layer widths (128→256→256→40, 3x GCNConv +
+        // 2x BatchNorm1d) and matched to the number on the leaderboard bit
+        // for bit: 110,120.
+        published: 110_120.0,
+        source: "OGB leaderboard, ogbn-arxiv, GCN baseline: https://ogb.stanford.edu/docs/leader_nodeprop/#ogbn-arxiv",
+        tolerance: 0.01,
+    },
+    Reference {
+        file: "awd_lstm_ptb.json",
+        // Table 1's own figure is rounded to "24M"; tolerance set as if it
+        // reads 24.0-24.49M rather than treating it as an exact value.
+        published: 24.0e6,
+        source: "Merity, Keskar & Socher 2017 (arXiv:1708.02182), Table 1: \"AWD-LSTM - 3-layer LSTM (tied), 24M\"",
+        tolerance: 0.05,
+    },
+    Reference {
         file: "mixtral_8x7b.json",
         // 46.7B total, not the 12.9B active per token.
         published: 46.7e9,
