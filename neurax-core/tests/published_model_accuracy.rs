@@ -71,6 +71,12 @@ const REFERENCES: &[Reference] = &[
         tolerance: 0.05,
     },
     Reference {
+        file: "gpt3_175b.json",
+        published: 175.0e9,
+        source: "Brown et al. 2020, Table 2.1, 175.0B",
+        tolerance: 0.05,
+    },
+    Reference {
         file: "mixtral_8x7b.json",
         // 46.7B total, not the 12.9B active per token.
         published: 46.7e9,
