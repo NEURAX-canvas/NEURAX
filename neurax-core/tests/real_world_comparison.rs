@@ -414,11 +414,21 @@ fn test_all_families_summary() {
     println!("╚══════════════════════════════════════════════════════════════════════════════════════════════════════╝\n");
 
     // Assert that average deviation is reasonable (relaxed threshold for edge cases)
-    // Some CNN models have incomplete JSON definitions causing large deviations
+    // The Diffusion fixtures below have large, known deviations — see the note.
     assert!(
         avg_diff < 5000.0,
         "Average parameter deviation should be < 5000%, got {:.1}%",
         avg_diff
     );
-    println!("Note: Some models (CNN) may have large deviations due to incomplete layer definitions in JSON");
+    // SD 1.5 / SDXL fixtures list ~12 representative UNet blocks, not the real
+    // model's full (and structurally irregular — channel counts vary per
+    // resolution stage) block sequence. Unlike the Transformer/MoE/SSM
+    // fixtures, `global_params.num_layers` can't paper over this: the
+    // repeat-scaling in `neurax-ir`'s architecture pass only multiplies
+    // per-depth kinds (attention/MLP/SSM/...), not `unet_block`, since a UNet
+    // isn't N copies of one block. Their ~98-99% parameter deviation here is
+    // this fixture gap, not a compiler defect — CNN and Transformer, which
+    // used to show the same symptom, were fixed by completing their fixtures
+    // (see git history) rather than by loosening this assertion.
+    println!("Note: the Diffusion models (SD 1.5, SDXL) intentionally use truncated fixtures and are expected to show large deviations here; every other family's fixture is a complete or correctly-scaled model.");
 }
