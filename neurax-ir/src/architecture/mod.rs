@@ -893,7 +893,10 @@ mod gnn_tests {
         // generic transformer `Attention` it used to fall into via fuzzy
         // substring matching (`.includes("attention")`).
         assert_eq!(gat.layer_type, LayerType::GraphAttentionNet);
-        assert_eq!(calculate_layer_params(gat), neurax_formulas::gnn::gat_params(1433, 64, 8, true));
+        assert_eq!(
+            calculate_layer_params(gat),
+            neurax_formulas::gnn::gat_params(1433, 64, 8, true)
+        );
         assert!(calculate_layer_params(gat) > 0);
     }
 

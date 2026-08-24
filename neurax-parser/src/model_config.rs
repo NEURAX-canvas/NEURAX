@@ -280,9 +280,7 @@ impl LayerType {
             "vae_decoder" | "vae_dec" | "decoder_vae" => Ok(Self::VaeDecoder),
             // Graph Neural Networks
             "graph_conv" | "gcn_conv" | "gcn" | "graph_convolution" => Ok(Self::GraphConvNet),
-            "graph_attention" | "gat_attention" | "gat_conv" | "gat" => {
-                Ok(Self::GraphAttentionNet)
-            }
+            "graph_attention" | "gat_attention" | "gat_conv" | "gat" => Ok(Self::GraphAttentionNet),
             "message_passing" | "mpnn" | "graph_sage" | "graphsage" => Ok(Self::MessagePassing),
             // Custom layer
             "custom" | "custom_layer" | "user_defined" => Ok(Self::Custom),

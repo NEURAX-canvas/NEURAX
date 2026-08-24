@@ -1514,7 +1514,10 @@ async fn ensure_github_repo(
                 format!("Failed to read repository info: {}", e),
             )
         })?;
-        return Ok(data["default_branch"].as_str().unwrap_or("main").to_string());
+        return Ok(data["default_branch"]
+            .as_str()
+            .unwrap_or("main")
+            .to_string());
     }
 
     if get_resp.status().as_u16() != 404 {
@@ -1712,9 +1715,17 @@ async fn ensure_branch_exists(
     if !blob_resp.status().is_success() {
         let status = blob_resp.status();
         let body = blob_resp.text().await.unwrap_or_default();
-        return Err((StatusCode::BAD_GATEWAY, format!("Failed to seed the first commit ({}): {}", status, body)));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to seed the first commit ({}): {}", status, body),
+        ));
     }
-    let blob: serde_json::Value = blob_resp.json().await.map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read blob response: {}", e)))?;
+    let blob: serde_json::Value = blob_resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to read blob response: {}", e),
+        )
+    })?;
     let blob_sha = blob["sha"].as_str().unwrap_or_default().to_string();
 
     let tree_resp = client
@@ -1731,13 +1742,26 @@ async fn ensure_branch_exists(
         }))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
     if !tree_resp.status().is_success() {
         let status = tree_resp.status();
         let body = tree_resp.text().await.unwrap_or_default();
-        return Err((StatusCode::BAD_GATEWAY, format!("Failed to seed the first commit ({}): {}", status, body)));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to seed the first commit ({}): {}", status, body),
+        ));
     }
-    let tree: serde_json::Value = tree_resp.json().await.map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read tree response: {}", e)))?;
+    let tree: serde_json::Value = tree_resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to read tree response: {}", e),
+        )
+    })?;
     let tree_sha = tree["sha"].as_str().unwrap_or_default().to_string();
 
     let commit_resp = client
@@ -1751,13 +1775,26 @@ async fn ensure_branch_exists(
         }))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
     if !commit_resp.status().is_success() {
         let status = commit_resp.status();
         let body = commit_resp.text().await.unwrap_or_default();
-        return Err((StatusCode::BAD_GATEWAY, format!("Failed to seed the first commit ({}): {}", status, body)));
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to seed the first commit ({}): {}", status, body),
+        ));
     }
-    let commit: serde_json::Value = commit_resp.json().await.map_err(|e| (StatusCode::BAD_GATEWAY, format!("Failed to read commit response: {}", e)))?;
+    let commit: serde_json::Value = commit_resp.json().await.map_err(|e| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to read commit response: {}", e),
+        )
+    })?;
     let commit_sha = commit["sha"].as_str().unwrap_or_default().to_string();
 
     let ref_resp = client
@@ -1770,13 +1807,21 @@ async fn ensure_branch_exists(
         }))
         .send()
         .await
-        .map_err(|e| (StatusCode::BAD_GATEWAY, format!("GitHub API request failed: {}", e)))?;
+        .map_err(|e| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("GitHub API request failed: {}", e),
+            )
+        })?;
     if !ref_resp.status().is_success() {
         let status = ref_resp.status();
         let body = ref_resp.text().await.unwrap_or_default();
         return Err((
             StatusCode::BAD_GATEWAY,
-            format!("Failed to create branch \"{}\" ({}): {}", branch, status, body),
+            format!(
+                "Failed to create branch \"{}\" ({}): {}",
+                branch, status, body
+            ),
         ));
     }
 
@@ -1884,15 +1929,25 @@ async fn export_github(
     // Kept around (not just consumed into `branch`) so a later 404 can say
     // exactly how a client-supplied branch differs from the real default,
     // instead of just repeating GitHub's generic "Not Found".
-    let branch = req.branch.clone().unwrap_or_else(|| repo_default_branch.clone());
+    let branch = req
+        .branch
+        .clone()
+        .unwrap_or_else(|| repo_default_branch.clone());
 
     // Covers the case `ensure_github_repo` alone can't: a repository that
     // already existed (created by hand, without "initialize with a README")
     // and has zero commits, so `branch` names a real repository but not yet
     // a real ref. `req.files[0]` exists — `req.files.is_empty()` was already
     // rejected above.
-    if let Err((status, message)) =
-        ensure_branch_exists(&client, &github_token, owner, repo_name, &branch, &req.files[0]).await
+    if let Err((status, message)) = ensure_branch_exists(
+        &client,
+        &github_token,
+        owner,
+        repo_name,
+        &branch,
+        &req.files[0],
+    )
+    .await
     {
         tracing::error!("[EXPORT GITHUB] Could not prepare branch: {}", message);
         return HttpResponse::build(status).json(ExportGitHubResponse {
