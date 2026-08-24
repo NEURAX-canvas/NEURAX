@@ -351,6 +351,32 @@ export interface HyperparameterConfig {
   warmupSteps: number;
   optimizer: 'Adam' | 'AdamW' | 'SGD';
   gradientClipping: number;
+  /**
+   * MoE only: coefficient on the auxiliary load-balancing loss,
+   * `L_aux = coefficient × Σ f_i·P_i` (f_i = each expert's share of routed
+   * tokens, P_i = the router's average probability for it). 0.01 is the
+   * paper's own value — Fedus, Zoph & Shazeer 2021, "Switch Transformers:
+   * Scaling to Trillion Parameter Models with Simple and Efficient
+   * Sparsity". Undefined for non-MoE architectures.
+   */
+  routerAuxLossCoefficient?: number;
+  /**
+   * Diffusion only: EMA decay applied to the model weights during training.
+   * Standard since DDPM (Ho, Jain & Abbeel 2020) and still the value that
+   * wins comparative studies (0.99 / 0.999 / 0.9999) for long runs across
+   * DDPM/ADM/Stable-Diffusion-style training scripts. Undefined otherwise.
+   */
+  emaDecay?: number;
+  /**
+   * GAN only: the discriminator's own learning rate, separate from
+   * `learningRate` (the generator's). Training G and D at different rates
+   * is a real, peer-reviewed technique — TTUR, Heusel et al. 2017
+   * (arXiv:1706.08500) — but the paper proves the *technique* converges,
+   * not one fixed ratio, so this defaults equal to `learningRate` rather
+   * than assuming a multiplier NEURAX has no basis for. Undefined for
+   * non-GAN architectures.
+   */
+  discriminatorLearningRate?: number;
 }
 
 /**
@@ -391,9 +417,23 @@ export function getRecommendedHyperparams(
   const hasDense = nodes.some((n) => n.type === 'dense' || n.type === 'linear');
   const hasNorm = hasBlockFamily(nodes, 'norm');
 
+  const hasMoE = hasBlockFamily(nodes, 'moe');
+  const hasSSM = ['mamba', 's4', 'rwkv', 'retention'].some((s) => hasBlockFamily(nodes, s));
+  const hasDiffusion = ['unet', 'vae_', 'noise_scheduler', 'diffusion'].some((s) =>
+    hasBlockFamily(nodes, s),
+  );
+  const hasGAN = ['generator', 'discriminator', 'style', 'adain'].some((s) =>
+    hasBlockFamily(nodes, s),
+  );
+  const hasGNN = ['gcn', 'graph_conv', 'graph_att', 'message_passing'].some((s) =>
+    hasBlockFamily(nodes, s),
+  );
+
   const totalParams = nodes.reduce((sum, n) => sum + estimateNodeParams(n), 0) || 1_000_000;
 
-  // Learning rate: smaller for larger models
+  // Learning rate: smaller for larger models. This generic, size-scaled
+  // default is overridden below for families with their own literature-
+  // reported rate instead of a rule of thumb.
   let learningRate = 0.001;
   if (totalParams > 100_000_000) learningRate = 0.0001;
   else if (totalParams > 10_000_000) learningRate = 0.0003;
@@ -415,6 +455,106 @@ export function getRecommendedHyperparams(
 
   // Gradient clipping
   const gradientClipping = 1.0;
+
+  // ── Family-specific overrides ──────────────────────────────────────
+  //
+  // Each below replaces the generic, size-scaled numbers above with a real,
+  // citable recipe for that family instead — see `HyperparameterConfig`'s
+  // own field docs for the exact sources. Checked in this order because a
+  // design can incidentally match more than one generic flag (a diffusion
+  // UNet's ResBlocks also set `hasConv`) — the most specific family match
+  // wins over a generic fallback, not the other way round.
+
+  if (hasGNN) {
+    // Kipf & Welling 2017, "Semi-Supervised Classification with Graph
+    // Convolutional Networks" (ICLR) — reported directly from their Cora
+    // experiments (a 2-layer, 16-hidden-unit GCN trained with Adam). GNNs
+    // in practice stay shallow and narrow compared to a deep transformer,
+    // so the size-scaled rate above would recommend a value an order of
+    // magnitude too small.
+    return {
+      learningRate: 0.01,
+      dropout: 0.5,
+      weightDecay: 5e-4,
+      warmupSteps: 0,
+      optimizer: 'Adam',
+      gradientClipping,
+    };
+  }
+
+  if (hasGAN) {
+    // DCGAN, Radford, Metz & Chintala 2015 — the paper states explicitly
+    // that Adam's default β1=0.9 caused training oscillation, and settled
+    // on lr=0.0002, β1=0.5. Still the de facto standard starting point
+    // across GAN variants, not just DCGAN.
+    //
+    // `discriminatorLearningRate` starts equal to the generator's rather
+    // than assuming a ratio between them: TTUR (Heusel et al. 2017,
+    // arXiv:1706.08500) is real, peer-reviewed justification for training G
+    // and D at different rates, but the paper proves the *technique*
+    // converges, not one fixed multiplier — NEURAX has no basis to invent
+    // one, so this is left for the user to actually tune apart.
+    return {
+      learningRate: 0.0002,
+      discriminatorLearningRate: 0.0002,
+      dropout: 0,
+      weightDecay: 0,
+      warmupSteps: 0,
+      optimizer: 'Adam',
+      gradientClipping,
+    };
+  }
+
+  if (hasDiffusion) {
+    // EMA decay 0.9999 is standard since DDPM (Ho, Jain & Abbeel 2020) and
+    // still what comparative studies (0.99 / 0.999 / 0.9999) favour for
+    // long runs, across DDPM/ADM/Stable-Diffusion-style training scripts.
+    // Diffusion UNets typically run with little to no dropout.
+    return {
+      learningRate,
+      emaDecay: 0.9999,
+      dropout: 0,
+      weightDecay,
+      warmupSteps,
+      optimizer: 'AdamW',
+      gradientClipping,
+    };
+  }
+
+  if (hasSSM) {
+    // The official Mamba implementation (state-spaces/mamba) marks the
+    // SSM-internal parameters (A_log, D, ...) with a `_no_weight_decay`
+    // attribute — excluded from weight decay by convention in the
+    // reference implementation. Underdocumented even there (see the repo's
+    // issue #798) rather than a rule stated in the paper text itself, so
+    // it's cited as the reference implementation's practice, not a formula
+    // from the paper.
+    return {
+      learningRate,
+      dropout,
+      weightDecay: 0,
+      warmupSteps,
+      optimizer: 'AdamW',
+      gradientClipping,
+    };
+  }
+
+  if (hasMoE) {
+    // Fedus, Zoph & Shazeer 2021, "Switch Transformers: Scaling to
+    // Trillion Parameter Models with Simple and Efficient Sparsity" — the
+    // paper's own coefficient on the auxiliary load-balancing loss,
+    // L_aux = 0.01 × Σ f_i·P_i (f_i = each expert's share of routed
+    // tokens, P_i = the router's average probability for it).
+    return {
+      learningRate,
+      routerAuxLossCoefficient: 0.01,
+      dropout,
+      weightDecay,
+      warmupSteps,
+      optimizer: 'AdamW',
+      gradientClipping,
+    };
+  }
 
   return { learningRate, dropout, weightDecay, warmupSteps, optimizer, gradientClipping };
 }

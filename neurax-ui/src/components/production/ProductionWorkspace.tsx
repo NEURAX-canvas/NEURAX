@@ -326,6 +326,38 @@ export function ProductionWorkspace({
               <SliderField label="Warmup Steps" value={[hyperparams.warmupSteps]} onChange={([v]) => setHyperparams(h => ({ ...h, warmupSteps: Math.round(v) }))} min={0} max={5000} step={50} format={(v) => String(Math.round(v))} />
               <SliderField label="Gradient Clipping" value={[hyperparams.gradientClipping]} onChange={([v]) => setHyperparams(h => ({ ...h, gradientClipping: v }))} min={0.1} max={5.0} step={0.1} format={(v) => v.toFixed(1)} />
 
+              {/* Family-specific fields — only present when the recommender
+                  (`getRecommendedHyperparams`) actually detected that family
+                  on the canvas. See its own source comments for the paper
+                  each default comes from. */}
+              {hyperparams.routerAuxLossCoefficient !== undefined && (
+                <SliderField
+                  label="Router Aux Loss Coefficient"
+                  value={[hyperparams.routerAuxLossCoefficient]}
+                  onChange={([v]) => setHyperparams(h => ({ ...h, routerAuxLossCoefficient: v }))}
+                  min={0} max={0.1} step={0.001}
+                  format={(v) => v.toFixed(3)}
+                />
+              )}
+              {hyperparams.emaDecay !== undefined && (
+                <SliderField
+                  label="EMA Decay"
+                  value={[hyperparams.emaDecay]}
+                  onChange={([v]) => setHyperparams(h => ({ ...h, emaDecay: v }))}
+                  min={0.9} max={0.9999} step={0.0001}
+                  format={(v) => v.toFixed(4)}
+                />
+              )}
+              {hyperparams.discriminatorLearningRate !== undefined && (
+                <SliderField
+                  label="Discriminator Learning Rate"
+                  value={[hyperparams.discriminatorLearningRate]}
+                  onChange={([v]) => setHyperparams(h => ({ ...h, discriminatorLearningRate: v }))}
+                  min={0.00001} max={0.01} step={0.00001}
+                  format={(v) => v.toExponential(1)}
+                />
+              )}
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs text-muted-foreground">Optimizer</Label>

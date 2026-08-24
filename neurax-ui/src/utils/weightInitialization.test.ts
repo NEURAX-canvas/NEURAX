@@ -360,3 +360,58 @@ describe('recommendations still work over a real design', () => {
     expect(isTrainableBlock('input')).toBe(false);
   });
 });
+
+/** Build a minimal node list carrying just one real block type — enough to
+ * trigger `getRecommendedHyperparams`' family detection without needing a
+ * full reference architecture. */
+function nodesOfType(type: string): CanvasNode[] {
+  return [{ id: 'n1', type, name: type, x: 0, y: 0, params: {} }];
+}
+
+describe('family-specific hyperparameter recommendations', () => {
+  it('GNN: Kipf & Welling 2017 GCN recipe (lr=0.01, dropout=0.5, wd=5e-4, Adam)', () => {
+    const hp = getRecommendedHyperparams(nodesOfType('graph_conv'), []);
+    expect(hp.learningRate).toBe(0.01);
+    expect(hp.dropout).toBe(0.5);
+    expect(hp.weightDecay).toBe(5e-4);
+    expect(hp.optimizer).toBe('Adam');
+  });
+
+  it('GAN: DCGAN recipe (lr=0.0002, Adam) plus a configurable discriminator rate', () => {
+    const hp = getRecommendedHyperparams(nodesOfType('dcgan_generator_block'), []);
+    expect(hp.learningRate).toBe(0.0002);
+    expect(hp.optimizer).toBe('Adam');
+    // Starts equal to the generator's — TTUR justifies training G and D at
+    // different rates, but not one specific ratio NEURAX could assume.
+    expect(hp.discriminatorLearningRate).toBe(hp.learningRate);
+  });
+
+  it('Diffusion: sets the DDPM EMA decay and skips dropout', () => {
+    const hp = getRecommendedHyperparams(nodesOfType('unet_mid'), []);
+    expect(hp.emaDecay).toBe(0.9999);
+    expect(hp.dropout).toBe(0);
+    expect(hp.optimizer).toBe('AdamW');
+  });
+
+  it('SSM: excludes weight decay, matching the reference Mamba implementation', () => {
+    const hp = getRecommendedHyperparams(nodesOfType('mamba_block'), []);
+    expect(hp.weightDecay).toBe(0);
+    expect(hp.optimizer).toBe('AdamW');
+    // No router/EMA/discriminator field leaked in from another family.
+    expect(hp.routerAuxLossCoefficient).toBeUndefined();
+    expect(hp.emaDecay).toBeUndefined();
+  });
+
+  it('MoE: sets the Switch Transformer router aux-loss coefficient (0.01)', () => {
+    const hp = getRecommendedHyperparams(nodesOfType('moe_layer'), []);
+    expect(hp.routerAuxLossCoefficient).toBe(0.01);
+    expect(hp.optimizer).toBe('AdamW');
+  });
+
+  it('a plain CNN gets none of the family-specific fields', () => {
+    const hp = getRecommendedHyperparams(nodesOfType('conv2d'), []);
+    expect(hp.routerAuxLossCoefficient).toBeUndefined();
+    expect(hp.emaDecay).toBeUndefined();
+    expect(hp.discriminatorLearningRate).toBeUndefined();
+  });
+});
