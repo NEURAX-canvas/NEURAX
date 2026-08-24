@@ -408,28 +408,69 @@ function estimateNodeParams(node: CanvasNode): number {
   return shape.reduce((total, dim) => total * dim, 1);
 }
 
+/**
+ * Which hyperparameter recipe a design matches — the specific families
+ * `getRecommendedHyperparams` has a real, cited recipe for, or `'generic'`
+ * for everything covered only by the size-scaled rules of thumb (plain
+ * Transformer/CNN/RNN/dense architectures).
+ *
+ * Exported (not just an internal detail of `getRecommendedHyperparams`) so
+ * a caller — `ProductionWorkspace`'s auto-sync effect — can tell "the
+ * architecture actually changed family, the recommendation should apply
+ * again" apart from "an edit happened to touch `nodes` without changing
+ * what family they describe", without duplicating the same five substring
+ * checks a second time to find out.
+ */
+export type HyperparamFamily = 'gnn' | 'gan' | 'diffusion' | 'ssm' | 'moe' | 'generic';
+
+export function detectHyperparamFamily(nodes: CanvasNode[]): HyperparamFamily {
+  if (['gcn', 'graph_conv', 'graph_att', 'message_passing'].some((s) => hasBlockFamily(nodes, s))) {
+    return 'gnn';
+  }
+  if (['generator', 'discriminator', 'style', 'adain'].some((s) => hasBlockFamily(nodes, s))) {
+    return 'gan';
+  }
+  if (['unet', 'vae_', 'noise_scheduler', 'diffusion'].some((s) => hasBlockFamily(nodes, s))) {
+    return 'diffusion';
+  }
+  if (['mamba', 's4', 'rwkv', 'retention'].some((s) => hasBlockFamily(nodes, s))) {
+    return 'ssm';
+  }
+  if (hasBlockFamily(nodes, 'moe')) {
+    return 'moe';
+  }
+  return 'generic';
+}
+
 export function getRecommendedHyperparams(
   nodes: CanvasNode[],
   _connections: Connection[],
+  /**
+   * The real, compiled parameter count from an actual analysis run
+   * (`AnalysisResult.totalParams`), when one is available.
+   *
+   * Learning-rate scaling is the one part of this recommendation that
+   * depends on model size. Without this, size came from
+   * `estimateNodeParams` — a local, per-node guess that falls back to a
+   * flat 512-wide default for anything it can't resolve (a block with an
+   * unset `d_model`, say), which can be far from what the design actually
+   * compiles to. Passing the compiler's own authoritative count here
+   * instead means the recommendation gets more accurate every time the
+   * design is actually compiled, not just when the canvas happens to be
+   * built from fully-specified nodes.
+   */
+  realTotalParams?: number,
 ): HyperparameterConfig {
+  const family = detectHyperparamFamily(nodes);
   const hasAttention = hasBlockFamily(nodes, 'attention');
   const hasConv = hasBlockFamily(nodes, 'conv');
   const hasDense = nodes.some((n) => n.type === 'dense' || n.type === 'linear');
   const hasNorm = hasBlockFamily(nodes, 'norm');
 
-  const hasMoE = hasBlockFamily(nodes, 'moe');
-  const hasSSM = ['mamba', 's4', 'rwkv', 'retention'].some((s) => hasBlockFamily(nodes, s));
-  const hasDiffusion = ['unet', 'vae_', 'noise_scheduler', 'diffusion'].some((s) =>
-    hasBlockFamily(nodes, s),
-  );
-  const hasGAN = ['generator', 'discriminator', 'style', 'adain'].some((s) =>
-    hasBlockFamily(nodes, s),
-  );
-  const hasGNN = ['gcn', 'graph_conv', 'graph_att', 'message_passing'].some((s) =>
-    hasBlockFamily(nodes, s),
-  );
-
-  const totalParams = nodes.reduce((sum, n) => sum + estimateNodeParams(n), 0) || 1_000_000;
+  const totalParams =
+    realTotalParams && realTotalParams > 0
+      ? realTotalParams
+      : nodes.reduce((sum, n) => sum + estimateNodeParams(n), 0) || 1_000_000;
 
   // Learning rate: smaller for larger models. This generic, size-scaled
   // default is overridden below for families with their own literature-
@@ -465,7 +506,7 @@ export function getRecommendedHyperparams(
   // UNet's ResBlocks also set `hasConv`) — the most specific family match
   // wins over a generic fallback, not the other way round.
 
-  if (hasGNN) {
+  if (family === 'gnn') {
     // Kipf & Welling 2017, "Semi-Supervised Classification with Graph
     // Convolutional Networks" (ICLR) — reported directly from their Cora
     // experiments (a 2-layer, 16-hidden-unit GCN trained with Adam). GNNs
@@ -482,7 +523,7 @@ export function getRecommendedHyperparams(
     };
   }
 
-  if (hasGAN) {
+  if (family === 'gan') {
     // DCGAN, Radford, Metz & Chintala 2015 — the paper states explicitly
     // that Adam's default β1=0.9 caused training oscillation, and settled
     // on lr=0.0002, β1=0.5. Still the de facto standard starting point
@@ -505,7 +546,7 @@ export function getRecommendedHyperparams(
     };
   }
 
-  if (hasDiffusion) {
+  if (family === 'diffusion') {
     // EMA decay 0.9999 is standard since DDPM (Ho, Jain & Abbeel 2020) and
     // still what comparative studies (0.99 / 0.999 / 0.9999) favour for
     // long runs, across DDPM/ADM/Stable-Diffusion-style training scripts.
@@ -521,7 +562,7 @@ export function getRecommendedHyperparams(
     };
   }
 
-  if (hasSSM) {
+  if (family === 'ssm') {
     // The official Mamba implementation (state-spaces/mamba) marks the
     // SSM-internal parameters (A_log, D, ...) with a `_no_weight_decay`
     // attribute — excluded from weight decay by convention in the
@@ -539,7 +580,7 @@ export function getRecommendedHyperparams(
     };
   }
 
-  if (hasMoE) {
+  if (family === 'moe') {
     // Fedus, Zoph & Shazeer 2021, "Switch Transformers: Scaling to
     // Trillion Parameter Models with Simple and Efficient Sparsity" — the
     // paper's own coefficient on the auxiliary load-balancing loss,
