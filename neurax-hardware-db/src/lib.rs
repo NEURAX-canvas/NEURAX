@@ -111,6 +111,23 @@ impl HardwareDatabase {
     }
 
     fn add_builtin_gpus(&mut self) {
+        // Sources (official manufacturer datasheets, spot-checked against a
+        // second independent source per family where the PDF itself isn't
+        // machine-readable):
+        //   A100:   https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a100/pdf/nvidia-a100-datasheet.pdf
+        //   H100/H200: https://www.nvidia.com/en-us/data-center/h100/ , https://www.nvidia.com/en-us/data-center/h200/
+        //     (H200 uses the same GH100 die as H100 — the HBM3e upgrade is
+        //     memory-subsystem only, so identical compute figures are the
+        //     documented behavior, not an assumption.)
+        //   V100:   https://images.nvidia.com/content/technologies/volta/pdf/volta-v100-datasheet-update-us-1165301-r5.pdf
+        //   RTX 40-series: https://www.nvidia.com/en-us/geforce/graphics-cards/40-series/rtx-4090/
+        //   A10/A10G: https://www.nvidia.com/content/dam/en-zz/Solutions/Data-Center/a10/pdf/a10-datasheet.pdf
+        //   A30:    https://www.nvidia.com/content/dam/en-zz/Solutions/data-center/products/a30-gpu/pdf/a30-datasheet.pdf
+        //   L40S:   https://resources.nvidia.com/en-us-l40s/l40s-datasheet-28413
+        //   RTX A6000/A5000/6000 Ada: https://www.nvidia.com/en-us/products/workstations/rtx-a6000/
+        // All `tflops_*` figures below are dense (no structured sparsity);
+        // see the field doc comments on `GpuSpec` for the FP64/FP8 caveats.
+
         // NVIDIA A100 SXM
         self.gpus.insert(
             "A100-SXM".to_string(),
@@ -172,7 +189,7 @@ impl HardwareDatabase {
                 tflops_fp16: 989.0,
                 tflops_bf16: 989.0,
                 tflops_int8: 1979.0,
-                tflops_fp8: 3958.0, // Hopper has native FP8
+                tflops_fp8: 1979.0, // dense; was 3958 (that's the 2:4-sparse figure)
                 tensor_cores: true,
                 nvlink: true,
                 nvlink_bandwidth_gbs: 900.0,
@@ -196,7 +213,7 @@ impl HardwareDatabase {
                 tflops_fp16: 756.0,
                 tflops_bf16: 756.0,
                 tflops_int8: 1513.0,
-                tflops_fp8: 3026.0,
+                tflops_fp8: 1513.0, // dense; was 3026 (that's the 2:4-sparse figure)
                 tensor_cores: true,
                 nvlink: false,
                 nvlink_bandwidth_gbs: 0.0,
@@ -366,7 +383,7 @@ impl HardwareDatabase {
                 tflops_fp16: 362.0,
                 tflops_bf16: 362.0,
                 tflops_int8: 724.0,
-                tflops_fp8: 1448.0,
+                tflops_fp8: 733.0, // dense; was 1448 (that's ~ the 2:4-sparse figure)
                 tensor_cores: true,
                 nvlink: false,
                 nvlink_bandwidth_gbs: 0.0,
@@ -434,11 +451,17 @@ impl HardwareDatabase {
                 memory_gb: 24,
                 memory_bandwidth_gbs: 600.0,
                 tflops_fp64: 0.6,
-                tflops_fp32: 19.5,
-                tflops_fp16: 78.0,
-                tflops_bf16: 78.0,
-                tflops_int8: 156.0,
-                tflops_fp8: 0.0,
+                // Was 19.5/78/78/156 — an apparent copy-paste from A100's
+                // FP32 figure. NVIDIA's A10 datasheet (A10G is the same
+                // silicon, cloud-branded) publishes FP32=31.2, FP16/BF16
+                // Tensor Core (dense)=125, so INT8 dense=250 follows the
+                // same 2x-per-halved-bit-width pattern used elsewhere in
+                // this file.
+                tflops_fp32: 31.2,
+                tflops_fp16: 125.0,
+                tflops_bf16: 125.0,
+                tflops_int8: 250.0,
+                tflops_fp8: 0.0, // Ampere doesn't have native FP8
                 tensor_cores: true,
                 nvlink: false,
                 nvlink_bandwidth_gbs: 0.0,
@@ -510,7 +533,7 @@ impl HardwareDatabase {
                 tflops_fp16: 989.0,
                 tflops_bf16: 989.0,
                 tflops_int8: 1979.0,
-                tflops_fp8: 3958.0,
+                tflops_fp8: 1979.0, // dense; was 3958 (that's the 2:4-sparse figure)
                 tensor_cores: true,
                 nvlink: true,
                 nvlink_bandwidth_gbs: 900.0,
@@ -534,7 +557,7 @@ impl HardwareDatabase {
                 tflops_fp16: 989.0,
                 tflops_bf16: 989.0,
                 tflops_int8: 1979.0,
-                tflops_fp8: 3958.0,
+                tflops_fp8: 1979.0, // dense; was 3958 (that's the 2:4-sparse figure)
                 tensor_cores: true,
                 nvlink: true,
                 nvlink_bandwidth_gbs: 900.0,
