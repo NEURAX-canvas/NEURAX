@@ -284,9 +284,13 @@ function ReportView({ share }: { share: Share }) {
           </Button>
         </a>
         {share.mode === 'full' && share.design && (
+          // Honest about what this link does: it installs NEURAX, it does not
+          // open this specific design — there is no handoff from a public
+          // share link into a local install. The button used to read "Open
+          // this design in NEURAX", which promised something this doesn't do.
           <a href="https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh">
-            <Button size="sm">
-              Open this design in NEURAX
+            <Button size="sm" variant="outline">
+              Get NEURAX to open designs like this
             </Button>
           </a>
         )}

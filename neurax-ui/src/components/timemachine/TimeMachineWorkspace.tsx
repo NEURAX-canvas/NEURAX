@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge.tsx';
 import { Button } from '@/components/ui/button.tsx';
 import { Slider } from '@/components/ui/slider.tsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select.tsx';
-import { TooltipProvider } from '@/components/ui/tooltip.tsx';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip.tsx';
 import { cn } from '@/lib/utils';
 import {
   LineChart, Line, AreaChart, Area,
@@ -99,6 +99,24 @@ interface TimeMachineWorkspaceProps {
   initialConfig?: TimeMachineConfig;
   /** Fired whenever a slider changes, so the config can be saved. */
   onConfigChange?: (config: TimeMachineConfig) => void;
+}
+
+/** A slider/select label paired with an info tooltip — the What-If panel had
+ *  none despite `TooltipProvider` already wrapping the whole workspace. */
+function FieldLabel({ children, hint }: { children: React.ReactNode; hint: string }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      <label className="text-xs text-muted-foreground">{children}</label>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Info className="w-2.5 h-2.5 text-muted-foreground/40 cursor-help" />
+        </TooltipTrigger>
+        <TooltipContent side="right" className="text-[10px] max-w-[220px]">
+          {hint}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
 }
 
 export function TimeMachineWorkspace({ nodes, connections, initialConfig, onConfigChange }: TimeMachineWorkspaceProps) {
@@ -214,7 +232,7 @@ export function TimeMachineWorkspace({ nodes, connections, initialConfig, onConf
             {/* Growth Rate */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-muted-foreground">User Growth</label>
+                <FieldLabel hint="Assumed year-over-year growth in usage (requests, users, or training runs), compounding across the horizon below. This is a planning input you set, not something measured.">User Growth</FieldLabel>
                 <span className="text-xs font-mono font-medium text-foreground">{growthRate}%/yr</span>
               </div>
               <Slider
@@ -227,7 +245,7 @@ export function TimeMachineWorkspace({ nodes, connections, initialConfig, onConf
             {/* Budget Max */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-muted-foreground">Annual Budget</label>
+                <FieldLabel hint="The ceiling this projection checks the Nominal cost line against. Crossing it in any year is what triggers the 'Budget break' badge above.">Annual Budget</FieldLabel>
                 <span className="text-xs font-mono font-medium text-foreground">${(budgetMax / 1000).toFixed(0)}k</span>
               </div>
               <Slider
@@ -240,7 +258,7 @@ export function TimeMachineWorkspace({ nodes, connections, initialConfig, onConf
             {/* Horizon */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs text-muted-foreground">Horizon</label>
+                <FieldLabel hint="How many years forward the projection extends. Longer horizons compound the growth rate further, widening the gap between scenarios.">Horizon</FieldLabel>
                 <span className="text-xs font-mono font-medium text-foreground">{horizon} yrs</span>
               </div>
               <Slider
@@ -252,7 +270,7 @@ export function TimeMachineWorkspace({ nodes, connections, initialConfig, onConf
 
             {/* Hardware */}
             <div className="space-y-2">
-              <label className="text-xs text-muted-foreground">Target Hardware</label>
+              <FieldLabel hint="The accelerator generation this projection's cost-per-compute assumes migrating to over the horizon — a real, if approximate, driver of the cost trajectory's slope, not a fixed multiplier.">Target Hardware</FieldLabel>
               <Select value={hardware} onValueChange={(v) => setHardware(v as 'a100' | 'h200' | 'b100')}>
                 <SelectTrigger className="h-8 text-xs">
                   <SelectValue />
@@ -378,11 +396,19 @@ function TimelineView({ timeline, budgetMax }: { timeline: ScenarioPoint[]; budg
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Multi-Scenario Cost Projection</h3>
-        <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary" /> Nominal (75%)</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(var(--info))]" /> Optimistic (15%)</span>
-          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(var(--warning))]" /> Pessimistic (10%)</span>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-3 text-[10px] text-muted-foreground cursor-help">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-primary" /> Nominal</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(var(--info))]" /> Optimistic</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-[hsl(var(--warning))]" /> Pessimistic</span>
+              <Info className="w-3 h-3" />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="left" className="text-[10px] max-w-[240px]">
+            Three cost trajectories, not probability-weighted outcomes: Nominal is the central estimate; Optimistic and Pessimistic bound it by a margin that widens as this analysis's confidence score drops — not a fixed split.
+          </TooltipContent>
+        </Tooltip>
       </div>
       <div className="h-80 min-h-[200px] bg-card rounded-lg border border-border p-4">
         <ResponsiveContainer width="100%" height="100%" minWidth={200} minHeight={200}>
