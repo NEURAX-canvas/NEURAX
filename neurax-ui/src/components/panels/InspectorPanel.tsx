@@ -130,6 +130,12 @@ const BOOLEAN_PARAMS = ['causal', 'bidirectional', 'normalize', 'flash'];
 // Params that are read-only display
 const READONLY_PARAMS = ['shape'];
 
+/** "normalized_shape" -> "Normalized Shape". Only used for params that
+ *  aren't in DROPDOWN_PARAMS — those already carry a hand-written label. */
+function prettyParamLabel(key: string): string {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function formatMetricNumber(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return '0';
   if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`;
@@ -528,7 +534,7 @@ export function InspectorPanel({
                             if (BOOLEAN_PARAMS.includes(key)) {
                               return (
                                 <div key={key} className="space-y-1">
-                                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{key}</Label>
+                                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{prettyParamLabel(key)}</Label>
                                   <Button
                                     variant={value ? 'default' : 'outline'}
                                     size="sm"
@@ -544,7 +550,7 @@ export function InspectorPanel({
                             if (READONLY_PARAMS.includes(key)) {
                               return (
                                 <div key={key} className="space-y-1">
-                                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{key}</Label>
+                                  <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{prettyParamLabel(key)}</Label>
                                   <div className="h-7 px-2 flex items-center bg-secondary rounded-md border border-border text-xs font-mono text-muted-foreground">
                                     {String(value)}
                                   </div>
@@ -554,7 +560,7 @@ export function InspectorPanel({
 
                             return (
                               <div key={key} className="space-y-1">
-                                <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{key}</Label>
+                                <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">{prettyParamLabel(key)}</Label>
                                 <Input
                                   value={String(value)}
                                   onChange={(e) => {
@@ -656,7 +662,7 @@ export function InspectorPanel({
                       return (
                         <div key={key} className="space-y-1.5">
                           <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                            {key}
+                            {prettyParamLabel(key)}
                           </Label>
                           <Button
                             variant={value ? 'default' : 'outline'}
@@ -674,7 +680,7 @@ export function InspectorPanel({
                       return (
                         <div key={key} className="space-y-1.5">
                           <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                            {key}
+                            {prettyParamLabel(key)}
                           </Label>
                           <div className="h-8 px-2 flex items-center bg-secondary rounded-md border border-border text-xs font-mono text-muted-foreground">
                             {String(value)}
@@ -686,7 +692,7 @@ export function InspectorPanel({
                     return (
                       <div key={key} className="space-y-1.5">
                         <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                          {key}
+                          {prettyParamLabel(key)}
                         </Label>
                         <Input
                           value={String(value)}
