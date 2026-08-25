@@ -86,8 +86,13 @@ export function OptimizationCharts({
       };
     });
   const rooflineMix = (() => {
+    // "Mixed" used to blend in `(1 - confidenceScore) * 30` — data-quality
+    // (how resolved the tensor shapes are) and hardware-utilization
+    // (compute- vs memory-bound) are unrelated axes, so a low-confidence
+    // analysis inflated "Mixed" regardless of where the design actually
+    // sits on the roofline. Driven only by proximity to the 50/50 point now.
     const compute = Math.max(0, Math.min(analysis.rooflinePosition, 1));
-    const mixed = Math.min(18, (1 - analysis.confidenceScore) * 30 + Math.min(compute, 1 - compute) * 20);
+    const mixed = Math.min(compute, 1 - compute) * 40;
     const memory = Math.max(0, 100 - mixed - compute * 100);
     return [
       { name: 'Compute-bound', value: compute * 100, fill: 'hsl(var(--chart-2))' },
@@ -108,7 +113,7 @@ export function OptimizationCharts({
           </h2>
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-secondary/50 px-2 py-1 rounded-md">
             <Info className="w-3 h-3" />
-            Compiler-backed hardware ceilings, bottlenecks, and fusion opportunities
+            Compiler-backed hardware ceilings and bottlenecks; fusion candidates are pattern-matched, not compiler-measured
           </div>
         </div>
 
@@ -277,18 +282,18 @@ export function OptimizationCharts({
                 <div key={candidate.label} className="rounded-lg bg-secondary/20 px-3 py-2">
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="font-medium">{candidate.label}</span>
-                    <span className="text-[11px] font-mono" style={{ color: 'hsl(var(--chart-2))' }}>
-                      {candidate.gainPct.toFixed(0)}%
+                    <span
+                      className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded"
+                      style={{
+                        color: 'hsl(var(--chart-2))',
+                        backgroundColor: 'hsl(var(--chart-2) / 0.12)',
+                      }}
+                    >
+                      {candidate.difficulty}
                     </span>
                   </div>
-                  <div className="mt-2 h-1.5 rounded-full bg-secondary overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${candidate.gainPct}%`, backgroundColor: 'hsl(var(--chart-2))' }}
-                    />
-                  </div>
                   <div className="mt-1 text-[11px] text-muted-foreground">
-                    {candidate.difficulty} integration • estimated uplift from reduced kernel launch / memory traffic
+                    {candidate.rationale} — no compiler-measured gain, a fusion pass would need to run to know the actual speedup
                   </div>
                 </div>
               ))}

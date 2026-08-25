@@ -325,12 +325,19 @@ export function deriveOptimizationOpportunities(analysis: AnalysisResult): Array
     }));
   }
 
+  // No backend recommendations to size against, so these three generic
+  // suggestions get their bar length from the same `scoreFromPriority`
+  // scale the real-recommendation path above uses — not independent,
+  // hand-picked numbers. Those used to be 72/78/48, three values that
+  // didn't even agree with each other's own priority label (78 for
+  // "high" here, 80 for "high" from scoreFromPriority): two unrelated
+  // pieces of invented data sitting next to each other.
   const fallback = [];
   if (analysis.bottleneck === 'memory-bound') {
     fallback.push({
       title: 'Higher Bandwidth GPU',
       description: 'Reduce the memory roofline limit.',
-      score: 72,
+      score: scoreFromPriority('medium'),
       priority: 'medium',
     });
   }
@@ -338,14 +345,14 @@ export function deriveOptimizationOpportunities(analysis: AnalysisResult): Array
     fallback.push({
       title: 'Gradient Checkpointing',
       description: `Recover ~${formatBytes(analysis.activationMemoryBytes * 0.45)} of activation VRAM.`,
-      score: 78,
+      score: scoreFromPriority('high'),
       priority: 'high',
     });
   }
   fallback.push({
     title: 'Batch Tuning',
     description: `Scale up toward batch ${analysis.maxBatchSizeFit || 1} for better device occupancy.`,
-    score: 48,
+    score: scoreFromPriority('medium'),
     priority: 'medium',
   });
   return fallback;
@@ -561,11 +568,26 @@ export function derivePenaltyWaterfall(analysis: AnalysisResult): Array<{ label:
   ];
 }
 
+/**
+ * Layer pairs whose adjacency matches a pattern kernel fusion commonly
+ * applies to (norm→attention, back-to-back linear projections, etc).
+ *
+ * `difficulty` is a real judgment about the pattern matched. There used to
+ * be a `gainPct` alongside it — a number that looked exactly like a
+ * compiler-measured speedup but was pure string-matching against a table of
+ * constants (8/10/14/6/4, plus a small boost from the pair's real combined
+ * FLOPs). Nothing here compiles or measures a fusion; the fix is the same
+ * one already applied to Inference Intelligence's fabricated-looking
+ * widgets — report what's actually known (the pattern and its difficulty),
+ * not a precise-looking number nothing computed. Sort order still uses the
+ * pair's real combined FLOPs share (from `perLayer`, actual backend output)
+ * so the list still surfaces the highest-impact candidates first.
+ */
 export function deriveFusionCandidates(
   nodes: CanvasNode[] = [],
   connections: Connection[] = [],
   perLayer: PerLayerBreakdownRow[] = [],
-): Array<{ label: string; gainPct: number; difficulty: string }> {
+): Array<{ label: string; difficulty: string; rationale: string }> {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const layerWeights = new Map(
     perLayer.map((row) => [row.id, parseFlopsValue(row.flops)]),
@@ -577,42 +599,38 @@ export function deriveFusionCandidates(
       if (!source || !target) return null;
       const sourceType = source.type.toLowerCase();
       const targetType = target.type.toLowerCase();
-      let gainPct = 0;
       let difficulty = 'Medium';
+      let rationale = 'adjacent ops with no matched fusion pattern';
 
       if ((sourceType.includes('norm') && (targetType.includes('attention') || targetType.includes('ffn')))
         || (targetType.includes('norm') && (sourceType.includes('attention') || sourceType.includes('ffn')))) {
-        gainPct = 8;
         difficulty = 'Easy';
+        rationale = 'norm + block is a standard fusion pattern';
       } else if ((sourceType.includes('linear') || sourceType.includes('projection'))
         && (targetType.includes('linear') || targetType.includes('projection') || targetType.includes('head'))) {
-        gainPct = 10;
         difficulty = 'Easy';
+        rationale = 'back-to-back projections fuse into one kernel';
       } else if ((sourceType.includes('attention') && targetType.includes('ffn'))
         || (sourceType.includes('conv') && targetType.includes('block'))) {
-        gainPct = 14;
         difficulty = 'Medium';
+        rationale = 'block-level fusion, more kernel state to manage';
       } else if (sourceType.includes('conv') || targetType.includes('conv')) {
-        gainPct = 6;
         difficulty = 'Medium';
-      } else {
-        gainPct = 4;
+        rationale = 'convolution fusion, shape-dependent';
       }
 
-      const weightBoost = clamp(
-        ((layerWeights.get(connection.from) ?? 0) + (layerWeights.get(connection.to) ?? 0)) / 5e9,
-        0,
-        10,
-      );
+      const combinedFlops = (layerWeights.get(connection.from) ?? 0) + (layerWeights.get(connection.to) ?? 0);
       return {
         label: `${source.name || source.type} + ${target.name || target.type}`,
-        gainPct: clamp(gainPct + weightBoost, 3, 24),
         difficulty,
+        rationale,
+        combinedFlops,
       };
     })
-    .filter((entry): entry is { label: string; gainPct: number; difficulty: string } => entry !== null)
-    .sort((a, b) => b.gainPct - a.gainPct)
-    .slice(0, 4);
+    .filter((entry): entry is { label: string; difficulty: string; rationale: string; combinedFlops: number } => entry !== null)
+    .sort((a, b) => b.combinedFlops - a.combinedFlops)
+    .slice(0, 4)
+    .map(({ label, difficulty, rationale }) => ({ label, difficulty, rationale }));
 
   return candidates;
 }
