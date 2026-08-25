@@ -359,7 +359,7 @@ export function GitHubExportPanel({
                       <div className="flex gap-2">
                         <Input
                           placeholder="owner/repo-name"
-                          value={repoPresets.includes({ id: selectedRepo } as any) ? '' : selectedRepo}
+                          value={repoPresets.some((repo) => repo.fullName === selectedRepo) ? '' : selectedRepo}
                           onChange={(e) => setSelectedRepo(e.target.value)}
                           className="text-xs h-8"
                         />

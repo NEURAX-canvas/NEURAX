@@ -282,9 +282,9 @@ export function LayerPalette({ onDragStart, selectedArchitecture = 'transformer'
                           )}
                         </div>
                       </TooltipTrigger>
-                      {layer.tooltip && (
+                      {(layer.tooltip || layer.description) && (
                         <TooltipContent side="right" className="max-w-[200px]">
-                          <p className="text-xs">{layer.tooltip}</p>
+                          <p className="text-xs">{layer.tooltip || layer.description}</p>
                         </TooltipContent>
                       )}
                     </Tooltip>
@@ -311,7 +311,9 @@ export function LayerPalette({ onDragStart, selectedArchitecture = 'transformer'
                 </TooltipTrigger>
                 <TooltipContent side="right">
                   <p className="text-xs font-medium">{layer.name}</p>
-                  {layer.tooltip && <p className="text-[10px] text-muted-foreground">{layer.tooltip}</p>}
+                  {(layer.tooltip || layer.description) && (
+                    <p className="text-[10px] text-muted-foreground">{layer.tooltip || layer.description}</p>
+                  )}
                 </TooltipContent>
               </Tooltip>
             ))}

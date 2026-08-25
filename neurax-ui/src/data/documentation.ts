@@ -495,15 +495,20 @@ export const DOCUMENTATION: DocChapter[] = [
             rows: [
               ['**JSON**', 'The architecture and its analysis, re-importable into NEURAX.'],
               ['**NEURAX IR**', 'The exact topology that was analysed. Attach this to a bug report.'],
+              ['**TOML**', 'The same topology, in a format meant to be hand-edited and diffed.'],
               ['**GitHub**', 'Push the architecture straight to a repository.'],
             ],
           },
           {
+            kind: 'text',
+            text: 'The **Full Project** tab is different: it generates a runnable PyTorch project — model.py, train.py, and the rest of the package — from the compiled design, not just a description of it.',
+          },
+          {
             kind: 'note',
-            tone: 'warning',
-            title: 'There is no PyTorch export',
+            tone: 'info',
+            title: 'Full Project is checked, not guessed',
             text:
-              '{-NEURAX does not emit runnable model code in any framework.-} What leaves the tool is {+the architecture itself, described truthfully+}.',
+              'Generated code is cross-checked against the parameter count this design actually compiled to. A **verified** badge means they match; a **needs review** badge means they don\'t, and says so rather than staying silent about the gap.',
           },
         ],
       },
