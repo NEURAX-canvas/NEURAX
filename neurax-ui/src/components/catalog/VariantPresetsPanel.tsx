@@ -37,8 +37,6 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog.tsx';
-import { usePlan } from '@/contexts/PlanContext.tsx';
-import { LockedFeature } from '@/components/ui/locked-feature.tsx';
 import { CanvasNode, Connection, ParameterValue } from '@/types/architecture.ts';
 import { getPluginLayers } from '@/plugins/registry.ts';
 
@@ -95,10 +93,6 @@ export function VariantPresetsPanel({
   const [templateName, setTemplateName] = useState('');
   const [templateDescription, setTemplateDescription] = useState('');
   const [templateTags, setTemplateTags] = useState('');
-  const { canAccess } = usePlan();
-
-  const canCreateTemplates = canAccess('free');
-
   const familyCustomTemplates = customTemplates.filter(t => t.family === family);
 
   // Local built-in templates (88 reference architectures, always available offline)
@@ -431,30 +425,16 @@ export function VariantPresetsPanel({
 
       {/* Save as Template Button */}
       <div className="px-3 pt-3 pb-1 shrink-0">
-        {canCreateTemplates ? (
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs border-dashed border-primary/30 text-primary hover:bg-primary/5 hover:border-primary/50"
-            onClick={openSaveDialog}
-            disabled={currentNodes.length === 0}
-          >
-            <Plus className="w-3.5 h-3.5 mr-1.5" />
-            Save Current as Template
-          </Button>
-        ) : (
-          <LockedFeature minPlan="free" tooltipSide="bottom">
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full h-8 text-xs border-dashed"
-              disabled
-            >
-              <Plus className="w-3.5 h-3.5 mr-1.5" />
-              Save Current as Template
-            </Button>
-          </LockedFeature>
-        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full h-8 text-xs border-dashed border-primary/30 text-primary hover:bg-primary/5 hover:border-primary/50"
+          onClick={openSaveDialog}
+          disabled={currentNodes.length === 0}
+        >
+          <Plus className="w-3.5 h-3.5 mr-1.5" />
+          Save Current as Template
+        </Button>
       </div>
 
       {/* Preset List.

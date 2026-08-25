@@ -63,7 +63,6 @@ interface ExportOption {
   extension: string;
   icon: string;
   includeAnalysis?: boolean;
-  minPlan: string;
 }
 
 const EXPORT_OPTIONS: ExportOption[] = [
@@ -75,10 +74,10 @@ const EXPORT_OPTIONS: ExportOption[] = [
   // server config, network graph) produced skeletons that were never checked
   // against the model they claimed to represent, which is a worse promise than
   // not making one.
-  { id: 'json', name: 'JSON', description: 'Architecture and analysis, re-importable', extension: '.json', icon: 'FileJson', minPlan: 'free' },
-  { id: 'neurax-ir', name: 'NEURAX IR', description: 'Compiler input — the exact topology analysed', extension: '.neurax.json', icon: 'Box', includeAnalysis: true, minPlan: 'free' },
-  { id: 'toml', name: 'TOML', description: 'Same topology, in a format meant to be hand-edited and diffed', extension: '.toml', icon: 'FileCode2', includeAnalysis: true, minPlan: 'free' },
-  { id: 'github', name: 'GitHub', description: 'Push the architecture to a repository', extension: '', icon: 'Github', minPlan: 'free' },
+  { id: 'json', name: 'JSON', description: 'Architecture and analysis, re-importable', extension: '.json', icon: 'FileJson' },
+  { id: 'neurax-ir', name: 'NEURAX IR', description: 'Compiler input — the exact topology analysed', extension: '.neurax.json', icon: 'Box', includeAnalysis: true },
+  { id: 'toml', name: 'TOML', description: 'Same topology, in a format meant to be hand-edited and diffed', extension: '.toml', icon: 'FileCode2', includeAnalysis: true },
+  { id: 'github', name: 'GitHub', description: 'Push the architecture to a repository', extension: '', icon: 'Github' },
 ];
 
 interface ExportPanelProps {

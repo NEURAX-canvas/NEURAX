@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext.tsx";
 import { ApiKeyProvider } from "@/contexts/ApiKeyContext.tsx";
-import { PlanProvider } from "@/contexts/PlanContext.tsx";
 import { ThemeProvider } from "@/contexts/ThemeContext.tsx";
 import { HardwareProvider } from "@/contexts/HardwareContext.tsx";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute.tsx";
@@ -56,7 +55,6 @@ const App = () => (
       <AuthProvider>
         <ApiKeyProvider>
           <ThemeProvider>
-            <PlanProvider>
               <HardwareProvider>
             <TooltipProvider>
               <Toaster />
@@ -82,7 +80,6 @@ const App = () => (
               </BrowserRouter>
             </TooltipProvider>
             </HardwareProvider>
-          </PlanProvider>
         </ThemeProvider>
       </ApiKeyProvider>
     </AuthProvider>
