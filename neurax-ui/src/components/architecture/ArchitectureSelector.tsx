@@ -1,18 +1,10 @@
-import { Lock } from 'lucide-react';
 import { ArchitectureFamily, ARCHITECTURE_FAMILIES } from '@/types/plugins.ts';
-import { usePlan } from '@/contexts/PlanContext.tsx';
-import { canAccessArchitecture } from '@/types/plans.ts';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
 } from '@/components/ui/select.tsx';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip.tsx';
 import { cn } from '@/lib/utils.ts';
 
 interface ArchitectureSelectorProps {
@@ -22,17 +14,7 @@ interface ArchitectureSelectorProps {
 }
 
 export function ArchitectureSelector({ value, onChange, className }: ArchitectureSelectorProps) {
-  const { currentPlan } = usePlan();
-  
   const currentFamily = ARCHITECTURE_FAMILIES.find(f => f.id === value);
-
-  const accessibleFamilies = ARCHITECTURE_FAMILIES.filter(f => 
-    canAccessArchitecture(currentPlan, f.id)
-  );
-  
-  const lockedFamilies = ARCHITECTURE_FAMILIES.filter(f => 
-    !canAccessArchitecture(currentPlan, f.id)
-  );
 
   return (
     <Select value={value} onValueChange={(v) => onChange(v as ArchitectureFamily)}>
@@ -67,7 +49,7 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
         </div>
       </SelectTrigger>
       <SelectContent className="bg-popover border-border z-50">
-        {accessibleFamilies.map((family) => (
+        {ARCHITECTURE_FAMILIES.map((family) => (
           <SelectItem
             key={family.id}
             value={family.id}
@@ -87,43 +69,6 @@ export function ArchitectureSelector({ value, onChange, className }: Architectur
             </div>
           </SelectItem>
         ))}
-
-        {lockedFamilies.length > 0 && (
-          <>
-            <div className="h-px bg-border my-1" />
-            <div className="px-2 py-1 text-[10px] text-muted-foreground uppercase tracking-wider">
-              Upgrade to unlock
-            </div>
-            {lockedFamilies.map((family) => {
-              const requiredPlan = 'ARCHITECT';
-
-              return (
-                <Tooltip key={family.id}>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center gap-3 py-1.5 px-2 opacity-50 cursor-not-allowed">
-                      <div
-                        className="w-6 h-6 rounded flex items-center justify-center text-[15px] leading-none"
-                        style={{ backgroundColor: `${family.color}10` }}
-                      >
-                        {family.emoji}
-                      </div>
-                      <div className="flex flex-col flex-1">
-                        <span className="text-sm font-medium">{family.name}</span>
-                        <span className="text-[10px] text-muted-foreground">{family.description}</span>
-                      </div>
-                      <Lock className="w-3.5 h-3.5 text-muted-foreground" />
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p className="text-xs">
-                      Available on <span className="font-semibold text-primary">{requiredPlan}</span> plan
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
-          </>
-        )}
       </SelectContent>
     </Select>
   );
