@@ -291,6 +291,7 @@ export function ProductionWorkspace({
                   label="Gradient flow"
                   value={`${architecture.metrics.gradientFlowScore}/100`}
                   color="text-success"
+                  hint="How close these layers' actual computed weight variance lands to 1 — the target Xavier/He initialization aims for so gradients neither vanish nor explode across depth. 100 = exactly on target."
                 />
               </div>
             )}
@@ -369,11 +370,31 @@ export function ProductionWorkspace({
             <SectionHeader icon={GraduationCap} title="Training Hyperparameters" />
 
             <div className="space-y-4 p-4 rounded-lg bg-card border border-border">
-              <SliderField label="Learning Rate" value={[hyperparams.learningRate]} onChange={([v]) => setHyperparams(h => ({ ...h, learningRate: v }))} min={0.00001} max={0.01} step={0.00001} format={(v) => v.toExponential(1)} />
-              <SliderField label="Dropout" value={[hyperparams.dropout]} onChange={([v]) => setHyperparams(h => ({ ...h, dropout: v }))} min={0} max={0.5} step={0.01} format={(v) => v.toFixed(2)} />
-              <SliderField label="Weight Decay" value={[hyperparams.weightDecay]} onChange={([v]) => setHyperparams(h => ({ ...h, weightDecay: v }))} min={0} max={0.1} step={0.001} format={(v) => v.toFixed(3)} />
-              <SliderField label="Warmup Steps" value={[hyperparams.warmupSteps]} onChange={([v]) => setHyperparams(h => ({ ...h, warmupSteps: Math.round(v) }))} min={0} max={5000} step={50} format={(v) => String(Math.round(v))} />
-              <SliderField label="Gradient Clipping" value={[hyperparams.gradientClipping]} onChange={([v]) => setHyperparams(h => ({ ...h, gradientClipping: v }))} min={0.1} max={5.0} step={0.1} format={(v) => v.toFixed(1)} />
+              <SliderField
+                label="Learning Rate" value={[hyperparams.learningRate]} onChange={([v]) => setHyperparams(h => ({ ...h, learningRate: v }))}
+                min={0.00001} max={0.01} step={0.00001} format={(v) => v.toExponential(1)}
+                hint="Step size for each weight update. Too high and training diverges or oscillates; too low and it converges too slowly to be practical."
+              />
+              <SliderField
+                label="Dropout" value={[hyperparams.dropout]} onChange={([v]) => setHyperparams(h => ({ ...h, dropout: v }))}
+                min={0} max={0.5} step={0.01} format={(v) => v.toFixed(2)}
+                hint="Fraction of units randomly zeroed each training step. Reduces overfitting by preventing the network from relying on any single unit."
+              />
+              <SliderField
+                label="Weight Decay" value={[hyperparams.weightDecay]} onChange={([v]) => setHyperparams(h => ({ ...h, weightDecay: v }))}
+                min={0} max={0.1} step={0.001} format={(v) => v.toFixed(3)}
+                hint="L2 penalty added to the loss, proportional to weight magnitude. Discourages large weights, another regularizer against overfitting."
+              />
+              <SliderField
+                label="Warmup Steps" value={[hyperparams.warmupSteps]} onChange={([v]) => setHyperparams(h => ({ ...h, warmupSteps: Math.round(v) }))}
+                min={0} max={5000} step={50} format={(v) => String(Math.round(v))}
+                hint="Steps over which the learning rate ramps up linearly from 0 to its target value, before the normal schedule takes over. Stabilizes the first steps, when weights are still random and gradients are least reliable."
+              />
+              <SliderField
+                label="Gradient Clipping" value={[hyperparams.gradientClipping]} onChange={([v]) => setHyperparams(h => ({ ...h, gradientClipping: v }))}
+                min={0.1} max={5.0} step={0.1} format={(v) => v.toFixed(1)}
+                hint="Caps the gradient's norm at this value before the update is applied. Prevents a single large gradient (e.g. from an outlier batch) from destabilizing training."
+              />
 
               {/* Family-specific fields — only present when the recommender
                   (`getRecommendedHyperparams`) actually detected that family
@@ -386,6 +407,7 @@ export function ProductionWorkspace({
                   onChange={([v]) => setHyperparams(h => ({ ...h, routerAuxLossCoefficient: v }))}
                   min={0} max={0.1} step={0.001}
                   format={(v) => v.toFixed(3)}
+                  hint="MoE only. Weight on the load-balancing loss that discourages tokens from collapsing onto a few experts. 0.01 is the Switch Transformer paper's own value (Fedus, Zoph & Shazeer 2021)."
                 />
               )}
               {hyperparams.emaDecay !== undefined && (
@@ -395,6 +417,7 @@ export function ProductionWorkspace({
                   onChange={([v]) => setHyperparams(h => ({ ...h, emaDecay: v }))}
                   min={0.9} max={0.9999} step={0.0001}
                   format={(v) => v.toFixed(4)}
+                  hint="Diffusion only. How heavily the exponential moving average of the weights favors past steps over the latest one — closer to 1 means smoother, slower-moving weights used for sampling. Standard since DDPM (Ho, Jain & Abbeel 2020)."
                 />
               )}
               {hyperparams.discriminatorLearningRate !== undefined && (
@@ -404,6 +427,7 @@ export function ProductionWorkspace({
                   onChange={([v]) => setHyperparams(h => ({ ...h, discriminatorLearningRate: v }))}
                   min={0.00001} max={0.01} step={0.00001}
                   format={(v) => v.toExponential(1)}
+                  hint="GAN only. The discriminator's own learning rate, separate from the generator's above — training the two at different rates (TTUR, Heusel et al. 2017) is a real technique for a more stable adversarial balance."
                 />
               )}
 
@@ -469,24 +493,47 @@ function SectionHeader({ icon: Icon, title }: { icon: React.ElementType; title: 
   );
 }
 
-function MetricCard({ icon: Icon, label, value, color = "text-primary" }: { icon: React.ElementType; label: string; value: string; color?: string }) {
-  return (
+function MetricCard({ icon: Icon, label, value, color = "text-primary", hint }: { icon: React.ElementType; label: string; value: string; color?: string; hint?: string }) {
+  const card = (
     <div className="p-3 rounded-lg bg-secondary/50 border border-border text-center">
       <Icon className={cn("w-5 h-5 mx-auto mb-1", color)} />
       <div className={cn("text-lg font-bold", color)}>{value}</div>
       <div className="text-[9px] text-muted-foreground uppercase tracking-wide">{label}</div>
     </div>
   );
+  if (!hint) return card;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="cursor-help">{card}</div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[10px] max-w-[220px]">
+        {hint}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
-function SliderField({ label, value, onChange, min, max, step, format }: {
+function SliderField({ label, value, onChange, min, max, step, format, hint }: {
   label: string; value: number[]; onChange: (v: number[]) => void;
-  min: number; max: number; step: number; format: (v: number) => string;
+  min: number; max: number; step: number; format: (v: number) => string; hint?: string;
 }) {
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <Label className="text-xs text-muted-foreground">{label}</Label>
+        <div className="flex items-center gap-1.5">
+          <Label className="text-xs text-muted-foreground">{label}</Label>
+          {hint && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="w-2.5 h-2.5 text-muted-foreground/40 cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-[10px] max-w-[240px]">
+                {hint}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
         <span className="text-xs font-mono">{format(value[0])}</span>
       </div>
       <Slider value={value} onValueChange={onChange} min={min} max={max} step={step} className="w-full" />
