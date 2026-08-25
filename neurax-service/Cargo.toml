@@ -1,6 +1,6 @@
 [package]
 name = "neurax-service"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 description = "HTTP API service for NEURAX analytical compiler"
 license = "MIT"
@@ -11,10 +11,10 @@ keywords = ["api", "web", "ml", "compiler", "service"]
 categories = ["web-programming"]
 
 [dependencies]
-neurax-core = { version = "0.11.0", path = "../neurax-core" }
-neurax-parser = { version = "0.11.0", path = "../neurax-parser" }
-neurax-ir = { version = "0.11.0", path = "../neurax-ir" }
-neurax-hardware-db = { version = "0.11.0", path = "../neurax-hardware-db" }
+neurax-core = { version = "0.12.0", path = "../neurax-core" }
+neurax-parser = { version = "0.12.0", path = "../neurax-parser" }
+neurax-ir = { version = "0.12.0", path = "../neurax-ir" }
+neurax-hardware-db = { version = "0.12.0", path = "../neurax-hardware-db" }
 actix-web = "4"
 actix-ws = "0.2"
 actix-cors = "0.7"
