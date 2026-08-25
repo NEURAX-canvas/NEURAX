@@ -39,7 +39,6 @@ import { ArchitectureFamily } from '@/types/plugins.ts';
 import { compileToNeuraxIR } from '@/utils/neuraxCompiler.ts';
 import { useHardware } from '@/contexts/HardwareContext.tsx';
 import { GitHubExportPanel } from './GitHubExportPanel.tsx';
-import { ExportAssistant } from './ExportAssistant.tsx';
 import { buildProjectFiles, downloadProjectZip, ProjectExportResult } from '@/utils/projectExport.ts';
 
 const iconMap: Record<string, React.ElementType> = {
@@ -112,7 +111,6 @@ export function ExportPanel({
   // the Export Formats tab, or the verified project from the Full Project
   // tab. Determines whether GitHubExportPanel gets the generated code.
   const [githubExportMode, setGithubExportMode] = useState<'topology' | 'project'>('topology');
-  const [showAssistant, setShowAssistant] = useState<string | null>(null);
   const [isZipping, setIsZipping] = useState(false);
   const { toast } = useToast();
 
@@ -363,28 +361,13 @@ export function ExportPanel({
                   Push to GitHub
                 </Button>
                 <Button
-                  variant="outline"
-                  onClick={() => {
-                    const format = EXPORT_OPTIONS.find(f => f.id === selectedFormat);
-                    if (format) setShowAssistant(format.name);
-                  }}
-                >
-                  <Zap className="w-4 h-4 mr-2" />
-                  Export Assistant
-                </Button>
-                <Button
                   onClick={() => {
                     const format = EXPORT_OPTIONS.find(f => f.id === selectedFormat);
                     if (format) handleExport(format);
                   }}
-                  disabled={false}
                 >
-                  {false ? (
-                    <Loader2 key="loader" className="w-4 h-4 mr-2 animate-spin" />
-                  ) : (
-                    <Download key="download" className="w-4 h-4 mr-2" />
-                  )}
-                  {false ? 'Exporting...' : `Export ${EXPORT_OPTIONS.find(f => f.id === selectedFormat)?.name}`}
+                  <Download className="w-4 h-4 mr-2" />
+                  Export {EXPORT_OPTIONS.find(f => f.id === selectedFormat)?.name}
                 </Button>
               </div>
             </TabsContent>
@@ -606,17 +589,6 @@ export function ExportPanel({
           />
         </DialogContent>
       </Dialog>
-
-      {/* Export Assistant Wizard — rendered outside Dialog portal */}
-      <ExportAssistant
-        isOpen={!!showAssistant}
-        onClose={() => setShowAssistant(null)}
-        format={showAssistant || 'PyTorch'}
-        nodes={nodes}
-        connections={connections}
-        architectureName={architectureName}
-        selectedArchitecture={selectedArchitecture}
-      />
     </>
   );
 }

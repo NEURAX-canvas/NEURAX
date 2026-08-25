@@ -387,7 +387,7 @@ export function ArchitectureCanvas({
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
 
-    const x = isOutput ? node.x + 176 : node.x;
+    const x = isOutput ? node.x + NODE_WIDTH : node.x;
     const y = node.y + 40;
 
     setIsConnecting(true);
@@ -528,7 +528,7 @@ export function ArchitectureCanvas({
       (acc, node) => ({
         minX: Math.min(acc.minX, node.x),
         minY: Math.min(acc.minY, node.y),
-        maxX: Math.max(acc.maxX, node.x + 176),
+        maxX: Math.max(acc.maxX, node.x + NODE_WIDTH),
         maxY: Math.max(acc.maxY, node.y + 80),
       }),
       { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
@@ -1099,8 +1099,8 @@ export function ArchitectureCanvas({
                     <ContextMenuItem
                       onClick={() => {
                         setIsConnecting(true);
-                        setConnectionStart({ nodeId: node.id, x: node.x + 176, y: node.y + 40 });
-                        setConnectionEnd({ x: node.x + 200, y: node.y + 40 });
+                        setConnectionStart({ nodeId: node.id, x: node.x + NODE_WIDTH, y: node.y + 40 });
+                        setConnectionEnd({ x: node.x + NODE_WIDTH, y: node.y + 40 });
                       }}
                       className="cursor-pointer"
                     >

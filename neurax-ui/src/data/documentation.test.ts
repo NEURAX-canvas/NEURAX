@@ -269,12 +269,16 @@ describe('the user guide', () => {
       expect(guide).toMatch(/mixtral/);
     });
 
-    it('does not promise a PyTorch export', () => {
+    it('is accurate about the PyTorch export that exists — real, but checked, not guaranteed', () => {
+      // A real, verified `projectExport.ts` codegen path shipped after this
+      // test was first written to guard against a PyTorch export the guide
+      // shouldn't promise. The guide should now describe it accurately —
+      // not deny it exists, and not oversell it as guaranteed-correct either.
       const guide = JSON.stringify(DOCUMENTATION);
       const exporting = allSections().find((s) => s.id === 'exporting')!;
       const text = JSON.stringify(exporting);
-      // It may mention PyTorch to say the export was removed — but not offer it.
-      expect(text).toMatch(/no PyTorch export/i);
+      expect(text).toMatch(/Full Project/);
+      expect(text).toMatch(/verified|needs review/i);
       expect(guide).not.toMatch(/Export to PyTorch/i);
     });
   });
