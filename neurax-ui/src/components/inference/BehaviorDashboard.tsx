@@ -6,6 +6,7 @@ import {
   Database,
   Eye,
   Gauge,
+  Info,
   LineChart,
   Link2,
   Sparkles,
@@ -42,6 +43,29 @@ function formatCompactNumber(value: number): string {
   return String(Math.round(value));
 }
 
+/**
+ * The "what does this mean" affordance every widget in this dashboard should
+ * have and, before this change, most didn't: a header title paired with an
+ * info icon whose tooltip says what is actually being computed and from
+ * which inputs — not a restatement of the title.
+ */
+function CardHeading({ icon: Icon, title, hint }: { icon: typeof Gauge; title: string; hint: string }) {
+  return (
+    <h3 className="text-sm font-semibold flex items-center gap-2">
+      <Icon className="w-4 h-4 text-primary" />
+      {title}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Info className="w-3 h-3 text-muted-foreground/40 cursor-help" />
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs max-w-[260px]">
+          {hint}
+        </TooltipContent>
+      </Tooltip>
+    </h3>
+  );
+}
+
 interface BehaviorDashboardProps {
   architectureType: ArchitectureFamily;
   report: InferenceReport | null;
@@ -65,11 +89,12 @@ const riskColors: Record<InferenceRiskLevel, string> = {
 function StabilityGauge({ level }: { level: StabilityLevel }) {
   return (
     <div className="inference-card flex flex-col items-center gap-4">
-      <h3 className="text-sm font-semibold flex items-center gap-2">
-        <Gauge className="w-4 h-4 text-primary" />
-        Generation Stability Index
-      </h3>
-      
+      <CardHeading
+        icon={Gauge}
+        title="Generation Stability Index"
+        hint="How consistent repeated runs at these settings would be — from temperature, quantization level, beam width and the adversarial-prompt stress test, not from an actual generation. Lower temperature, more beams and higher precision push toward Stable; heavy quantization (int4/int8) and adversarial prompts push toward Chaotic."
+      />
+
       <div className={cn(
         "relative w-36 h-36 rounded-full border-4 flex items-center justify-center",
         stabilityColors[level]
@@ -127,11 +152,14 @@ function EntropyChart({ data }: { data: number[] }) {
   
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
-        <LineChart className="w-4 h-4 text-primary" />
-        Entropy Evolution
-      </h3>
-      
+      <div className="mb-4">
+        <CardHeading
+          icon={LineChart}
+          title="Entropy Evolution"
+          hint="Models how the model's next-token uncertainty would decay over a 20-step generation, from temperature, top-p and repetition penalty — not measured from an actual run. A steeper decay means the model settles into confident, repetitive choices sooner."
+        />
+      </div>
+
       <div className="h-24 flex items-end gap-1">
         {data.map((value, i) => (
           <Tooltip key={i}>
@@ -159,11 +187,14 @@ function EntropyChart({ data }: { data: number[] }) {
 function NoiseScheduleChart({ data }: { data: number[] }) {
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-4">
-        <Sparkles className="w-4 h-4 text-primary" />
-        Noise Schedule Curve
-      </h3>
-      
+      <div className="mb-4">
+        <CardHeading
+          icon={Sparkles}
+          title="Noise Schedule Curve"
+          hint="The denoising trajectory a diffusion model follows from pure noise (t=T) to a clean sample (t=0), on a cosine schedule. This is a fixed property of the diffusion process itself — it doesn't change with your sampling settings."
+        />
+      </div>
+
       <div className="h-24 flex items-end gap-1">
         {data.map((value, i) => (
           <Tooltip key={i}>
@@ -225,12 +256,13 @@ function AttentionFocusStrip({ attention }: { attention: number[] }) {
   
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <Eye className="w-4 h-4 text-primary" />
-        Attention Focus Simulation
-      </h3>
-      
-      <div className="token-strip">
+      <CardHeading
+        icon={Eye}
+        title="Attention Focus Simulation"
+        hint="The focus pattern your selected attention type (flash / linear / standard) produces across a 12-token window — a fixed shape derived from that setting, illustrated on placeholder text below, not attention measured over your actual prompt."
+      />
+
+      <div className="token-strip mt-3">
         {tokens.map((token, i) => (
           <span
             key={i}
@@ -244,7 +276,7 @@ function AttentionFocusStrip({ attention }: { attention: number[] }) {
           </span>
         ))}
       </div>
-      
+
       <div className="flex justify-between mt-2 text-[10px] text-muted-foreground">
         <span className="flex items-center gap-1">
           <div className="w-3 h-3 rounded bg-primary/30" /> Low attention
@@ -253,6 +285,9 @@ function AttentionFocusStrip({ attention }: { attention: number[] }) {
           <div className="w-3 h-3 rounded bg-primary" /> High attention
         </span>
       </div>
+      <p className="text-[10px] text-muted-foreground/70 mt-2 italic">
+        Illustrative text — shows the pattern shape for your selected attention type, not analysis of a real prompt.
+      </p>
     </div>
   );
 }
@@ -260,11 +295,14 @@ function AttentionFocusStrip({ attention }: { attention: number[] }) {
 function StateStabilityPanel({ stability }: { stability: number }) {
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <Activity className="w-4 h-4 text-primary" />
-        State Stability (SSM)
-      </h3>
-      
+      <div className="mb-3">
+        <CardHeading
+          icon={Activity}
+          title="State Stability (SSM)"
+          hint="How much your prompt length compresses the model's fixed-size hidden state, relative to an 8,192-token reference — longer prompts push this down, and the long-context stress test pushes it down further. Only shown for SSM/Mamba models, which carry state forward instead of attending back over the full sequence."
+        />
+      </div>
+
       <div className="flex items-center gap-4">
         <div className="relative w-20 h-20">
           <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
@@ -310,11 +348,14 @@ function ContextDegradationMeter({ percentage }: { percentage: number }) {
   
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <TrendingDown className="w-4 h-4 text-primary" />
-        Context Degradation
-      </h3>
-      
+      <div className="mb-3">
+        <CardHeading
+          icon={TrendingDown}
+          title="Context Degradation"
+          hint="Percentage of the context window still free after your prompt plus max output tokens. Uses the connected design's real trained context length, or a 32,768-token placeholder if none is connected. Sliding window and KV-cache reuse ease the pressure; the long-context stress test adds to it."
+        />
+      </div>
+
       <div className="flex items-center gap-3">
         <div className="flex-1">
           <div className="flex justify-between text-xs mb-1">
@@ -343,20 +384,37 @@ function ContextDegradationMeter({ percentage }: { percentage: number }) {
 function SamplingVolatilityCard({ diversity, determinism }: { diversity: number; determinism: number }) {
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <Zap className="w-4 h-4 text-primary" />
-        Sampling Volatility
-      </h3>
-      
+      <div className="mb-3">
+        <CardHeading
+          icon={Zap}
+          title="Sampling Volatility"
+          hint="How much output would vary across repeated runs at these settings, from temperature, top-p, repetition penalty and beam width. Diversity and Determinism are computed independently — they don't need to add to 100%."
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
-        <div className="text-center p-3 bg-secondary/50 rounded-lg">
-          <div className="text-2xl font-bold text-primary">{(diversity * 100).toFixed(0)}%</div>
-          <div className="text-[10px] text-muted-foreground">Diversity</div>
-        </div>
-        <div className="text-center p-3 bg-secondary/50 rounded-lg">
-          <div className="text-2xl font-bold text-primary">{(determinism * 100).toFixed(0)}%</div>
-          <div className="text-[10px] text-muted-foreground">Determinism</div>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="text-center p-3 bg-secondary/50 rounded-lg cursor-help">
+              <div className="text-2xl font-bold text-primary">{(diversity * 100).toFixed(0)}%</div>
+              <div className="text-[10px] text-muted-foreground">Diversity</div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs max-w-[220px]">
+            Likelihood of varied word choices across runs — rises with temperature and top-p, falls with repetition penalty and more beams.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="text-center p-3 bg-secondary/50 rounded-lg cursor-help">
+              <div className="text-2xl font-bold text-primary">{(determinism * 100).toFixed(0)}%</div>
+              <div className="text-[10px] text-muted-foreground">Determinism</div>
+            </div>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="text-xs max-w-[220px]">
+            Likelihood of the same output each run — rises with more beams, falls with higher temperature and top-p.
+          </TooltipContent>
+        </Tooltip>
       </div>
     </div>
   );
@@ -365,11 +423,14 @@ function SamplingVolatilityCard({ diversity, determinism }: { diversity: number;
 function RouterStabilityCard({ stability, distribution }: { stability: number; distribution: number[] }) {
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <CircleDot className="w-4 h-4 text-primary" />
-        Router Stability (MoE)
-      </h3>
-      
+      <div className="mb-3">
+        <CardHeading
+          icon={CircleDot}
+          title="Router Stability (MoE)"
+          hint="How consistently the same tokens would route to the same experts, from your router mode: top-k routing is the most consistent, soft routing spreads load more evenly but shifts more between runs. High temperature lowers it slightly. Expert Distribution below uses the connected design's real expert count and top-k, or 8 experts / top-2 if none is connected."
+        />
+      </div>
+
       <div className="flex items-center gap-4 mb-4">
         <div className="text-3xl font-bold text-primary">{(stability * 100).toFixed(0)}%</div>
         <span className="text-xs text-muted-foreground">routing consistency</span>
@@ -416,10 +477,13 @@ function KvCacheCard({ bytesPerToken, bytesTotal, gqaSavingsFactor }: {
   const isGrouped = gqaSavingsFactor > 1.01;
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <Database className="w-4 h-4 text-primary" />
-        KV Cache Cost
-      </h3>
+      <div className="mb-3">
+        <CardHeading
+          icon={Database}
+          title="KV Cache Cost"
+          hint="Bytes held in the key/value cache for this request — pure arithmetic from the connected design's real layer count, KV head count and head dimension, times prompt + max output tokens. No heuristic here: this only appears once a design is connected."
+        />
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="text-center p-3 bg-secondary/50 rounded-lg">
@@ -490,21 +554,21 @@ function InferenceRiskOverview({
   risks: Record<string, InferenceRiskLevel | null | undefined>;
 }) {
   const riskLabels: Record<string, { label: string; tooltip: string }> = {
-    coherence: { 
-      label: 'Coherence Risk', 
-      tooltip: 'Risk of generating incoherent or contradictory outputs' 
+    coherence: {
+      label: 'Coherence Risk',
+      tooltip: 'Rises with higher temperature and narrower beam search — a wide, unfocused sampling distribution with little beam correction is more likely to wander off-topic.',
     },
-    overconfidence: { 
-      label: 'Overconfidence Risk', 
-      tooltip: 'Risk of model being overly certain about uncertain predictions' 
+    overconfidence: {
+      label: 'Overconfidence Risk',
+      tooltip: 'Rises with lower top-p and low repetition penalty — narrow nucleus sampling with nothing discouraging repeats lets the model lock onto one answer without hedging.',
     },
-    collapse: { 
-      label: 'Collapse Risk (MoE)', 
-      tooltip: 'Risk of routing collapsing to few experts' 
+    collapse: {
+      label: 'Collapse Risk (MoE)',
+      tooltip: 'Risk of most tokens routing to only a few experts. Depends on router mode: top-k is the most collapse-prone, soft routing the least.',
     },
-    degeneration: { 
-      label: 'Degeneration Risk', 
-      tooltip: 'Risk of repetitive or degraded output quality' 
+    degeneration: {
+      label: 'Degeneration Risk',
+      tooltip: 'Rises with low repetition penalty and high temperature; frequency penalty pulls it back down. High risk means loops or repeated phrases are likely.',
     },
   };
   
