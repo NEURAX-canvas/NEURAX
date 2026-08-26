@@ -1,14 +1,13 @@
 import { Bug, Info, Cpu, Server } from 'lucide-react';
-import { AnalysisResult, CanvasNode, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
 import {
   Bar, BarChart, CartesianGrid, Cell, Pie, PieChart,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
+import { AnalysisResult, CanvasNode, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
 import {
   deriveConfidenceBars,
   deriveDiagnosticsByLayer,
   deriveIssueSummary,
-  derivePenaltyWaterfall,
   deriveResolutionDistribution,
   deriveUnsupportedOps,
   severityColor,
@@ -16,10 +15,10 @@ import {
 import {
   ChartCard,
   ChartContainer,
+  ChartLegend,
   chartTooltipStyle,
   CHART_MARGINS,
   ChartErrorBoundary,
-  EmptyChartState,
 } from '../shared';
 
 
@@ -29,15 +28,6 @@ interface DebuggingChartsProps {
   warnings?: Warning[];
   nodes?: CanvasNode[];
 }
-
-const CHART_COLORS = [
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-5))',
-  'hsl(var(--chart-6))',
-];
 
 function cellTone(value: number): string {
   if (value >= 3) return 'bg-red-500/80';
@@ -56,17 +46,11 @@ export function DebuggingCharts({
 
   // ── Derived data (always returns at least one item per function) ──
   const severityRows = deriveIssueSummary(analysis, warnings);
+  const totalIssueCount = severityRows.reduce((sum, row) => sum + row.count, 0);
   const diagnosticsByLayer = deriveDiagnosticsByLayer(analysis, warnings, perLayer, nodes);
-  const confidenceRows = deriveConfidenceBars(analysis, warnings);
-  const rawOps = Object.keys(analysis.opsDistribution ?? {}).length > 0
-    ? Object.entries(analysis.opsDistribution).map(([name, value]) => ({ name, value }))
-    : [];
-  const hasOpData = rawOps.length > 0;
-  const opRows = hasOpData ? rawOps : [];
+  const confidenceRows = deriveConfidenceBars(analysis);
   const unsupportedRows = deriveUnsupportedOps(analysis);
   const resolutionRows = deriveResolutionDistribution(analysis, warnings);
-  const waterfallRows = derivePenaltyWaterfall(analysis);
-  const hasBlocking = warnings.some((warning) => warning.type === 'error');
 
   return (
     <ChartErrorBoundary>
@@ -82,74 +66,62 @@ export function DebuggingCharts({
           </div>
         </div>
 
-        {/* ── Row 1: 8.1 · 8.2 · 8.3 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        {/* ── Row 1: 8.1 · 8.3 — both real charts, same square footprint.
+            8.2 (Diagnostics by Layer) moves to its own full-width row below:
+            a `wide` matrix card can't share a grid row with `square` donut/
+            bar siblings without the two sizing rules fighting each other
+            (see OptimizationCharts for the full explanation). ── */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* ── 8.1 Diagnostic Severity ── */}
           <ChartCard title="Diagnostic Severity">
-            <ChartContainer minH={256}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={severityRows}
-                    dataKey="count"
-                    innerRadius={60}
-                    outerRadius={90}
-                    paddingAngle={3}
-                  >
-                    {severityRows.map((entry) => (
-                      <Cell key={entry.severity} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value}`, 'Count']} />
-                </PieChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              {severityRows.map((entry) => (
-                <div key={entry.severity} className="flex items-center justify-between rounded-md bg-secondary/20 px-2 py-1">
-                  <span className="text-[11px]" style={{ color: entry.fill }}>{entry.severity}</span>
-                  <span className="text-[11px] font-mono font-semibold">{entry.count}</span>
+            <div className="h-full flex flex-col">
+              {/* A single non-zero severity (the common case: e.g. only
+                  warnings) makes Recharts render one slice as a near-full
+                  ring with just a padding-angle gap — indistinguishable at
+                  a glance from a stuck loading spinner, especially in this
+                  app's spinner-orange. A center count grounds it as a
+                  finished chart no matter how many severities are present. */}
+              <ChartContainer className="flex-1 min-h-0 relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={severityRows}
+                      dataKey="count"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={3}
+                    >
+                      {severityRows.map((entry) => (
+                        <Cell key={entry.severity} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value}`, 'Count']} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                  <span className="text-xl font-bold font-mono leading-tight">{totalIssueCount}</span>
+                  <span className="text-[9px] text-muted-foreground uppercase tracking-wider">
+                    {totalIssueCount === 1 ? 'Issue' : 'Issues'}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </ChartCard>
-
-          {/* ── 8.2 Diagnostics by Layer ── */}
-          <ChartCard title="Diagnostics by Layer">
-            <div className="space-y-2">
-              <div className="grid grid-cols-[1.2fr_repeat(6,minmax(0,1fr))] gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <span>Layer</span>
-                <span className="text-center">Shape</span>
-                <span className="text-center">Memory</span>
-                <span className="text-center">Parallel</span>
-                <span className="text-center">Op</span>
-                <span className="text-center">Config</span>
-                <span className="text-center">General</span>
-              </div>
-              {diagnosticsByLayer.map((row) => (
-                <div key={String(row.layer)} className="grid grid-cols-[1.2fr_repeat(6,minmax(0,1fr))] gap-1 items-center">
-                  <span className="text-[11px] text-muted-foreground truncate pr-2">{String(row.layer)}</span>
-                  {['shape', 'memory', 'parallel', 'op', 'config', 'general'].map((bucket) => {
-                    const value = Number(row[bucket] ?? 0);
-                    return (
-                      <div key={bucket} className={`h-6 rounded ${cellTone(value)} flex items-center justify-center text-[11px] font-semibold text-white`}>
-                        {value > 0 ? value : ''}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+              </ChartContainer>
+              <ChartLegend
+                entries={severityRows.map((entry) => ({ name: entry.severity, value: entry.count, color: entry.fill }))}
+                showPercent={false}
+              />
             </div>
           </ChartCard>
 
           {/* ── 8.3 Shape Confidence ── */}
           <ChartCard title="Shape Confidence">
-            <ChartContainer minH={256}>
+            <ChartContainer>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={confidenceRows} margin={CHART_MARGINS.bar}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="label" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `${value}%`} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
                   <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value.toFixed(0)}%`, 'Confidence']} />
                   <Bar dataKey="value" radius={[3, 3, 0, 0]}>
                     {confidenceRows.map((entry) => (
@@ -162,8 +134,38 @@ export function DebuggingCharts({
           </ChartCard>
         </div>
 
+        {/* ── 8.2 Diagnostics by Layer (full width) —
+            a layer × category matrix, real width and height needs neither
+            a fixed square nor a grid row shared with square siblings. ── */}
+        <ChartCard title="Diagnostics by Layer" size="wide">
+          <div className="space-y-2">
+            <div className="grid grid-cols-[1.2fr_repeat(6,minmax(0,1fr))] gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+              <span>Layer</span>
+              <span className="text-center">Shape</span>
+              <span className="text-center">Memory</span>
+              <span className="text-center">Parallel</span>
+              <span className="text-center">Op</span>
+              <span className="text-center">Config</span>
+              <span className="text-center">General</span>
+            </div>
+            {diagnosticsByLayer.map((row) => (
+              <div key={String(row.layer)} className="grid grid-cols-[1.2fr_repeat(6,minmax(0,1fr))] gap-1 items-center">
+                <span className="text-[11px] text-muted-foreground truncate pr-2">{String(row.layer)}</span>
+                {['shape', 'memory', 'parallel', 'op', 'config', 'general'].map((bucket) => {
+                  const value = Number(row[bucket] ?? 0);
+                  return (
+                    <div key={bucket} className={`h-6 rounded ${cellTone(value)} flex items-center justify-center text-[11px] font-semibold text-white`}>
+                      {value > 0 ? value : ''}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </ChartCard>
+
         {/* ── 8.4 Parallelism Efficiency (full width) ── */}
-        <ChartCard title="Parallelism Efficiency">
+        <ChartCard title="Parallelism Efficiency" size="wide">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-lg bg-secondary/20 p-3">
               <div className="flex items-center gap-2 mb-2">
@@ -224,37 +226,11 @@ export function DebuggingCharts({
           )}
         </ChartCard>
 
-        {/* ── Row 2: 8.5 · 8.6 · 8.7 ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          {/* ── 8.5 OpKind Distribution ── */}
-          <ChartCard title="OpKind Distribution">
-            <ChartContainer minH={256}>
-              {hasOpData ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={opRows.slice(0, 6)}
-                      dataKey="value"
-                      outerRadius={88}
-                      paddingAngle={2}
-                    >
-                      {opRows.slice(0, 6).map((entry, index) => (
-                        <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value}`, 'Ops']} />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <EmptyChartState
-                  icon={Bug}
-                  title="No op distribution data"
-                  description="Run analysis to see operation kind distribution."
-                />
-              )}
-            </ChartContainer>
-          </ChartCard>
-
+        {/* ── Row 2: 8.6 · 8.7 ──
+            OpKind Distribution used to live here — the same op-count
+            histogram is now the one canonical "Operation Distribution"
+            chart on the Overview tab, so it isn't repeated here. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* ── 8.6 Unsupported Ops / Fallbacks ── */}
           <ChartCard title="Unsupported Ops / Fallbacks">
             <div className="space-y-3 max-h-64 overflow-auto pr-1 scrollbar-thin">
@@ -275,62 +251,23 @@ export function DebuggingCharts({
 
           {/* ── 8.7 Resolution Distribution ── */}
           <ChartCard title="Resolution Distribution">
-            <ChartContainer minH={256}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={resolutionRows} margin={CHART_MARGINS.bar}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value}`, 'Count']} />
-                  <Bar dataKey="value" radius={[3, 3, 0, 0]}>
-                    {resolutionRows.map((entry) => (
-                      <Cell key={entry.name} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+            <div className="h-full flex flex-col">
+              <ChartContainer className="flex-1 min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={resolutionRows} dataKey="value" cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3}>
+                      {resolutionRows.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value}`, 'Tensors']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <ChartLegend entries={resolutionRows.map((r) => ({ name: r.name, value: r.value, color: r.fill }))} />
+            </div>
           </ChartCard>
         </div>
-
-        {/* ── 8.8 Penalty Impact Waterfall (full width) ── */}
-        <ChartCard title="Penalty Impact Waterfall">
-          <div className="grid grid-cols-5 gap-2">
-            {waterfallRows.map((row, index) => {
-              const isInitial = index === 0;
-              const isFinal = index === waterfallRows.length - 1;
-              const fill = isInitial || isFinal
-                ? 'hsl(var(--chart-2))'
-                : row.delta < 0
-                  ? 'hsl(var(--chart-3))'
-                  : 'hsl(var(--chart-1))';
-              return (
-                <div key={row.label} className="rounded-lg overflow-hidden border border-border/50 bg-secondary/10">
-                  <div
-                    className="h-32 flex items-end justify-center pb-3 text-sm font-bold font-mono text-white"
-                    style={{ backgroundColor: fill.replace(')', 'cc)'), minHeight: `${Math.max(64, row.value * 1.2)}px` }}
-                  >
-                    {row.value.toFixed(0)}
-                  </div>
-                  <div className="px-3 py-2 text-center">
-                    <div className="text-xs font-semibold">{row.label}</div>
-                    {!isInitial && (
-                      <div className="text-[11px] text-muted-foreground">
-                        {row.delta >= 0 ? '+' : ''}
-                        {row.delta.toFixed(0)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className={`mt-4 rounded-md px-3 py-2 text-[11px] ${hasBlocking ? 'bg-red-500/10 text-red-200' : 'bg-emerald-500/10 text-emerald-200'}`}>
-            {hasBlocking
-              ? 'Blocking issues remain. Resolve the critical diagnostics before trusting downstream performance projections.'
-              : 'No blocking diagnostics were reported. Remaining penalties mostly come from confidence loss, unresolved dimensions, or custom-op estimation.'}
-          </div>
-        </ChartCard>
       </div>
     </ChartErrorBoundary>
   );

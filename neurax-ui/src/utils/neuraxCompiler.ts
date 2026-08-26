@@ -1064,6 +1064,93 @@ function normalizeLayerTypeKey(value: string): string {
     .toLowerCase();
 }
 
+/**
+ * Params and forward-FLOPs for a `layer_stack` block — the compact "N×
+ * Decoder Blocks" node every preset in the Templates catalogue compiles to,
+ * instead of N individual Attention/Mlp/Normalization nodes.
+ *
+ * The backend's `LayerType::Custom` arm has no formula keyed to "a block
+ * that secretly repeats N times" — without this, the stack silently priced
+ * out at 0 params and 0 FLOPs. For GPT-2 Small that undercounted total
+ * parameters by roughly 3x (39M shown vs. the model's real ~124M), because
+ * the stack holds nearly all of a transformer's weight; the params/tab and
+ * per-layer FLOPs breakdown for "12x Decoder Blocks" both read as literal
+ * zero, and the GPU-utilization figure computed from those same per-layer
+ * numbers came out NaN (serialized as a bare JSON `null`) for every model
+ * that uses this representation — which is every preset in the catalogue.
+ *
+ * Mirrors neurax-formulas' attention/mlp/normalization formulas (standard
+ * MHA or GQA, standard or SwiGLU-gated MLP, causal attention, LayerNorm ×2
+ * per block — pre-attention and pre-FFN) so the number this emits agrees
+ * with what the backend would compute for an equivalent architecture built
+ * from individually typed blocks. No bias terms, matching how this
+ * catalogue's other blocks (e.g. the LM head) are already compiled.
+ */
+function decoderStackParamsAndFlops(cfg: {
+  numLayers: number;
+  hidden: number;
+  heads: number;
+  kvHeads: number | null;
+  ffnDim: number;
+  activation: string | null;
+  batch: number;
+  seq: number;
+}): { paramCount: number; flopsForward: number } {
+  const { numLayers, hidden, heads, ffnDim, batch, seq } = cfg;
+  const kvHeads = cfg.kvHeads ?? heads;
+  const headDim = hidden / Math.max(heads, 1);
+  const gated = ['silu', 'swish', 'swiglu', 'geglu'].includes(
+    String(cfg.activation ?? '').toLowerCase(),
+  );
+
+  let attnParams: number;
+  let attnFlops: number;
+  if (kvHeads === heads) {
+    // Standard MHA: Q, K, V, out — each hidden×hidden.
+    attnParams = 4 * hidden * hidden;
+    const qkv = 3 * (2 * batch * seq * hidden * hidden);
+    const scores = 2 * batch * heads * seq * seq * headDim;
+    const av = 2 * batch * heads * seq * seq * headDim;
+    const softmax = 5 * batch * heads * seq * seq;
+    const outProj = 2 * batch * seq * hidden * hidden;
+    // Causal: on average only half the attention matrix is real work.
+    attnFlops = qkv + (scores + av + softmax) * 0.5 + outProj;
+  } else {
+    // GQA/MQA: K, V projections shrink to the KV head count.
+    const kvDim = kvHeads * headDim;
+    attnParams = hidden * hidden + 2 * hidden * kvDim + hidden * hidden;
+    const q = 2 * batch * seq * hidden * hidden;
+    const kv = 2 * (2 * batch * seq * hidden * kvDim);
+    const scores = 2 * batch * heads * seq * seq * headDim;
+    const av = 2 * batch * heads * seq * seq * headDim;
+    const outProj = 2 * batch * seq * hidden * hidden;
+    attnFlops = q + kv + (scores + av) * 0.5 + outProj;
+  }
+
+  // MLP: standard (up + down) or SwiGLU-gated (gate + up + down).
+  const mlpParams = gated ? 3 * hidden * ffnDim : 2 * hidden * ffnDim;
+  const linear1 = 2 * batch * seq * hidden * ffnDim;
+  const linear2 = 2 * batch * seq * ffnDim * hidden;
+  const gateExtra = gated ? 2 * batch * seq * hidden * ffnDim + batch * seq * ffnDim : 0;
+  // SiLU (gated) is cheaper per element than GELU (standard) — see
+  // neurax-formulas' activation cost table.
+  const activationFlopsPerElement = gated ? 4 : 8;
+  const actFlops = activationFlopsPerElement * batch * seq * ffnDim;
+  const mlpFlops = linear1 + linear2 + gateExtra + actFlops;
+
+  // Two LayerNorms per block (pre-attention, pre-FFN): weight + bias each.
+  const normParams = 2 * (2 * hidden);
+  const normFlops = 2 * (5 * batch * seq * hidden);
+
+  const perLayerParams = attnParams + mlpParams + normParams;
+  const perLayerFlops = attnFlops + mlpFlops + normFlops;
+
+  return {
+    paramCount: Math.round(perLayerParams * numLayers),
+    flopsForward: perLayerFlops * numLayers,
+  };
+}
+
 function toParserLayerType(blockType: string): string {
   const normalized = normalizeLayerTypeKey(blockType);
 
@@ -2331,6 +2418,21 @@ export function compileToNeuraxIR(
 
   const flatBlocks = flattenBlocks(blocks).filter((block) => block.ui_node_type !== 'input' && block.ui_node_type !== 'output');
 
+  // A `layer_stack` node means one of two different things depending on who
+  // built the design. The Templates catalogue compiles a repeated block down
+  // to the stack node alone — nothing else in `flatBlocks` describes what's
+  // inside it, which is exactly the shape that priced at 0 params/FLOPs (see
+  // `decoderStackParamsAndFlops`). The HuggingFace importer instead lays out
+  // real Attention/Mlp/Normalization nodes as the stack's "body" and connects
+  // them back to it (see `buildGraph` in huggingfaceImporter.ts) — the
+  // backend's existing `repeat_scale_for` already scales *those* nodes by
+  // `num_layers`, so also pricing the stack node itself would double-count
+  // every repeated layer. Only synthesize params/FLOPs for the former case.
+  const hasIndividuallyTypedDecoderBody = flatBlocks.some((b) => {
+    const t = toParserLayerType(b.ui_node_type ?? b.type);
+    return t === 'attention' || t === 'mlp';
+  });
+
   const layers: NeuraxLayer[] = flatBlocks.map(block => {
     // Derive shapes from block type and params
     let inputShape: number[] = [];
@@ -2366,12 +2468,37 @@ export function compileToNeuraxIR(
     const isGatedFeedForward =
       sourceType === 'ffn_gated' || sourceType === 'swiglu' || sourceType === 'geglu';
 
+    // The repeated decoder-block placeholder ("12x Decoder Blocks" on the
+    // canvas) compiles to a single opaque `custom` layer with nothing but its
+    // own repeat count — the backend has no formula for "a block that
+    // secretly repeats N times" and silently prices it at 0 params/FLOPs.
+    // See `decoderStackParamsAndFlops` for the full story.
+    let stackOverrides: { params?: Record<string, any>; custom_equations?: Record<string, string> } = {};
+    if (sourceType === 'layer_stack' && !hasIndividuallyTypedDecoderBody) {
+      const stackLayers = Number(p.num_layers ?? numLayers ?? 1);
+      const { paramCount, flopsForward } = decoderStackParamsAndFlops({
+        numLayers: stackLayers,
+        hidden,
+        heads: numHeads ?? 8,
+        kvHeads: kvHeads ?? null,
+        ffnDim: ffnDim ?? 4 * hidden,
+        activation: activation ?? null,
+        batch,
+        seq,
+      });
+      stackOverrides = {
+        params: { ...p, param_count: paramCount },
+        custom_equations: { flops_forward: String(flopsForward) },
+      };
+    }
+
     return {
       id: block.id,
       layer_type: toParserLayerType(block.ui_node_type ?? block.type),
       input_shape: inputShape,
       output_shape: outputShape,
-      params: isGatedFeedForward ? { ...p, gated: true } : p,
+      params: stackOverrides.params ?? (isGatedFeedForward ? { ...p, gated: true } : p),
+      ...(stackOverrides.custom_equations && { custom_equations: stackOverrides.custom_equations }),
       ...(block.comment && { comment: block.comment }),
     };
   });

@@ -166,7 +166,6 @@ impl IrPass for HardwarePass {
             .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::Mlp)
             .count();
-        let total_layers = (attention_count + mlp_count).max(1);
 
         // Real-world GPU efficiency factors based on operation type
         // Attention is memory-bound (lower efficiency)
@@ -184,10 +183,26 @@ impl IrPass for HardwarePass {
             _ => 0.75,
         };
 
-        // Weighted average efficiency based on layer distribution
-        let gpu_efficiency = (attention_count as f64 * attention_efficiency
-            + mlp_count as f64 * mlp_efficiency)
-            / total_layers as f64;
+        // Weighted average efficiency based on layer distribution. Only layers
+        // typed Attention or Mlp are counted — a repeated-block architecture
+        // (LAYER_STACK, the shape every template on this app's own catalogue
+        // compiles to) tags its block as `Custom` instead, so attention_count
+        // and mlp_count are both 0 for essentially every real model. Dividing
+        // by the resulting 0.0 efficiency below used to turn
+        // every per-layer compute time into +/-Infinity; summing them produced
+        // NaN, `f64::max` silently dropped it into `latency_ms`, and NaN then
+        // serialized as a bare JSON `null` for gpu_utilization — read by the
+        // UI as "no hardware data", contradicting the VRAM/GPU numbers sitting
+        // right next to it, which come from a different, unaffected path.
+        // With no attention/mlp layer to weight, there is nothing to derate by
+        // — 1.0 (no efficiency penalty) is the neutral answer, not a guess.
+        let recognized_layers = attention_count + mlp_count;
+        let gpu_efficiency = if recognized_layers > 0 {
+            (attention_count as f64 * attention_efficiency + mlp_count as f64 * mlp_efficiency)
+                / recognized_layers as f64
+        } else {
+            1.0
+        };
 
         // FlashAttention reduces memory by ~4x
         let flash_attention_enabled = true; // Could be a config option

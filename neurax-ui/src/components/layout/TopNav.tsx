@@ -248,7 +248,7 @@ export function TopNav({
               <ChevronDown className="w-3.5 h-3.5 ml-1" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-80 p-0 max-h-[500px]" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+          <PopoverContent className="w-80 p-0 max-h-[500px] overflow-hidden flex flex-col" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
             <VariantPresetsPanel
               key={selectedArchitecture}
               family={selectedArchitecture}

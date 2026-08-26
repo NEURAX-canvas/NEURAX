@@ -85,6 +85,7 @@ import { explainAnalysisFailure, failureAsWarnings } from '@/services/compilerEr
 import { analyze, analyzeStream, listProjects, createProject, updateProject, deleteProject, getCredits, type Project, type CreditInfo, type InferenceParams } from '@/services/neuraxApi.ts';
 import { useToast } from '@/hooks/use-toast.ts';
 import { getPluginLayers } from '@/plugins/registry.ts';
+import { hasAnalysisReportData } from '@/components/simulation/simulationData.ts';
 
 const _hashString = (input: string): string => {
   let h = 5381;
@@ -419,6 +420,7 @@ function parseAnalysisReport(
   rawReport: unknown,
   precision: string,
   batchSize: number,
+  nodes: CanvasNode[] = [],
 ): ParsedReportState {
   const r = rawReport as Record<string, unknown>;
   const rpt = ((r as any)?.report ?? r) as Record<string, unknown>;
@@ -651,7 +653,19 @@ function parseAnalysisReport(
     maxBatchSizeFit: memory.max_batch_size_fit ?? 0,
     memoryFragmentation: (dynamic.virtual_memory?.fragmentation_pct ?? memory.memory_fragmentation_pct ?? 0) / 100,
     memoryFragmentationPct: memory.memory_fragmentation_pct ?? dynamic.virtual_memory?.fragmentation_pct ?? 0,
-    oomRisk: memory.oom_risk ?? 'low',
+    // `?? 'low'` here used to silently assert the comfortable answer
+    // whenever the backend sent no oom_risk at all — the Memory tab then
+    // showed e.g. "OOM Risk: Low" next to a live "Utilization: 257%"
+    // computed from the same peakVramBytes/gpu_memory_gb two lines below.
+    // Derive the same tier from that number instead of guessing low.
+    oomRisk: memory.oom_risk ?? (
+      hardware.gpu_memory_gb > 0
+        ? (() => {
+          const utilization = peakVramBytes / 1e9 / hardware.gpu_memory_gb;
+          return utilization >= 1 ? 'high' : utilization >= 0.85 ? 'medium' : 'low';
+        })()
+        : 'low'
+    ),
     memoryUsage: formatBytesGb(peakVramBytes),
 
     gpuName: hardware.gpu_name ?? '',
@@ -752,6 +766,13 @@ function parseAnalysisReport(
     ...Object.keys(perLayerVram),
   ]));
 
+  // The backend keys every per-layer map by the compiler's internal node id
+  // ("n8") — the canvas node carries the real, human name ("Residual Add")
+  // the user actually gave the block. Falling back to the id itself only
+  // when a node can't be found keeps this honest rather than inventing a
+  // name for something that isn't on the canvas at all.
+  const nameById = new Map(nodes.map((n) => [n.id, n.name]));
+
   const perLayer: PerLayerBreakdownRow[] = allLayerIds.map(id => {
     const vramBytes = perLayerVram[id] ?? 0;
     const memStr = vramBytes >= 1e9
@@ -767,7 +788,7 @@ function parseAnalysisReport(
 
     return {
       id,
-      name: id,
+      name: nameById.get(id) ?? id,
       params: perLayerParams[id] ?? 0,
       flops: formatFlopsHuman(perLayerMetrics[id] ?? 0),
       memory: memStr,
@@ -1476,7 +1497,7 @@ params: params as Record<string, ParameterValue>,
       });
 
       // Parse report using shared helper
-      const parsed = parseAnalysisReport(report, hwConfig.precision, hwConfig.batchSize);
+      const parsed = parseAnalysisReport(report, hwConfig.precision, hwConfig.batchSize, nodes);
       setAnalysis(parsed.analysis);
       setPerLayer(parsed.perLayer);
       setWarnings(prev => [...prev, ...parsed.warnings]);
@@ -1688,7 +1709,7 @@ params: params as Record<string, ParameterValue>,
               } : prev);
             },
             onResult: (result) => {
-              const parsed = parseAnalysisReport(result, hwConfig.precision, hwConfig.batchSize);
+              const parsed = parseAnalysisReport(result, hwConfig.precision, hwConfig.batchSize, nodes);
               setAnalysis(parsed.analysis);
               setPerLayer(parsed.perLayer);
               setWarnings(parsed.warnings);
@@ -2687,6 +2708,9 @@ params: params as Record<string, ParameterValue>,
         <WorkspaceTabs
           activeTab={activeWorkspaceTab}
           onTabChange={setActiveWorkspaceTab}
+          hasDesign={hasCanvasBlocks}
+          hasAnalysis={hasAnalysisReportData(analysis)}
+          onExport={() => setShowExportPanel(true)}
           architectureContent={architectureContent}
           simulationContent={
             <Suspense fallback={null}>

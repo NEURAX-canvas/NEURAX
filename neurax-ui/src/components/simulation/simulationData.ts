@@ -1,7 +1,6 @@
-import { AnalysisResult, CanvasNode, Connection, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
+import { AnalysisResult, CanvasNode, PerLayerBreakdownRow, Warning } from '@/types/architecture.ts';
 
 const BYTES_IN_MB = 1024 ** 2;
-const BYTES_IN_GB = 1024 ** 3;
 
 /**
  * Categorical palette for the analysis charts.
@@ -62,6 +61,12 @@ export function formatBytes(bytes: number, digits = 1): string {
 export function formatCompactNumber(value: number, digits = 1): string {
   if (!Number.isFinite(value)) return '0';
   const abs = Math.abs(value);
+  // E/P tiers matter here specifically for FLOPs — a 175B-parameter model's
+  // training compute is already petascale, and this is the formatter charts
+  // reach for on FLOPs axes. Without them, a value like 2.4e15 rendered as
+  // "2400000.0T", not fixed by any amount of digit-rounding.
+  if (abs >= 1e18) return `${(value / 1e18).toFixed(digits)}E`;
+  if (abs >= 1e15) return `${(value / 1e15).toFixed(digits)}P`;
   if (abs >= 1e12) return `${(value / 1e12).toFixed(digits)}T`;
   if (abs >= 1e9) return `${(value / 1e9).toFixed(digits)}B`;
   if (abs >= 1e6) return `${(value / 1e6).toFixed(digits)}M`;
@@ -275,7 +280,11 @@ export function buildDerivedLayerMetrics(
         key,
         name,
         kind: classifyLayerKind(name),
-        flops: flops / 1e9,
+        // Raw FLOPs, not pre-divided to a fixed "G" unit — the one caller
+        // of this (OptimizationCharts' Bottleneck Pareto) formats with
+        // formatCompactNumber, which scales itself; pre-dividing here is
+        // what produced axis ticks like "2400000G" for a GPT-scale layer.
+        flops,
         params,
         share: flopsShare,
         latencyMs: (analysis.latencyMs ?? 0) * flopsShare,
@@ -292,71 +301,14 @@ export function buildDerivedLayerMetrics(
     .slice(0, 10);
 }
 
-function scoreFromPriority(priority: string): number {
-  const normalized = priority.toLowerCase();
-  if (normalized === 'high') return 80;
-  if (normalized === 'low') return 35;
-  return 55;
-}
-
-function scoreFromImpact(impact: string, priority: string): number {
-  const numeric = impact.match(/(\d+(\.\d+)?)/);
-  if (!numeric) return scoreFromPriority(priority);
-  const value = parseFloat(numeric[1]);
-  if (/x/i.test(impact)) return clamp(value * 15, 20, 95);
-  if (/%/.test(impact)) return clamp(value, 15, 95);
-  if (/gb/i.test(impact)) return clamp(value * 12, 20, 95);
-  return clamp(scoreFromPriority(priority) + value, 20, 95);
-}
-
-export function deriveOptimizationOpportunities(analysis: AnalysisResult): Array<{
-  title: string;
-  description: string;
-  score: number;
-  priority: string;
-}> {
-  const recommendations = analysis.recommendations ?? [];
-  if (recommendations.length > 0) {
-    return recommendations.map((recommendation) => ({
-      title: recommendation.title,
-      description: recommendation.impact || recommendation.description,
-      score: scoreFromImpact(recommendation.impact, recommendation.priority),
-      priority: recommendation.priority,
-    }));
-  }
-
-  // No backend recommendations to size against, so these three generic
-  // suggestions get their bar length from the same `scoreFromPriority`
-  // scale the real-recommendation path above uses — not independent,
-  // hand-picked numbers. Those used to be 72/78/48, three values that
-  // didn't even agree with each other's own priority label (78 for
-  // "high" here, 80 for "high" from scoreFromPriority): two unrelated
-  // pieces of invented data sitting next to each other.
-  const fallback = [];
-  if (analysis.bottleneck === 'memory-bound') {
-    fallback.push({
-      title: 'Higher Bandwidth GPU',
-      description: 'Reduce the memory roofline limit.',
-      score: scoreFromPriority('medium'),
-      priority: 'medium',
-    });
-  }
-  if (analysis.activationMemoryBytes > 0) {
-    fallback.push({
-      title: 'Gradient Checkpointing',
-      description: `Recover ~${formatBytes(analysis.activationMemoryBytes * 0.45)} of activation VRAM.`,
-      score: scoreFromPriority('high'),
-      priority: 'high',
-    });
-  }
-  fallback.push({
-    title: 'Batch Tuning',
-    description: `Scale up toward batch ${analysis.maxBatchSizeFit || 1} for better device occupancy.`,
-    score: scoreFromPriority('medium'),
-    priority: 'medium',
-  });
-  return fallback;
-}
+// `deriveOptimizationOpportunities` and `deriveFusionCandidates` used to
+// live here — both scored their entries with UI-invented numbers (a
+// priority-to-percentage lookup table, and pattern-matched fusion
+// "difficulty" dressed up next to a score) rather than anything the
+// compiler measured. Removed along with the Optimization tab cards that
+// rendered them: the only real content in either — the recommendation
+// text and priority label, or the fusion pattern name — isn't chart-shaped
+// data, so it doesn't belong in a charts-only Simulation tab.
 
 function bucketCategory(category?: string, code?: string): 'shape' | 'memory' | 'parallel' | 'op' | 'config' | 'general' {
   const value = `${category ?? ''} ${code ?? ''}`.toLowerCase();
@@ -453,28 +405,24 @@ export function deriveDiagnosticsByLayer(
   return Array.from(rows.values()).slice(0, 8);
 }
 
+/**
+ * Used to also report "Diagnostics" and "Memory Fit" bars — computed from
+ * arbitrary UI-side weights (critical*0.2 + warning*0.08, and a flat +0.35
+ * offset on the VRAM ratio) that trace to nothing the compiler emits. Only
+ * the three bars below come directly from real compiler fields:
+ * `tensorResolutionRatio`, the ratio of resolved to total tensors, and
+ * `confidenceScore` itself.
+ */
 export function deriveConfidenceBars(
   analysis: AnalysisResult,
-  warnings: Warning[] = [],
 ): Array<{ label: string; value: number; fill: string }> {
-  const diagnostics = analysis.diagnostics ?? [];
-  const critical = diagnostics.filter((diagnostic) => normalizeSeverity(diagnostic.severity) === 'critical').length
-    + warnings.filter((warning) => warning.type === 'error').length;
-  const warningCount = diagnostics.filter((diagnostic) => normalizeSeverity(diagnostic.severity) === 'warning').length
-    + warnings.filter((warning) => warning.type === 'warning').length;
   const tensorConfidence = analysis.totalTensorCount > 0
     ? (1 - (analysis.unresolvedDimCount / analysis.totalTensorCount))
     : analysis.confidenceScore;
-  const diagnosticCleanliness = clamp(1 - (critical * 0.2 + warningCount * 0.08), 0, 1);
-  const memoryFit = analysis.gpuMemoryGb > 0
-    ? clamp(1 - (analysis.peakVramBytes / (analysis.gpuMemoryGb * BYTES_IN_GB)) + 0.35, 0, 1)
-    : 0.6;
 
   return [
     { label: 'Shape', value: clamp(analysis.tensorResolutionRatio * 100, 0, 100), fill: SIMULATION_COLORS.green },
     { label: 'Concrete Dims', value: clamp(tensorConfidence * 100, 0, 100), fill: SIMULATION_COLORS.teal },
-    { label: 'Diagnostics', value: clamp(diagnosticCleanliness * 100, 0, 100), fill: SIMULATION_COLORS.blue },
-    { label: 'Memory Fit', value: clamp(memoryFit * 100, 0, 100), fill: SIMULATION_COLORS.amber },
     { label: 'Overall', value: clamp(analysis.confidenceScore * 100, 0, 100), fill: SIMULATION_COLORS.indigo },
   ];
 }
@@ -551,86 +499,11 @@ export function deriveResolutionDistribution(
   return [{ name: 'Certain', value: 100, fill: SIMULATION_COLORS.green }];
 }
 
-export function derivePenaltyWaterfall(analysis: AnalysisResult): Array<{ label: string; value: number; delta: number }> {
-  const initial = 100;
-  const afterShape = initial * clamp(analysis.tensorResolutionRatio, 0, 1);
-  const hasCustomPenalty = (analysis.reportWarnings ?? []).some((warning) => /custom operations/i.test(warning));
-  const afterCustom = hasCustomPenalty ? afterShape * 0.6 : afterShape;
-  const afterDimensions = analysis.unresolvedDimCount > 0 ? afterCustom * 0.8 : afterCustom;
-  const final = clamp(analysis.confidenceScore * 100, 0, 100);
-
-  return [
-    { label: 'Initial', value: initial, delta: 0 },
-    { label: 'Shape', value: afterShape, delta: afterShape - initial },
-    { label: 'Custom Ops', value: afterCustom, delta: afterCustom - afterShape },
-    { label: 'Concrete Dims', value: afterDimensions, delta: afterDimensions - afterCustom },
-    { label: 'Final', value: final, delta: final - afterDimensions },
-  ];
-}
-
-/**
- * Layer pairs whose adjacency matches a pattern kernel fusion commonly
- * applies to (norm→attention, back-to-back linear projections, etc).
- *
- * `difficulty` is a real judgment about the pattern matched. There used to
- * be a `gainPct` alongside it — a number that looked exactly like a
- * compiler-measured speedup but was pure string-matching against a table of
- * constants (8/10/14/6/4, plus a small boost from the pair's real combined
- * FLOPs). Nothing here compiles or measures a fusion; the fix is the same
- * one already applied to Inference Intelligence's fabricated-looking
- * widgets — report what's actually known (the pattern and its difficulty),
- * not a precise-looking number nothing computed. Sort order still uses the
- * pair's real combined FLOPs share (from `perLayer`, actual backend output)
- * so the list still surfaces the highest-impact candidates first.
- */
-export function deriveFusionCandidates(
-  nodes: CanvasNode[] = [],
-  connections: Connection[] = [],
-  perLayer: PerLayerBreakdownRow[] = [],
-): Array<{ label: string; difficulty: string; rationale: string }> {
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const layerWeights = new Map(
-    perLayer.map((row) => [row.id, parseFlopsValue(row.flops)]),
-  );
-  const candidates = connections
-    .map((connection) => {
-      const source = byId.get(connection.from);
-      const target = byId.get(connection.to);
-      if (!source || !target) return null;
-      const sourceType = source.type.toLowerCase();
-      const targetType = target.type.toLowerCase();
-      let difficulty = 'Medium';
-      let rationale = 'adjacent ops with no matched fusion pattern';
-
-      if ((sourceType.includes('norm') && (targetType.includes('attention') || targetType.includes('ffn')))
-        || (targetType.includes('norm') && (sourceType.includes('attention') || sourceType.includes('ffn')))) {
-        difficulty = 'Easy';
-        rationale = 'norm + block is a standard fusion pattern';
-      } else if ((sourceType.includes('linear') || sourceType.includes('projection'))
-        && (targetType.includes('linear') || targetType.includes('projection') || targetType.includes('head'))) {
-        difficulty = 'Easy';
-        rationale = 'back-to-back projections fuse into one kernel';
-      } else if ((sourceType.includes('attention') && targetType.includes('ffn'))
-        || (sourceType.includes('conv') && targetType.includes('block'))) {
-        difficulty = 'Medium';
-        rationale = 'block-level fusion, more kernel state to manage';
-      } else if (sourceType.includes('conv') || targetType.includes('conv')) {
-        difficulty = 'Medium';
-        rationale = 'convolution fusion, shape-dependent';
-      }
-
-      const combinedFlops = (layerWeights.get(connection.from) ?? 0) + (layerWeights.get(connection.to) ?? 0);
-      return {
-        label: `${source.name || source.type} + ${target.name || target.type}`,
-        difficulty,
-        rationale,
-        combinedFlops,
-      };
-    })
-    .filter((entry): entry is { label: string; difficulty: string; rationale: string; combinedFlops: number } => entry !== null)
-    .sort((a, b) => b.combinedFlops - a.combinedFlops)
-    .slice(0, 4)
-    .map(({ label, difficulty, rationale }) => ({ label, difficulty, rationale }));
-
-  return candidates;
-}
+// `derivePenaltyWaterfall` used to live here — only its first and last
+// steps (100, and `confidenceScore * 100`) were real; the two steps in
+// between multiplied by flat constants (0.6, 0.8) that don't trace to
+// anything the compiler computes, an invented breakdown of a real number.
+// `deriveFusionCandidates` used to live here too, alongside it — pattern-
+// matched fusion "difficulty" from node-type-name string matching, not a
+// compiler measurement, self-disclosed as such in its own UI copy. Both
+// removed along with the Diagnostics/Optimization cards that rendered them.

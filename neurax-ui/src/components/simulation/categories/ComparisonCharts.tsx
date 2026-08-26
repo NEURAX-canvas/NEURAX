@@ -1,12 +1,18 @@
 import { useState, useCallback } from 'react';
 import { GitCompare, Plus, Trash2, Play, Loader2, Cpu, Zap, HardDrive, DollarSign, Thermometer, Clock, TrendingUp, AlertTriangle } from 'lucide-react';
+import {
+  Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from 'recharts';
 import { AnalysisResult } from '@/types/architecture.ts';
 import { compareAnalyses, listHardware, CompareHardwareConfig, CompareResultItem, HardwareDetail } from '@/services/neuraxApi.ts';
 import { formatBytes, formatCompactNumber } from '../simulationData.ts';
 import {
   ChartCard,
+  ChartContainer,
   ChartErrorBoundary,
   EmptyChartState,
+  chartTooltipStyle,
+  CHART_MARGINS,
 } from '../shared';
 
 interface ComparisonChartsProps {
@@ -28,6 +34,57 @@ interface ComparisonConfig {
 function formatNumber(n: number | null | undefined, decimals = 2): string {
   if (n === null || n === undefined) return '—';
   return formatCompactNumber(n, decimals);
+}
+
+const COMPARISON_COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))', 'hsl(var(--chart-2))'];
+
+/**
+ * One metric, one real horizontal bar chart. Used to be four almost-
+ * identical blocks of hand-rolled CSS divs with an inline `width: pct%` —
+ * a real chart type (recharts BarChart) does the same ranking-by-one-
+ * metric job with an actual scale and tooltip, for the same reason the
+ * Per-Layer and Optimization tabs moved off CSS bars.
+ */
+function ComparisonBar({
+  title,
+  items,
+  formatValue,
+}: {
+  title: string;
+  items: Array<{ label: string; value: number | null | undefined }>;
+  formatValue: (value: number) => string;
+}) {
+  const data = items
+    .filter((item): item is { label: string; value: number } => item.value !== null && item.value !== undefined)
+    .map((item) => ({ name: item.label, value: item.value }));
+
+  if (data.length === 0) {
+    return (
+      <ChartCard title={title}>
+        <EmptyChartState icon={TrendingUp} title="No data" description="Run the comparison to see this metric." />
+      </ChartCard>
+    );
+  }
+
+  return (
+    <ChartCard title={title}>
+      <ChartContainer>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} layout="vertical" margin={CHART_MARGINS.barHorizontal}>
+            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
+            <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={formatValue} />
+            <YAxis type="category" dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={110} />
+            <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [formatValue(value), title]} />
+            <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+              {data.map((entry, idx) => (
+                <Cell key={entry.name} fill={COMPARISON_COLORS[idx % COMPARISON_COLORS.length]} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </ChartContainer>
+    </ChartCard>
+  );
 }
 
 function extractMetric(report: Record<string, unknown>, key: string): unknown {
@@ -143,7 +200,7 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
         </div>
 
         {/* Current config summary */}
-        <ChartCard title="Current Configuration" className="!min-h-0">
+        <ChartCard title="Current Configuration" size="wide" className="!min-h-0">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-lg border border-border/60 bg-secondary/20 px-4 py-3">
               <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Current device</div>
@@ -161,7 +218,7 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
         </ChartCard>
 
         {/* Configuration cards */}
-        <ChartCard title="Hardware Configurations to Compare" action={
+        <ChartCard title="Hardware Configurations to Compare" size="wide" className="!min-h-0" action={
           <button
             onClick={addConfig}
             className="flex items-center gap-1 px-2 py-1 text-xs bg-primary/10 text-primary rounded-md hover:bg-primary/20 transition-colors"
@@ -248,7 +305,7 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
 
         {/* Results table */}
         {results.length > 0 && (
-          <ChartCard title="Comparison Results" className="overflow-x-auto">
+          <ChartCard title="Comparison Results" size="wide" className="!min-h-0 overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border">
@@ -297,15 +354,20 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
                 {results.map((result, idx) => {
                   const report = result.report as Record<string, unknown> | undefined;
 
+                  // The backend report is flat under `metrics` — there is no
+                  // `performance`/`memory`/`cost` nesting. Those paths never
+                  // matched anything, so every field below `total_parameters`
+                  // and `total_flops` silently resolved to `undefined` and
+                  // rendered as "—" for every comparison row.
                   const totalParams = extractMetric(report ?? {}, 'metrics.total_parameters') as number | undefined;
                   const totalFlops = extractMetric(report ?? {}, 'metrics.total_flops') as number | undefined;
-                  const peakVram = extractMetric(report ?? {}, 'memory.peak_vram_bytes') as number | undefined;
-                  const latency = extractMetric(report ?? {}, 'performance.latency_ms') as number | null | undefined;
-                  const throughput = extractMetric(report ?? {}, 'performance.throughput_tokens_per_s') as number | undefined;
-                  const trainingCost = extractMetric(report ?? {}, 'cost.training_cost_usd') as number | undefined;
-                  const co2 = extractMetric(report ?? {}, 'cost.co2_kg') as number | undefined;
-                  const maxBatch = extractMetric(report ?? {}, 'memory.max_batch_size_fit') as number | undefined;
-                  const gpuUtil = extractMetric(report ?? {}, 'performance.gpu_utilization') as number | null | undefined;
+                  const peakVram = extractMetric(report ?? {}, 'metrics.peak_vram_bytes') as number | undefined;
+                  const latency = extractMetric(report ?? {}, 'metrics.latency_ms') as number | null | undefined;
+                  const throughput = extractMetric(report ?? {}, 'metrics.throughput_tokens_per_s') as number | undefined;
+                  const trainingCost = extractMetric(report ?? {}, 'metrics.training_cost_usd') as number | undefined;
+                  const co2 = extractMetric(report ?? {}, 'metrics.co2_kg') as number | undefined;
+                  const maxBatch = extractMetric(report ?? {}, 'metrics.max_batch_size_fit') as number | undefined;
+                  const gpuUtil = extractMetric(report ?? {}, 'metrics.gpu_utilization') as number | null | undefined;
 
                   return (
                     <tr key={idx} className="border-b border-border/30 hover:bg-secondary/10 transition-colors">
@@ -334,151 +396,57 @@ export function ComparisonCharts({ analysis, topology }: ComparisonChartsProps) 
           </ChartCard>
         )}
 
-        {/* Visual comparison bars */}
+        {/* Visual comparison — one real chart per metric. Four separate
+            charts, not one: throughput, latency, cost and VRAM are four
+            incompatible units, and combining them on a shared axis is
+            exactly the mistake already fixed elsewhere in this tab. */}
         {results.length > 0 && results.some(r => r.report) && (
-          <ChartCard title="Visual Comparison">
-            <div className="space-y-4">
-              {/* Throughput comparison */}
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Throughput (tokens/s)</div>
-                <div className="space-y-1">
-                  {[
-                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.throughputTokensPerS },
-                    ...results.filter(r => r.report).map(r => ({
-                      label: r.label,
-                      value: extractMetric(r.report ?? {}, 'performance.throughput_tokens_per_s') as number | undefined,
-                    })),
-                  ].map((item, i) => {
-                    const maxThroughput = Math.max(
-                      analysis.throughputTokensPerS,
-                      ...results.filter(r => r.report).map(r =>
-                        (extractMetric(r.report ?? {}, 'performance.throughput_tokens_per_s') as number) || 0
-                      ),
-                      1,
-                    );
-                    const pct = item.value ? (item.value / maxThroughput) * 100 : 0;
-                    return (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
-                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-primary' : 'bg-primary/60'}`}
-                            style={{ width: `${Math.max(pct, 2)}%` }}
-                          />
-                        </div>
-                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? formatNumber(item.value) : '—'}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Latency comparison */}
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Latency (ms)</div>
-                <div className="space-y-1">
-                  {[
-                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.latencyMs },
-                    ...results.filter(r => r.report).map(r => ({
-                      label: r.label,
-                      value: extractMetric(r.report ?? {}, 'performance.latency_ms') as number | null | undefined,
-                    })),
-                  ].map((item, i) => {
-                    const allLatencies = [
-                      analysis.latencyMs,
-                      ...results.filter(r => r.report).map(r =>
-                        extractMetric(r.report ?? {}, 'performance.latency_ms') as number | null,
-                      ),
-                    ].filter((v): v is number => v !== null && v !== undefined);
-                    const maxLatency = Math.max(...allLatencies, 1);
-                    const pct = item.value ? (item.value / maxLatency) * 100 : 0;
-                    return (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
-                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-amber-500' : 'bg-amber-500/60'}`}
-                            style={{ width: `${Math.max(pct, 2)}%` }}
-                          />
-                        </div>
-                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? `${item.value.toFixed(1)}ms` : '—'}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Training cost comparison */}
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Training Cost (USD)</div>
-                <div className="space-y-1">
-                  {[
-                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.trainingCostUsd },
-                    ...results.filter(r => r.report).map(r => ({
-                      label: r.label,
-                      value: extractMetric(r.report ?? {}, 'cost.training_cost_usd') as number | undefined,
-                    })),
-                  ].map((item, i) => {
-                    const maxCost = Math.max(
-                      analysis.trainingCostUsd,
-                      ...results.filter(r => r.report).map(r =>
-                        (extractMetric(r.report ?? {}, 'cost.training_cost_usd') as number) || 0
-                      ),
-                      0.01,
-                    );
-                    const pct = item.value ? (item.value / maxCost) * 100 : 0;
-                    return (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
-                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-emerald-500' : 'bg-emerald-500/60'}`}
-                            style={{ width: `${Math.max(pct, 2)}%` }}
-                          />
-                        </div>
-                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? `$${item.value.toFixed(2)}` : '—'}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Peak VRAM comparison */}
-              <div>
-                <div className="text-xs text-muted-foreground mb-2">Peak VRAM</div>
-                <div className="space-y-1">
-                  {[
-                    { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.peakVramBytes },
-                    ...results.filter(r => r.report).map(r => ({
-                      label: r.label,
-                      value: extractMetric(r.report ?? {}, 'memory.peak_vram_bytes') as number | undefined,
-                    })),
-                  ].map((item, i) => {
-                    const maxVram = Math.max(
-                      analysis.peakVramBytes,
-                      ...results.filter(r => r.report).map(r =>
-                        (extractMetric(r.report ?? {}, 'memory.peak_vram_bytes') as number) || 0
-                      ),
-                      1,
-                    );
-                    const pct = item.value ? (item.value / maxVram) * 100 : 0;
-                    return (
-                      <div key={i} className="flex items-center gap-2">
-                        <div className="w-40 text-[11px] text-muted-foreground truncate">{item.label}</div>
-                        <div className="flex-1 h-5 bg-secondary/30 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${i === 0 ? 'bg-blue-500' : 'bg-blue-500/60'}`}
-                            style={{ width: `${Math.max(pct, 2)}%` }}
-                          />
-                        </div>
-                        <div className="w-20 text-right text-[11px] font-medium">{item.value ? formatBytes(item.value) : '—'}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </ChartCard>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ComparisonBar
+              title="Throughput (tokens/s)"
+              items={[
+                { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.throughputTokensPerS },
+                ...results.filter(r => r.report).map(r => ({
+                  label: r.label,
+                  value: extractMetric(r.report ?? {}, 'metrics.throughput_tokens_per_s') as number | undefined,
+                })),
+              ]}
+              formatValue={(v) => `${formatNumber(v)}/s`}
+            />
+            <ComparisonBar
+              title="Latency (ms)"
+              items={[
+                { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.latencyMs },
+                ...results.filter(r => r.report).map(r => ({
+                  label: r.label,
+                  value: extractMetric(r.report ?? {}, 'metrics.latency_ms') as number | null | undefined,
+                })),
+              ]}
+              formatValue={(v) => `${v.toFixed(1)}ms`}
+            />
+            <ComparisonBar
+              title="Training Cost (USD)"
+              items={[
+                { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.trainingCostUsd },
+                ...results.filter(r => r.report).map(r => ({
+                  label: r.label,
+                  value: extractMetric(r.report ?? {}, 'metrics.training_cost_usd') as number | undefined,
+                })),
+              ]}
+              formatValue={(v) => `$${v.toFixed(2)}`}
+            />
+            <ComparisonBar
+              title="Peak VRAM"
+              items={[
+                { label: `${analysis.gpuName} (${analysis.selectedPrecision})`, value: analysis.peakVramBytes },
+                ...results.filter(r => r.report).map(r => ({
+                  label: r.label,
+                  value: extractMetric(r.report ?? {}, 'metrics.peak_vram_bytes') as number | undefined,
+                })),
+              ]}
+              formatValue={(v) => formatBytes(v)}
+            />
+          </div>
         )}
       </div>
     </ChartErrorBoundary>

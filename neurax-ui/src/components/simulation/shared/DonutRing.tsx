@@ -11,9 +11,9 @@ export interface DonutRingProps {
 }
 
 function autoColor(value: number): string {
-  if (value >= 80) return '#10b981';
-  if (value >= 50) return '#f59e0b';
-  return '#ef4444';
+  if (value >= 80) return 'hsl(var(--success))';
+  if (value >= 50) return 'hsl(var(--warning))';
+  return 'hsl(var(--destructive))';
 }
 
 export function DonutRing({

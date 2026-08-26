@@ -2380,63 +2380,34 @@ async fn analyze_compare(
             // Clone the topology and override hardware section
             let mut topology = topology.clone();
 
-            // Override hardware in the topology JSON
+            // `neurax_parser::HardwareConfig` deserializes `hardware.gpus: [...]`
+            // (a list of GPU objects), never a flat `hardware.name` /
+            // `hardware.tflops_fp16`. Writing those fields directly onto the
+            // `hardware` object — as this used to do — produced JSON the
+            // parser's `RawHardware` struct has no field for, so it was
+            // silently dropped and every comparison kept re-analyzing the
+            // project's own GPU regardless of which one was requested (every
+            // config in a comparison came back identical). The override has
+            // to land inside `hardware.gpus[0]` to actually reach the parser.
+            let gpu_entry = serde_json::json!({
+                "name": cfg.hardware,
+                "count": cfg.gpu_count.unwrap_or(1),
+                "memory_gb": cfg.gpu_memory_gb.unwrap_or(gpu_spec.memory_gb),
+                "tflops_fp16": gpu_spec.tflops_fp16,
+                "tflops_fp32": gpu_spec.tflops_fp32,
+                "memory_bandwidth_gb_s": gpu_spec.memory_bandwidth_gbs,
+                "tensor_cores": gpu_spec.tensor_cores,
+                "nvlink": gpu_spec.nvlink,
+            });
             if let Some(hw) = topology.get_mut("hardware") {
                 if let Some(hw_obj) = hw.as_object_mut() {
-                    hw_obj.insert(
-                        "name".to_string(),
-                        serde_json::Value::String(cfg.hardware.clone()),
-                    );
-                    hw_obj.insert(
-                        "count".to_string(),
-                        serde_json::Value::Number(serde_json::Number::from(
-                            cfg.gpu_count.unwrap_or(1),
-                        )),
-                    );
-                    hw_obj.insert(
-                        "memory_gb".to_string(),
-                        serde_json::Value::Number(serde_json::Number::from(
-                            cfg.gpu_memory_gb.unwrap_or(gpu_spec.memory_gb),
-                        )),
-                    );
-                    hw_obj.insert(
-                        "tflops_fp16".to_string(),
-                        serde_json::json!(gpu_spec.tflops_fp16),
-                    );
-                    hw_obj.insert(
-                        "tflops_fp32".to_string(),
-                        serde_json::json!(gpu_spec.tflops_fp32),
-                    );
-                    hw_obj.insert(
-                        "memory_bandwidth_gb_s".to_string(),
-                        serde_json::json!(gpu_spec.memory_bandwidth_gbs),
-                    );
-                    hw_obj.insert(
-                        "tensor_cores".to_string(),
-                        serde_json::Value::Bool(gpu_spec.tensor_cores),
-                    );
-                    hw_obj.insert(
-                        "nvlink".to_string(),
-                        serde_json::Value::Bool(gpu_spec.nvlink),
-                    );
+                    hw_obj.insert("gpus".to_string(), serde_json::json!([gpu_entry]));
                 }
-            } else {
-                // No hardware section in topology — create one
-                if let Some(obj) = topology.as_object_mut() {
-                    obj.insert(
-                        "hardware".to_string(),
-                        serde_json::json!({
-                            "name": cfg.hardware,
-                            "count": cfg.gpu_count.unwrap_or(1),
-                            "memory_gb": cfg.gpu_memory_gb.unwrap_or(gpu_spec.memory_gb),
-                            "tflops_fp16": gpu_spec.tflops_fp16,
-                            "tflops_fp32": gpu_spec.tflops_fp32,
-                            "memory_bandwidth_gb_s": gpu_spec.memory_bandwidth_gbs,
-                            "tensor_cores": gpu_spec.tensor_cores,
-                            "nvlink": gpu_spec.nvlink,
-                        }),
-                    );
-                }
+            } else if let Some(obj) = topology.as_object_mut() {
+                obj.insert(
+                    "hardware".to_string(),
+                    serde_json::json!({ "gpus": [gpu_entry] }),
+                );
             }
 
             // Override precision if specified

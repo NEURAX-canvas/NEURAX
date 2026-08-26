@@ -1,34 +1,39 @@
 import { TrendingUp, Info, DollarSign, Clock, Zap, Leaf } from 'lucide-react';
 import { AnalysisResult } from '@/types/architecture.ts';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell,
-} from 'recharts';
-import {
   ChartCard,
-  ChartContainer,
   StatCard,
-  chartTooltipStyle,
-  chartActiveDot,
-  CHART_MARGINS,
   ChartErrorBoundary,
   EmptyChartState,
 } from '../shared';
-
 
 interface TrainingChartsProps {
   analysis?: AnalysisResult;
 }
 
-const COLORS = [
-  'hsl(var(--chart-1))',
-  'hsl(var(--chart-2))',
-  'hsl(var(--chart-3))',
-  'hsl(var(--chart-4))',
-  'hsl(var(--chart-5))',
-  'hsl(var(--chart-6))',
-];
-
+/**
+ * Three charts used to live here — Cost Breakdown, Runtime Projection, and
+ * a bar-chart version of Efficiency Metrics — and all three are gone now:
+ *
+ * - Cost Breakdown applied a fixed 70/15/10/5 compute/storage/network/other
+ *   split to any total cost, regardless of the actual model or hardware.
+ *   Nothing in the analysis says what the real split is; the split was
+ *   invented and presented as if it were.
+ * - Runtime Projection plotted cost ($), time (h) and energy (kWh) as three
+ *   lines against 10 fake "epochs" — each line was `total * (i+1)/10` by
+ *   construction, a perfectly straight ramp with no real per-epoch signal,
+ *   duplicating the four stat cards above it with three extra incompatible
+ *   units squeezed onto one shared axis.
+ * - Efficiency Metrics plotted cost/token, energy/token, co2/token (small
+ *   fractions) against GPU-hours (tens of thousands) on one bar chart —
+ *   an 8-order-of-magnitude spread that made three of the four bars read
+ *   as zero-height. Confirmed live: only the GPU Hours bar was visible.
+ *
+ * What's left is every real number those three charts touched, in the two
+ * places that were already honest about them: the stat cards below, and
+ * the value list this file now builds from the same fields Training
+ * Details already used.
+ */
 export function TrainingCharts({ analysis }: TrainingChartsProps) {
   if (!analysis || analysis.trainingTimeHours === 0) {
     return (
@@ -40,31 +45,30 @@ export function TrainingCharts({ analysis }: TrainingChartsProps) {
     );
   }
 
-  // Cost breakdown (derived from trainingCostUsd)
-  const costData = analysis.trainingCostUsd > 0
-    ? [
-      { name: 'Compute', value: analysis.trainingCostUsd * 0.7, color: COLORS[0] },
-      { name: 'Storage', value: analysis.trainingCostUsd * 0.15, color: COLORS[1] },
-      { name: 'Network', value: analysis.trainingCostUsd * 0.1, color: COLORS[2] },
-      { name: 'Other', value: analysis.trainingCostUsd * 0.05, color: COLORS[3] },
-    ]
-    : [];
-
-  // Runtime projection (simulated epochs)
-  const runtimeData = Array.from({ length: 10 }, (_, i) => ({
-    epoch: i + 1,
-    cost: (analysis.trainingCostUsd / 10) * (i + 1),
-    time: (analysis.trainingTimeHours / 10) * (i + 1),
-    energy: (analysis.energyKwh / 10) * (i + 1),
-  }));
-
-  // Efficiency metrics
-  const efficiencyData = [
-    { metric: 'Cost/Token', value: analysis.costPerMillionTokensUsd / 1000000, unit: '$' },
-    { metric: 'Energy/Token', value: analysis.energyKwh / (analysis.totalParams * 1000), unit: 'kWh' },
-    { metric: 'CO2/Token', value: analysis.co2Kg / (analysis.totalParams * 1000), unit: 'kg' },
-    { metric: 'GPU Hours', value: analysis.gpuHours || analysis.trainingTimeHours, unit: 'h' },
-  ].filter(d => d.value > 0);
+  const efficiencyRows = [
+    {
+      label: 'Cost per token',
+      value: analysis.costPerMillionTokensUsd > 0 ? `$${(analysis.costPerMillionTokensUsd / 1_000_000).toFixed(8)}` : null,
+    },
+    {
+      label: 'Energy per token',
+      value: analysis.energyKwh > 0 && analysis.totalParams > 0
+        ? `${(analysis.energyKwh / (analysis.totalParams * 1000)).toExponential(2)} kWh`
+        : null,
+    },
+    {
+      label: 'CO2 per token',
+      value: analysis.co2Kg > 0 && analysis.totalParams > 0
+        ? `${(analysis.co2Kg / (analysis.totalParams * 1000)).toExponential(2)} kg`
+        : null,
+    },
+    {
+      label: 'GPU hours',
+      value: (analysis.gpuHours ?? analysis.trainingTimeHours) > 0
+        ? `${(analysis.gpuHours ?? analysis.trainingTimeHours).toFixed(1)} h`
+        : null,
+    },
+  ].filter((row) => row.value !== null) as Array<{ label: string; value: string }>;
 
   return (
     <ChartErrorBoundary>
@@ -104,83 +108,28 @@ export function TrainingCharts({ analysis }: TrainingChartsProps) {
           />
         </div>
 
-        {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Cost Breakdown Pie Chart */}
-          <ChartCard
-            title="Cost Breakdown"
-            badge={costData.length > 0 ? { text: 'derived', variant: 'derived' } : undefined}
-          >
-            {costData.length > 0 ? (
-              <ChartContainer>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={costData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={70}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {costData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => `$${value.toFixed(0)}`} />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </ChartContainer>
+          {/* Efficiency — a list, not a chart. These four numbers span 8
+              orders of magnitude (a fraction of a cent per token vs. tens
+              of thousands of GPU-hours); no shared axis can show all four
+              without three of them reading as zero. */}
+          <ChartCard title="Efficiency" size="wide">
+            {efficiencyRows.length > 0 ? (
+              <div className="space-y-3">
+                {efficiencyRows.map((row) => (
+                  <div key={row.label} className="flex justify-between items-center text-xs">
+                    <span className="text-muted-foreground">{row.label}</span>
+                    <span className="font-mono font-semibold">{row.value}</span>
+                  </div>
+                ))}
+              </div>
             ) : (
-              <EmptyChartState
-                icon={DollarSign}
-                title="No cost breakdown"
-                description="Training cost data not available."
-              />
+              <EmptyChartState icon={Zap} title="No efficiency data" description="Run analysis to see per-token cost and energy." />
             )}
           </ChartCard>
 
-          {/* Runtime Projection Line Chart */}
-          <ChartCard title="Runtime Projection" badge={{ text: 'projected', variant: 'info' }}>
-            <ChartContainer>
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={runtimeData} margin={CHART_MARGINS.line}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                  <XAxis dataKey="epoch" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip contentStyle={chartTooltipStyle()} />
-                  <Legend wrapperStyle={{ fontSize: '11px' }} />
-                  <Line type="monotone" dataKey="cost" stroke={COLORS[0]} name="Cost ($)" strokeWidth={2} dot={false} activeDot={chartActiveDot(COLORS[0])} />
-                  <Line type="monotone" dataKey="time" stroke={COLORS[1]} name="Time (h)" strokeWidth={2} dot={false} activeDot={chartActiveDot(COLORS[1])} />
-                  <Line type="monotone" dataKey="energy" stroke={COLORS[2]} name="Energy (kWh)" strokeWidth={2} dot={false} activeDot={chartActiveDot(COLORS[2])} />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </ChartCard>
-
-          {/* Efficiency Metrics Bar Chart */}
-          <ChartCard title="Efficiency Metrics">
-            <ChartContainer>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={efficiencyData} margin={CHART_MARGINS.barHorizontal}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                  <XAxis dataKey="metric" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip
-                    contentStyle={chartTooltipStyle()}
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    formatter={(value: number, _name: string, props: any) => [`${value.toFixed(4)} ${props?.payload?.unit ?? ''}`, 'Value']}
-                  />
-                  <Bar dataKey="value" fill={COLORS[4]} radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-          </ChartCard>
-
           {/* Training Details */}
-          <ChartCard title="Training Details">
+          <ChartCard title="Training Details" size="wide">
             <div className="space-y-3">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-muted-foreground">Cost per 1M tokens</span>

@@ -19,14 +19,20 @@ export type ChartVariant = keyof typeof CHART_MARGINS;
 interface ChartContainerProps {
   className?: string;
   children: ReactNode;
-  /** Minimum height. Defaults to 192 (h-48). */
+  /**
+   * Explicit pixel height, for the rare chart that isn't sitting directly
+   * inside a `ChartCard` (or needs to be taller than its card). Most charts
+   * should omit this and let the container fill the `ChartCard`'s own
+   * `flex-1 min-h-0` content slot — one place sets the size (`ChartCard`'s
+   * `size` prop) instead of two numbers that had to be kept in sync by hand.
+   */
   minH?: number;
 }
 
 export function ChartContainer({
   className,
   children,
-  minH = 192,
+  minH,
 }: ChartContainerProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -36,8 +42,8 @@ export function ChartContainer({
 
   return (
     <div
-      className={cn('w-full', className)}
-      style={{ minHeight: minH, height: minH }}
+      className={cn('w-full', minH ? undefined : 'h-full', className)}
+      style={minH ? { minHeight: minH, height: minH } : undefined}
     >
       {mounted ? (
         children

@@ -1,18 +1,17 @@
 import { Target, Info } from 'lucide-react';
-import { AnalysisResult, CanvasNode, Connection, PerLayerBreakdownRow } from '@/types/architecture.ts';
+import { AnalysisResult, PerLayerBreakdownRow } from '@/types/architecture.ts';
 import {
   Bar, CartesianGrid, Cell, ComposedChart, Legend, Line,
   Pie, PieChart, ReferenceDot, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import {
   buildDerivedLayerMetrics,
-  deriveFusionCandidates,
-  deriveOptimizationOpportunities,
-  formatPercent,
+  formatCompactNumber,
 } from '../simulationData.ts';
 import {
   ChartCard,
   ChartContainer,
+  ChartLegend,
   chartTooltipStyle,
   chartActiveDot,
   CHART_MARGINS,
@@ -24,8 +23,6 @@ import {
 interface OptimizationChartsProps {
   analysis?: AnalysisResult;
   perLayer?: PerLayerBreakdownRow[];
-  nodes?: CanvasNode[];
-  connections?: Connection[];
 }
 
 function buildRooflineRows(analysis: AnalysisResult) {
@@ -52,8 +49,6 @@ function buildRooflineRows(analysis: AnalysisResult) {
 export function OptimizationCharts({
   analysis,
   perLayer = [],
-  nodes = [],
-  connections = [],
 }: OptimizationChartsProps) {
   if (!analysis || analysis.totalFlops === 0) {
     return (
@@ -100,9 +95,6 @@ export function OptimizationCharts({
       { name: 'Mixed', value: mixed, fill: 'hsl(var(--chart-3))' },
     ].filter((entry) => entry.value > 0);
   })();
-  const opportunities = deriveOptimizationOpportunities(analysis);
-  const fusionCandidates = deriveFusionCandidates(nodes, connections, perLayer);
-
   return (
     <ChartErrorBoundary>
       <div className="space-y-6">
@@ -113,14 +105,23 @@ export function OptimizationCharts({
           </h2>
           <div className="flex items-center gap-2 text-[11px] text-muted-foreground bg-secondary/50 px-2 py-1 rounded-md">
             <Info className="w-3 h-3" />
-            Compiler-backed hardware ceilings and bottlenecks; fusion candidates are pattern-matched, not compiler-measured
+            Compiler-backed hardware ceilings and bottlenecks
           </div>
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* 6.1 Roofline Model */}
-          <ChartCard title="Roofline Model" className="xl:col-span-2">
-            <ChartContainer minH={320}>
+        {/* `wide` and `square` cards never share a CSS grid row: a `wide`
+            card's real height comes from its ChartContainer's `minH`, a
+            `square` card's comes from `aspect-ratio` — mixed in one grid
+            row, the default `align-items: stretch` forces the square card
+            to the wide card's height while its width stays column-narrow,
+            and Recharts' ResponsiveContainer measures that mismatched box
+            and renders a cropped, off-scale chart. Each size gets its own
+            row so its own sizing rule is the only one in play. */}
+        <div className="space-y-6">
+          {/* 6.1 Roofline Model — the one real chart this tab keeps: it's the
+              only view that needs a log-log axis to be read correctly. */}
+          <ChartCard title="Roofline Model" size="wide">
+            <ChartContainer minH={340}>
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={rooflineRows} margin={CHART_MARGINS.composed}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -181,11 +182,16 @@ export function OptimizationCharts({
             </ChartContainer>
           </ChartCard>
 
-          {/* 6.2 Bottleneck Pareto */}
-          <ChartCard title="Bottleneck Pareto (80/20)">
-            <ChartContainer minH={288}>
+          {/* 6.2 Bottleneck Pareto — real per-layer FLOPs (bars, left axis)
+              against the cumulative share they add up to (line, right
+              axis): the 80/20 question a Per-Layer ranking alone can't
+              answer, since it doesn't show where the cumulative curve
+              bends. Needs both a categorical axis with real layer names
+              and a second numeric axis, so it keeps the wide exception. */}
+          <ChartCard title="Bottleneck Pareto (80/20)" size="wide">
+            <ChartContainer minH={340}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={layerRows} margin={{ ...CHART_MARGINS.composed, bottom: 36 }}>
+                <ComposedChart data={layerRows.slice(0, 8)} margin={{ ...CHART_MARGINS.composed, bottom: 36 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis
                     dataKey="name"
@@ -199,12 +205,12 @@ export function OptimizationCharts({
                     height={72}
                     tick={{ fontSize: 11 }}
                   />
-                  <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value) => `${value.toFixed(0)}G`} />
+                  <YAxis yAxisId="left" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(value: number) => formatCompactNumber(value)} />
                   <YAxis yAxisId="right" orientation="right" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
                   <Tooltip
                     contentStyle={chartTooltipStyle()}
                     formatter={(value: number, name: string) => [
-                      name === 'cumulativePct' ? `${value.toFixed(0)}%` : `${value.toFixed(2)} GFLOPs`,
+                      name === 'cumulativePct' ? `${value.toFixed(0)}%` : `${formatCompactNumber(value)}FLOPs`,
                       name === 'cumulativePct' ? 'Cumulative' : 'Layer FLOPs',
                     ]}
                   />
@@ -216,93 +222,41 @@ export function OptimizationCharts({
             </ChartContainer>
           </ChartCard>
 
-          {/* 6.3 Compute vs Memory Bound */}
+          {/* 6.3 Compute vs Memory Bound — real, three-category share of
+              `rooflinePosition`; a small donut with a legend is the
+              standard shape for a whole split into few named parts. Kept
+              to its own square footprint rather than stretched to match
+              the wide charts above it. */}
+          <div className="max-w-sm">
           <ChartCard title="Compute vs Memory Bound">
-            <ChartContainer minH={288}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={rooflineMix}
-                    dataKey="value"
-                    innerRadius={62}
-                    outerRadius={92}
-                    paddingAngle={3}
-                  >
-                    {rooflineMix.map((entry) => (
-                      <Cell key={entry.name} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value.toFixed(1)}%`, 'Share']} />
-                </PieChart>
-              </ResponsiveContainer>
-            </ChartContainer>
-            <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
-              {rooflineMix.map((entry) => (
-                <div key={entry.name} className="text-center">
-                  <div className="font-semibold" style={{ color: entry.fill }}>{entry.name}</div>
-                  <div>{entry.value.toFixed(1)}%</div>
-                </div>
-              ))}
-            </div>
-          </ChartCard>
-
-          {/* 6.4 Optimization Opportunities */}
-          <ChartCard title="Optimization Opportunities">
-            <div className="space-y-3">
-              {opportunities.map((entry) => (
-                <div key={entry.title}>
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-[11px]">{entry.title}</span>
-                    <span className="text-[11px] font-mono">{entry.score.toFixed(0)}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{
-                        width: `${entry.score}%`,
-                        backgroundColor:
-                          entry.priority === 'high'
-                            ? 'hsl(var(--chart-2))'
-                            : entry.priority === 'medium'
-                              ? 'hsl(var(--chart-3))'
-                              : 'hsl(var(--chart-1))',
-                      }}
-                    />
-                  </div>
-                  <div className="text-[11px] text-muted-foreground mt-1">{entry.description}</div>
-                </div>
-              ))}
-            </div>
-          </ChartCard>
-
-          {/* 6.5 Layer Fusion Candidates */}
-          <ChartCard title="Layer Fusion Candidates">
-            <div className="space-y-3">
-              {fusionCandidates.map((candidate) => (
-                <div key={candidate.label} className="rounded-lg bg-secondary/20 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="font-medium">{candidate.label}</span>
-                    <span
-                      className="text-[10px] font-mono uppercase tracking-wide px-1.5 py-0.5 rounded"
-                      style={{
-                        color: 'hsl(var(--chart-2))',
-                        backgroundColor: 'hsl(var(--chart-2) / 0.12)',
-                      }}
+            <div className="h-full flex flex-col">
+              <ChartContainer className="flex-1 min-h-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={rooflineMix}
+                      dataKey="value"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={85}
+                      paddingAngle={3}
                     >
-                      {candidate.difficulty}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-[11px] text-muted-foreground">
-                    {candidate.rationale} — no compiler-measured gain, a fusion pass would need to run to know the actual speedup
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 rounded-md border border-border/50 bg-secondary/10 px-3 py-2 text-[11px] text-muted-foreground">
-              Roofline position: {formatPercent(analysis.rooflinePosition, 0)} toward compute-bound. Peak utilization is approximately{' '}
-              {formatPercent((achievedTflops || 0) / Math.max(analysis.gpuTflops || 1, 1), 0)} of hardware peak.
+                      {rooflineMix.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={chartTooltipStyle()} formatter={(value: number) => [`${value.toFixed(1)}%`, 'Share']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+              <ChartLegend
+                entries={rooflineMix.map((d) => ({ name: d.name, value: d.value, color: d.fill, formattedValue: `${d.value.toFixed(1)}%` }))}
+                showPercent={false}
+              />
             </div>
           </ChartCard>
+          </div>
         </div>
       </div>
     </ChartErrorBoundary>

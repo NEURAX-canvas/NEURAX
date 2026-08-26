@@ -394,7 +394,7 @@ export function VariantPresetsPanel({
   };
 
   return (
-    <div className="h-full flex flex-col bg-card overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col bg-card overflow-hidden">
       {/* Header */}
       <div className="h-10 px-4 flex items-center justify-between border-b border-border bg-panel-header shrink-0">
         <div className="flex items-center gap-2">
@@ -444,7 +444,7 @@ export function VariantPresetsPanel({
           below the fold — see index.css's `.scrollbar-visible` for why
           `-auto` alone shows nothing at rest on the Linux desktop build's
           webview. */}
-      <div className="flex-1 overflow-y-scroll scrollbar-visible p-3 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-scroll scrollbar-visible p-3 space-y-2">
         {/* Loading state */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">

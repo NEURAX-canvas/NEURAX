@@ -15,7 +15,6 @@ const MODULE_FOR: Record<string, string> = {
   optimization: 'OptimizationCharts',
   comparison: 'ComparisonCharts',
   diagnostics: 'DebuggingCharts',
-  compilation: 'RealTimeCharts',
 };
 
 function countChartCards(module: string): number {

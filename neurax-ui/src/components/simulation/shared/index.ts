@@ -4,6 +4,9 @@ export type { ChartCardProps } from './ChartCard';
 export { DonutRing } from './DonutRing';
 export type { DonutRingProps } from './DonutRing';
 
+export { ChartLegend } from './ChartLegend';
+export type { ChartLegendEntry, ChartLegendProps } from './ChartLegend';
+
 export { StatCard } from './StatCard';
 export type { StatCardProps } from './StatCard';
 
