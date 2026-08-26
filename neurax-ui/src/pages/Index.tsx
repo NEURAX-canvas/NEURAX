@@ -87,6 +87,43 @@ import { useToast } from '@/hooks/use-toast.ts';
 import { getPluginLayers } from '@/plugins/registry.ts';
 import { hasAnalysisReportData } from '@/components/simulation/simulationData.ts';
 
+/**
+ * neurax-agent's Python catalogue (catalogue.json) describes each family's
+ * blocks with its own short type names (`mha`, `ffn`, `residual`, ...) —
+ * authored independently of this canvas's own plugin registry, which uses
+ * longer, more specific ones (`mha_attention`, `ffn_standard`,
+ * `residual_add`, ...). `add_node` below looks a tool call's `layer_type`
+ * straight up in `layerConfigByType`; when the agent's name isn't a literal
+ * key there, the node was silently dropped — no error reached the agent or
+ * the user, just a toast easy to miss mid-stream. A live build asking the
+ * agent to grow an existing GPT-2 came back as a stack of bare LayerNorms:
+ * every `mha`/`ffn`/`residual`/`swiglu` node it added was silently no-op'd,
+ * and the few types that happened to match by coincidence (`layernorm`,
+ * `embedding`) were all that survived.
+ *
+ * This is the direct fix for that: on a miss, retry the lookup through this
+ * alias before giving up. Scoped to the transformer/MoE vocabulary that's
+ * confirmed broken today — the same class of mismatch exists for other
+ * families too (e.g. `dense` → `linear_projection`, activation names like
+ * `relu`/`gelu` that aren't separate blocks on this canvas at all), left
+ * for a follow-up rather than folded in here blind.
+ */
+const AGENT_TYPE_ALIASES: Record<string, string> = {
+  mha: 'mha_attention',
+  gqa: 'gqa_attention',
+  mqa: 'mqa_attention',
+  mla: 'mla_attention',
+  ffn: 'ffn_standard',
+  swiglu: 'ffn_gated',
+  residual: 'residual_add',
+  positional_encoding: 'pos_absolute',
+  rope: 'pos_rope',
+  alibi: 'pos_alibi',
+  mamba_block: 'mamba_mixer',
+  gate: 'router_linear',
+  expert: 'expert_gated_ffn',
+};
+
 const _hashString = (input: string): string => {
   let h = 5381;
   for (let i = 0; i < input.length; i++) {
@@ -2262,7 +2299,8 @@ params: params as Record<string, ParameterValue>,
       const x = Number(args.x ?? 100);
       const y = Number(args.y ?? 100);
 
-      const cfg = layerConfigByType.get(layerType);
+      const cfg = layerConfigByType.get(layerType)
+        ?? layerConfigByType.get(AGENT_TYPE_ALIASES[layerType] ?? '');
       if (!cfg) {
         toast({
           title: 'Agent tool rejected',

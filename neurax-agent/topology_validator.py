@@ -333,4 +333,58 @@ def validate_arch_spec(
                     "Ensure all blocks are connected in a single directed chain/graph."
                 )
 
+    # 11. Transformer/MoE families need real sublayers, not just normalization.
+    #
+    # A prompt-only instruction to "keep the attention and feed-forward
+    # sublayers" is advisory — a smaller model can still ignore it under
+    # competing instructions, and silently produce a stack of nothing but
+    # LayerNorm blocks (observed live: asking to enlarge an existing GPT-2
+    # produced exactly this, with total_parameters actually *dropping*
+    # despite a larger requested hidden size and depth). Catching it here
+    # makes it a hard validation failure the existing retry loop already
+    # knows how to act on, the same way it already catches a bad num_heads.
+    ATTENTION_TYPES_BY_FAMILY = {
+        "transformer": {"mha", "gqa", "mqa", "mla"},
+        "moe": {"mha", "gqa", "mqa", "mla"},
+    }
+    FEEDFORWARD_TYPES_BY_FAMILY = {
+        "transformer": {"ffn", "swiglu"},
+        "moe": {"ffn", "swiglu", "expert", "moe_block"},
+    }
+    fam_key = str(spec.family or "").lower()
+    if fam_key in ATTENTION_TYPES_BY_FAMILY:
+        if not (present_types & ATTENTION_TYPES_BY_FAMILY[fam_key]):
+            errors.append(
+                f"A '{spec.family}' architecture has no attention block "
+                f"(expected one of {sorted(ATTENTION_TYPES_BY_FAMILY[fam_key])}) — "
+                "every decoder/encoder layer needs one, not just normalization."
+            )
+        if not (present_types & FEEDFORWARD_TYPES_BY_FAMILY[fam_key]):
+            errors.append(
+                f"A '{spec.family}' architecture has no feed-forward block "
+                f"(expected one of {sorted(FEEDFORWARD_TYPES_BY_FAMILY[fam_key])}) — "
+                "every decoder/encoder layer needs one, not just normalization."
+            )
+
+    # 12. Attention head count must evenly divide the hidden size.
+    #
+    # The compiler backend already rejects this at analyze time — this
+    # duplicates that check here so the agent's own retry loop can catch and
+    # self-correct it before ever materializing, instead of only finding out
+    # once the design is already on the user's canvas. Concretely: enlarging
+    # an existing model's hidden_size without also updating num_heads (e.g.
+    # keeping GPT-2's 12 heads after raising d_model from 768 to 1024) isn't
+    # evenly divisible — 1024 / 12 isn't an integer head_dim.
+    for node in spec.nodes:
+        p = node.params if isinstance(node.params, dict) else {}
+        hidden = p.get("hidden_size") if p.get("hidden_size") is not None else p.get("d_model")
+        heads = p.get("num_heads") if p.get("num_heads") is not None else p.get("n_heads")
+        if isinstance(hidden, (int, float)) and isinstance(heads, (int, float)) and heads:
+            if int(hidden) % int(heads) != 0:
+                errors.append(
+                    f"Node '{node.id}': hidden_size ({int(hidden)}) is not evenly "
+                    f"divisible by num_heads ({int(heads)}) — pick a head count "
+                    f"(or hidden size) where hidden_size % num_heads == 0."
+                )
+
     return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)

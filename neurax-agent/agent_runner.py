@@ -145,6 +145,11 @@ async def _run_agent(
                     creativity=creativity,
                     hw_config=hw_config,
                     strategy=[item.text for item in strategy_items],
+                    # Read before materialize's clear_canvas wipes it — lets
+                    # the planner build on what's already there instead of
+                    # guessing a whole architecture from a short edit request.
+                    existing_nodes=snapshot.get("nodes"),
+                    existing_connections=snapshot.get("connections"),
                     previous_errors=previous_errors if previous_errors else None
                 )
 

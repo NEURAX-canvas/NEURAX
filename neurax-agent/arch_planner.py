@@ -321,6 +321,8 @@ async def plan_architecture(
     hw_config: Optional[dict[str, Any]] = None,
     strategy: Optional[list[str]] = None,
     previous_errors: Optional[list[str]] = None,
+    existing_nodes: Optional[list[dict[str, Any]]] = None,
+    existing_connections: Optional[list[dict[str, Any]]] = None,
 ) -> ArchSpec:
     """
     Generate a complete architecture specification from a user request.
@@ -333,6 +335,18 @@ async def plan_architecture(
         creativity:       Float [0.0, 1.0] controlling LLM temperature
         hw_config:        Hardware/training configuration (inChannels, seqLen, etc.)
         previous_errors:  Validation errors from a previous attempt (for retry)
+        existing_nodes:       Nodes already on the canvas, if any. Every request
+            plans a brand-new spec from scratch — clear_canvas always runs
+            before materialization — so without this, "increase the hidden
+            size and add 4 layers to this model" and "build a transformer"
+            look identical to the planner: same family, same generic
+            template, zero awareness that a specific model (task type,
+            depth, block composition) already exists to build on. That's
+            what let the model's task type silently flip from causal LM to
+            classification and dropped attention/FFN from every layer on a
+            "modify" request — the LLM was designing a transformer from a
+            two-sentence request with no anchor, not editing GPT-2.
+        existing_connections:  Edges already on the canvas, if any.
 
     Returns:
         ArchSpec with nodes, edges, and rationale
@@ -405,6 +419,72 @@ async def plan_architecture(
     if strategy:
         strategy_section = "\n## Approved Strategy (FOLLOW THIS):\n" + "\n".join(f"- {s}" for s in strategy)
 
+    # Describe what's already on the canvas, if anything, so a request like
+    # "increase the hidden size and add 4 layers" edits THIS model instead of
+    # inventing a generic replacement with no memory of what it looked like.
+    existing_section = ""
+    is_modification = bool(existing_nodes)
+    if is_modification:
+        def _fmt_existing(n: dict[str, Any]) -> str:
+            nid = n.get("id", "?")
+            ntype = n.get("type", "?")
+            params = n.get("params") or {}
+            params_str = ", ".join(f"{k}={v}" for k, v in list(params.items())[:6]) if params else ""
+            line = f"  - {nid} ({ntype}){': ' + params_str if params_str else ''}"
+            # A repeated-block placeholder (the Templates catalogue's compact
+            # "layer_stack" representation — a single opaque node standing in
+            # for `num_layers` decoder blocks) carries no attention/FFN of
+            # its own to point at. Left as-is, it reads to the LLM as an
+            # empty black box, not "this already contains attention and a
+            # feed-forward sublayer" — which is exactly what let a "modify"
+            # request drop both and keep only normalization.
+            reps = params.get("num_layers") if isinstance(params, dict) else None
+            if ntype in ("custom", "layer_stack") and isinstance(reps, (int, float)) and reps:
+                line += (
+                    f"\n    (this single node stands in for {int(reps)} repeated blocks, each "
+                    f"following the family's standard per-layer pattern below — it is NOT one "
+                    f"bare block)"
+                )
+            return line
+
+        nodes_desc = "\n".join(_fmt_existing(n) for n in existing_nodes if isinstance(n, dict))
+        edges_desc = ", ".join(
+            f"{e.get('from') or e.get('from_id')}→{e.get('to') or e.get('to_id')}"
+            for e in (existing_connections or []) if isinstance(e, dict)
+        ) or "(none)"
+        existing_section = f"""
+
+## Existing Architecture — YOU ARE MODIFYING THIS, NOT DESIGNING FROM SCRATCH
+The canvas already holds this design; the user's request is a change to apply
+to it, not a brief for something new.
+Current nodes:
+{nodes_desc}
+Current edges: {edges_desc}
+
+MODIFICATION RULES:
+- Preserve the existing task type, block composition and connectivity pattern
+  (e.g. a causal language model stays a causal language model with an LM
+  head — do not silently turn it into a classifier — a decoder block keeps
+  its attention AND feed-forward sublayers, not just its normalization).
+- If a node above is noted as standing in for repeated blocks, your output
+  must EXPAND it into individual nodes — one full attention+FFN+norm set
+  per layer, for the new total layer count. Never emit a single placeholder
+  node for a whole stack of layers; the block catalogue has no such type.
+- Apply ONLY the change the user actually asked for (e.g. hidden size,
+  layer count, a specific block swap); leave everything else the way it
+  already was.
+- When adding repeated layers (e.g. "add 4 more layers"), each new layer
+  MUST follow the exact same block pattern as the existing layers shown
+  above — do not add a partial layer (e.g. normalization alone) that the
+  existing layers don't have."""
+
+    modification_hint = (
+        " This is a MODIFICATION of the existing design above — follow the "
+        "MODIFICATION RULES."
+        if is_modification
+        else ""
+    )
+
     system = f"""You are Neurax, a consultative AI architect. 
 Your task is to interpret a user's business requirements and generate a professional neural architecture specification.
 
@@ -416,7 +496,7 @@ You translate non-technical business needs (e.g., "classify documents", "detect 
 
 ## Family: {family.upper()}
 ## Design Principles
-{template}{creativity_hint}{strategy_section}
+{template}{creativity_hint}{strategy_section}{existing_section}
 
 ## Block Catalogue (ONLY use types from this list)
 {catalogue_desc}
@@ -472,7 +552,7 @@ EXAMPLE output structure (use this as a template — replace with real architect
 }}"""
 
     user_tmpl = f"""## User Request
-{user_message}
+{user_message}{modification_hint}
 
 Generate the complete architecture specification now."""
 
