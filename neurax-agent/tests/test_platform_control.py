@@ -64,6 +64,35 @@ def test_emitted_tools_actually_land_in_the_snapshot():
     assert "lr_schedule" in snapshot["hyperparams"]
 
 
+def test_clear_canvas_actually_clears():
+    """A retry after a validation failure starts with `clear_canvas`, then
+    re-adds nodes using the same generic ids (`input`, `conv1`, ...) as the
+    attempt it's replacing. If clear_canvas doesn't really empty the
+    snapshot, those ids collide with the leftover ones, get silently
+    renamed to `_2`, and every subsequent set_node_params/connect call in
+    the SAME plan — written against the id it asked for, not the one it
+    silently got — ends up mutating the stale leftover node instead of the
+    fresh one. This is exactly the corruption a real multi-round build hit.
+    """
+    snapshot = {"nodes": [], "connections": [], "family": "transformer"}
+    snapshot = _apply_tool_to_snapshot(snapshot, {"name": "add_node", "args": {"layer_type": "input", "node_id": "input", "x": 0, "y": 0}})
+    snapshot = _apply_tool_to_snapshot(snapshot, {"name": "add_node", "args": {"layer_type": "conv2d", "node_id": "conv1", "x": 100, "y": 0}})
+    snapshot = _apply_tool_to_snapshot(snapshot, {"name": "connect", "args": {"from_id": "input", "to_id": "conv1"}})
+    assert len(snapshot["nodes"]) == 2
+    assert len(snapshot["connections"]) == 1
+
+    snapshot = _apply_tool_to_snapshot(snapshot, {"name": "clear_canvas", "args": {}})
+    assert snapshot["nodes"] == []
+    assert snapshot["connections"] == []
+
+    # Re-add a node under the SAME id a cleared node used to have.
+    snapshot = _apply_tool_to_snapshot(snapshot, {"name": "add_node", "args": {"layer_type": "input", "node_id": "input", "x": 0, "y": 0}})
+    assert snapshot["nodes"][0]["id"] == "input", (
+        "add_node got renamed to avoid a collision with a node clear_canvas "
+        "claimed to have removed — clear_canvas did not actually clear."
+    )
+
+
 def test_budget_measures_the_precision_the_agent_chose():
     # The panel says fp32; the agent chose int8 for this design. The measurement
     # must follow the agent, or it checks a model nobody asked for.

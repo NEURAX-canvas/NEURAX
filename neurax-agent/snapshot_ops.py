@@ -62,9 +62,25 @@ def _apply_tool_to_snapshot(snapshot: dict[str, Any], tool: dict[str, Any]) -> d
 
     if name == "clear_canvas":
         # Wipe all nodes, edges, and cached analysis so the build starts from blank.
+        #
+        # Must reset the *local* `nodes`/`conns` lists, not just the `snapshot`
+        # dict keys: every branch in this function (including this one, until
+        # now) mutates the local copies, and the unconditional
+        # `snapshot["nodes"] = nodes` at the bottom of the function writes
+        # whatever `nodes` holds back over `snapshot["nodes"]` regardless.
+        # Setting only `snapshot["nodes"] = []` here left `nodes` holding the
+        # pre-clear list captured at the top of this call, so that stale list
+        # got written straight back a few lines later — clear_canvas never
+        # actually cleared anything. The very next add_node would then
+        # collide with the "removed" nodes, get silently auto-renamed to
+        # `_2`, while this plan's own subsequent set_node_params/connect
+        # calls kept referencing the un-renamed id — pointing at the stale
+        # leftover node instead of the fresh one. Every retry after a
+        # validation failure hit this, corrupting the canvas with orphaned,
+        # unparameterized, disconnected duplicate nodes.
         logger.info(f"🧹 CLEAR CANVAS: removed {initial_node_count} nodes, {initial_conn_count} connections")
-        snapshot["nodes"] = []
-        snapshot["connections"] = []
+        nodes = []
+        conns = []
         snapshot["groups"] = []
         snapshot["analysis_warnings"] = []
         snapshot["missing_mandatory_fields"] = list(snapshot.get("missing_mandatory_fields") or [])
