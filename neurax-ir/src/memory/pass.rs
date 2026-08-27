@@ -192,10 +192,28 @@ impl IrPass for MemoryPass {
         // ── Optimizer state memory ──────────────────────────────────────────
         // Optimizer state is expressed relative to the parameter representation
         // used by this report, so memory accounting remains internally coherent
-        // across precisions. Adam/AdamW keeps two states; SGD keeps one.
+        // across precisions. Adam/AdamW keeps two states; SGD one.
+        //
+        // "Adafactor" and "Lion" are real, reachable options in the
+        // hyperparameter panel's optimizer dropdown — both exist
+        // specifically to reduce this number, and were falling into the
+        // same *2 AdamW default as everything else, reporting no memory
+        // benefit for choosing them at all.
+        //   - Lion (Chen et al., 2023): a single sign-based momentum
+        //     buffer — the same 1x multiplier as SGD, not 2x.
+        //   - Adafactor (Shazeer & Stern, 2018): factors the second-moment
+        //     matrix into a row vector + column vector per parameter
+        //     tensor instead of storing it in full — sublinear in the
+        //     tensor's element count, not a flat fraction of it. A single
+        //     multiplier can't represent that exactly (it depends on each
+        //     tensor's actual shape, which this pass doesn't have), so 0.25
+        //     is a documented approximation — closer to Adafactor's real
+        //     cost than treating it as identical to AdamW's full 2x, not a
+        //     precise per-tensor factoring.
         let optimizer_state_bytes = if is_training {
             match ctx.config.training.optimizer.to_lowercase().as_str() {
-                "sgd" => parameter_memory_bytes,
+                "sgd" | "lion" => parameter_memory_bytes,
+                "adafactor" => (parameter_memory_bytes as f64 * 0.25).round() as u64,
                 _ => parameter_memory_bytes * 2,
             }
         } else {

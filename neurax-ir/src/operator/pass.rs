@@ -622,13 +622,48 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
+        // S4/H3/StateSpace are non-selective: A/B/C are plain learned
+        // weights, not the output of Mamba's own input-dependent
+        // projections — `mamba_flops`'s `in_proj` term prices exactly that
+        // selectivity mechanism, which these three don't have. `s4_flops`/
+        // `h3_flops` already existed with the right shape (S4's FFT-based
+        // O(S log S) convolution instead of Mamba's O(S) selective scan,
+        // H3's two-SSM-layer structure) but were never called from
+        // anywhere in the live pipeline.
+        LayerType::S4Block | LayerType::StateSpace => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let state_dim = layer.params.state_dim.unwrap_or(16);
+            let flops = neurax_formulas::ssm::s4_flops(batch, seq, hidden, state_dim);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::H3Block => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let state_dim = layer.params.state_dim.unwrap_or(16);
+            let flops = neurax_formulas::ssm::h3_flops(batch, seq, hidden, state_dim);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
         // State Space Model layer types
-        LayerType::MambaBlock
-        | LayerType::S4Block
-        | LayerType::H3Block
-        | LayerType::StateSpace
-        | LayerType::RwkvBlock
-        | LayerType::RetentionBlock => {
+        LayerType::MambaBlock | LayerType::RwkvBlock | LayerType::RetentionBlock => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let state_dim = layer.params.state_dim.unwrap_or(16);
             let expand = layer.params.expansion_factor.unwrap_or(2);

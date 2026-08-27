@@ -161,13 +161,21 @@ pub fn inception_module_params(
 
 /// Compute parameters for MBConv (MobileNet Inverted Residual Block)
 ///
-/// Structure: 1×1 expand → 3×3/5×5 depthwise → 1×1 project
+/// Structure: 1×1 expand → 3×3/5×5 depthwise → (Squeeze-and-Excitation) →
+/// 1×1 project. SE (Hu et al., 2018) is what separates MobileNetV3 and
+/// EfficientNet's blocks from plain MobileNetV2's — two small FC layers
+/// (implemented as 1×1 convs) on the globally-pooled features, squeezing to
+/// `expanded / se_reduction_ratio` and back. Optional because plain
+/// MobileNetV2 blocks genuinely have none.
+#[allow(clippy::too_many_arguments)]
 pub fn mbconv_params(
     in_channels: usize,
     out_channels: usize,
     expand_factor: usize,
     kernel_size: usize,
     stride: usize,
+    se: bool,
+    se_reduction_ratio: usize,
     bias: bool,
 ) -> u64 {
     let _ = stride; // Reserved for future stride-aware parameter calculation
@@ -185,11 +193,19 @@ pub fn mbconv_params(
     let depthwise =
         (expanded * kernel_size * kernel_size + BN_TRAINABLE_PARAMS_PER_CHANNEL * expanded) as u64; // depthwise + BN
 
+    // Squeeze-and-Excitation: squeeze expanded -> expanded/r, excite back.
+    let se_params = if se {
+        let reduced = (expanded / se_reduction_ratio.max(1)).max(1);
+        (2 * expanded * reduced) as u64
+    } else {
+        0
+    };
+
     // Projection phase (always present, no bias in original MobileNet)
     let project = conv_params(expanded, out_channels, 1, false)
         + (BN_TRAINABLE_PARAMS_PER_CHANNEL * out_channels) as u64;
 
-    expand_params + depthwise + project
+    expand_params + depthwise + se_params + project
 }
 
 /// Compute parameters for DenseNet Dense Block
@@ -385,6 +401,8 @@ pub fn mbconv_flops(
     expand_factor: usize,
     kernel_size: usize,
     stride: usize,
+    se: bool,
+    se_reduction_ratio: usize,
 ) -> f64 {
     let expanded = in_channels * expand_factor;
     let out_h = height / stride;
@@ -406,11 +424,20 @@ pub fn mbconv_flops(
         * kernel_size as f64
         * kernel_size as f64;
 
+    // Squeeze-and-Excitation: global average pool (negligible) + two small
+    // FC layers on the pooled [B, expanded] vector.
+    let se_flops = if se {
+        let reduced = (expanded / se_reduction_ratio.max(1)).max(1);
+        2.0 * batch as f64 * expanded as f64 * reduced as f64 * 2.0
+    } else {
+        0.0
+    };
+
     // Projection
     let project_flops =
         2.0 * batch as f64 * out_channels as f64 * out_h as f64 * out_w as f64 * expanded as f64;
 
-    expand_flops + depthwise_flops + project_flops
+    expand_flops + depthwise_flops + se_flops + project_flops
 }
 
 #[cfg(test)]
@@ -459,9 +486,29 @@ mod tests {
 
     #[test]
     fn test_mbconv() {
-        // MobileNetV2 style: 32 → 16, expand ×6, 3×3 depthwise.
-        let params = mbconv_params(32, 16, 6, 3, 1, false);
+        // MobileNetV2 style: 32 → 16, expand ×6, 3×3 depthwise, no SE.
+        let params = mbconv_params(32, 16, 6, 3, 1, false, 4, false);
         assert_eq!(params, 11_744);
+    }
+
+    #[test]
+    fn test_mbconv_with_se_costs_more_than_without() {
+        // EfficientNet/MobileNetV3 style: same shape, SE block enabled —
+        // `se: bool` existed on LayerParams but nothing ever read it, so a
+        // real EfficientNet's SE blocks were silently costed as zero.
+        let without_se = mbconv_params(32, 16, 6, 3, 1, false, 4, false);
+        let with_se = mbconv_params(32, 16, 6, 3, 1, true, 4, false);
+        assert!(with_se > without_se);
+
+        // 2 * expanded * (expanded/reduction) = 2 * 192 * 48 = 18,432
+        assert_eq!(with_se - without_se, 18_432);
+    }
+
+    #[test]
+    fn test_mbconv_flops_with_se_costs_more_than_without() {
+        let without_se = mbconv_flops(1, 32, 16, 224, 224, 6, 3, 1, false, 4);
+        let with_se = mbconv_flops(1, 32, 16, 224, 224, 6, 3, 1, true, 4);
+        assert!(with_se > without_se);
     }
 
     #[test]

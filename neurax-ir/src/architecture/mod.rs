@@ -181,7 +181,17 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let expand = layer.params.expansion_factor.unwrap_or(6);
             let kernel = layer.params.kernel_size.unwrap_or(3);
             let stride = layer.params.stride.unwrap_or(1);
-            cnn_blocks::mbconv_params(in_ch, out_ch, expand, kernel, stride, layer.params.bias)
+            let se_reduction = layer.params.se_reduction_ratio.unwrap_or(4);
+            cnn_blocks::mbconv_params(
+                in_ch,
+                out_ch,
+                expand,
+                kernel,
+                stride,
+                layer.params.se,
+                se_reduction,
+                layer.params.bias,
+            )
         }
         LayerType::Inception => {
             let in_ch = layer.params.in_channels.unwrap_or(288);
@@ -235,6 +245,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let expansion = layer.params.expansion_factor.unwrap_or(2);
             ssm::mamba_params(hidden, state_dim, expansion)
         }
+        // Parameter count reuses Mamba's formula — a known approximation,
+        // not a considered exact one: S4/H3 lack Mamba's selective
+        // (input-dependent) B/C/Δ projections, so the real weight count
+        // differs in composition, though it stays the same order of
+        // magnitude (dominated by the same d_inner × state_dim state
+        // matrices either way). The FLOPs side does have real, distinct
+        // formulas (`s4_flops`/`h3_flops`, see operator/pass.rs) — the
+        // params side does not yet.
         LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let state_dim = layer.params.state_dim.unwrap_or(16);

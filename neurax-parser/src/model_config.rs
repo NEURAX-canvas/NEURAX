@@ -497,6 +497,7 @@ pub struct LayerParams {
     pub bottleneck_width: Option<usize>, // ResNeXt bottleneck width
     pub groups: Option<usize>,           // Grouped convolutions
     pub se: bool,                        // Squeeze-and-Excitation
+    pub se_reduction_ratio: Option<usize>, // SE squeeze ratio (EfficientNet/MobileNetV3 default: 4)
     pub h_swish: bool,                   // MobileNet-V3 activation
     pub pool_type: Option<String>,       // max, avg, global
     pub num_classes: Option<usize>,
@@ -646,6 +647,7 @@ impl LayerParams {
             bottleneck_width: raw.get_usize("bottleneck_width"),
             groups: raw.get_usize("groups"),
             se: raw.get_bool("se").unwrap_or(false),
+            se_reduction_ratio: raw.get_usize("se_reduction_ratio").or_else(|| raw.get_usize("reduction_ratio")),
             h_swish: raw.get_bool("h_swish").unwrap_or(false),
             pool_type: raw.get_string("pool_type"),
             num_classes: raw.get_usize("num_classes"),
