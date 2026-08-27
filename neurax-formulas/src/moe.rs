@@ -95,33 +95,6 @@ pub fn moe_active_params_with_shared(
     (router_params as u64) + routed_experts + shared_expert_params
 }
 
-/// Compute FLOPs for sparse MoE (with load balancing)
-pub fn sparse_moe_flops(
-    batch: usize,
-    seq_len: usize,
-    hidden_size: usize,
-    num_experts: usize,
-    top_k: usize,
-    expert_flops: f64,
-    capacity_factor: f64,
-) -> f64 {
-    let _ = capacity_factor; // Reserved for future capacity-aware routing
-                             // Standard MoE FLOPs
-    let base_flops = moe_flops(
-        batch,
-        seq_len,
-        hidden_size,
-        num_experts,
-        top_k,
-        expert_flops,
-    );
-
-    // Load balancing auxiliary loss
-    let aux_loss_flops = 2.0 * batch as f64 * seq_len as f64 * num_experts as f64;
-
-    base_flops + aux_loss_flops
-}
-
 /// Estimate expert utilization in MoE
 pub fn moe_expert_utilization(
     num_experts: usize,
