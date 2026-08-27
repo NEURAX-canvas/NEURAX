@@ -1681,6 +1681,11 @@ function cnnBlockOutputShape(blockType: string, params: Record<string, any> | un
     }
     case 'GlobalPool':
       return [B, C, 1, 1];
+    case 'Upsample': {
+      const scale = Number(p.scale_factor ?? 2);
+      const outC = Number(p.out_channels ?? C);
+      return [B, outC, Math.max(1, Math.round(H * scale)), Math.max(1, Math.round(W * scale))];
+    }
     case 'Flatten':
       return [B, C * H * W];
     case 'DenseProjection': {
@@ -1719,18 +1724,18 @@ function cnnBlockOutputShape(blockType: string, params: Record<string, any> | un
 }
 
 /**
- * Propagates shapes along the graph's real edges for a CNN, starting from
- * whatever the entry blocks (directly connected from the canvas's `input`
- * node, which never appears in `flatBlocks` itself) actually see: a real
- * `[B, C, H, W]` image tensor, not a sequence model's placeholder.
+ * Propagates shapes along a graph's real edges, starting from whatever the
+ * entry blocks (directly connected from the canvas's `input` node, which
+ * never appears in `flatBlocks` itself) actually see — a real per-family
+ * tensor shape, not a sequence model's `[batch, seq, hidden]` placeholder.
+ * `shapeFn` supplies the actual per-block-type arithmetic; this function
+ * only owns getting blocks visited in dependency order.
  */
-function computeCnnShapes(
+function computeShapesViaGraph(
   flatBlocks: NeuraxBlock[],
   connections: Connection[],
-  batch: number,
-  inChannels: number,
-  imgHeight: number,
-  imgWidth: number,
+  entryShape: ShapeVec,
+  shapeFn: (blockType: string, params: Record<string, any> | undefined | null, inputShapes: ShapeVec[]) => ShapeVec,
 ): Map<string, { input: ShapeVec; output: ShapeVec }> {
   const shapes = new Map<string, { input: ShapeVec; output: ShapeVec }>();
   const byId = new Map(flatBlocks.map((b) => [b.id, b]));
@@ -1740,7 +1745,6 @@ function computeCnnShapes(
     if (byId.has(c.to) && byId.has(c.from)) predsOf.get(c.to)!.push(c.from);
   }
 
-  const entryShape: ShapeVec = [batch, inChannels, imgHeight, imgWidth];
   const pending = new Set(flatBlocks.map((b) => b.id));
   const queue: string[] = flatBlocks
     .filter((b) => (predsOf.get(b.id) ?? []).length === 0)
@@ -1763,7 +1767,7 @@ function computeCnnShapes(
     const inputShapes = preds.length > 0
       ? preds.map((p) => shapes.get(p)?.output ?? entryShape)
       : [entryShape];
-    const outputShape = cnnBlockOutputShape(block.type, block.params, inputShapes);
+    const outputShape = shapeFn(block.type, block.params, inputShapes);
     shapes.set(id, { input: inputShapes[0], output: outputShape });
     pending.delete(id);
     for (const c of connections) {
@@ -1774,6 +1778,79 @@ function computeCnnShapes(
     shapes.set(id, { input: entryShape, output: entryShape });
   }
   return shapes;
+}
+
+function computeCnnShapes(
+  flatBlocks: NeuraxBlock[],
+  connections: Connection[],
+  batch: number,
+  inChannels: number,
+  imgHeight: number,
+  imgWidth: number,
+): Map<string, { input: ShapeVec; output: ShapeVec }> {
+  return computeShapesViaGraph(flatBlocks, connections, [batch, inChannels, imgHeight, imgWidth], cnnBlockOutputShape);
+}
+
+/**
+ * GNN's tensor convention is `[batch, num_nodes, node_features]`, not an
+ * image's `[B, C, H, W]` — a graph conv layer changes the feature
+ * dimension (like a per-node dense layer), while node count only changes
+ * at an explicit pooling/coarsening block. Reuses the same graph-traversal
+ * engine as CNN with GNN-appropriate arithmetic instead.
+ */
+function gnnBlockOutputShape(blockType: string, params: Record<string, any> | undefined | null, inputShapes: ShapeVec[]): ShapeVec {
+  const primary = inputShapes[0] ?? [1, 1, 1];
+  const [B, N, F] = [primary[0] ?? 1, primary[1] ?? 1, primary[2] ?? 1];
+  const p = params ?? {};
+
+  switch (blockType) {
+    case 'GCNConv':
+    case 'SAGEConv':
+    case 'GINConv':
+    case 'ChebConv':
+    case 'RGCNConv':
+    case 'TAGConv':
+    case 'ClusterGCNConv':
+    case 'EdgeConv': {
+      const outF = Number(p.out_channels ?? p.out_features ?? F);
+      return [B, N, outF];
+    }
+    case 'GATConv':
+    case 'GATv2Conv': {
+      // Multi-head attention concatenates head outputs unless told not to.
+      const perHead = Number(p.out_channels ?? p.out_features ?? F);
+      const heads = Number(p.num_heads ?? p.heads ?? 1);
+      const concatHeads = p.concat !== false;
+      return [B, N, concatHeads ? perHead * heads : perHead];
+    }
+    case 'TopKPooling':
+    case 'SAGPool': {
+      const ratio = Number(p.ratio ?? 0.5);
+      return [B, Math.max(1, Math.round(N * ratio)), F];
+    }
+    case 'GlobalMeanPool':
+    case 'GlobalMaxPool':
+    case 'GlobalAddPool':
+      // Graph-level readout: pools across all nodes into one vector.
+      return [B, F];
+    case 'DenseProjection': {
+      const inFeatures = primary.length === 2 ? primary[1] : F;
+      const outFeatures = Number(p.out_features ?? p.num_classes ?? inFeatures);
+      return [B, outFeatures];
+    }
+    default:
+      return primary;
+  }
+}
+
+function computeGnnShapes(
+  flatBlocks: NeuraxBlock[],
+  connections: Connection[],
+  batch: number,
+  numNodes: number,
+  nodeFeatDim: number,
+): Map<string, { input: ShapeVec; output: ShapeVec }> {
+  return computeShapesViaGraph(flatBlocks, connections, [batch, numNodes, nodeFeatDim], gnnBlockOutputShape);
 }
 
 function toParserModelType(family: ArchitectureFamily): string {
@@ -2578,7 +2655,13 @@ export function compileToNeuraxIR(
   // Use numeric shapes: [batch, seq_len, hidden_dim] or derived from params
   const batch = batchSize ?? 1;
   const seq = resolvedSeqLen ?? 128;
-  const hidden = hiddenDim ?? 768;
+  // RNN's own hwConfig preset sets `hiddenSize` (its own field, distinct
+  // from the transformer-oriented `hiddenDim`) — falls back to it before
+  // the hardcoded default so an RNN build's actual configured hidden size
+  // reaches shape inference instead of silently landing on 0. `||`, not
+  // `??`: `hiddenDim` defaults to a real `0` (not null/undefined) whenever
+  // a family's own preset doesn't set it, and 0 is never a valid size.
+  const hidden = hiddenDim || hiddenSize || 768;
 
   const flatBlocks = flattenBlocks(blocks).filter((block) => block.ui_node_type !== 'input' && block.ui_node_type !== 'output');
 
@@ -2597,8 +2680,23 @@ export function compileToNeuraxIR(
     return t === 'attention' || t === 'mlp';
   });
 
-  const cnnShapes = family === 'cnn'
-    ? computeCnnShapes(flatBlocks, connections, batch, inChannels ?? 3, imgHeight ?? 224, imgWidth ?? 224)
+  // gan and diffusion are the same [B, C, H, W] image convention cnn is —
+  // same conv/pool/upsample arithmetic, same graph-propagation engine.
+  // Defaults mirror each family's own hwConfig preset (diffusion starts
+  // smaller: 64px, 4 latent channels, vs. cnn/gan's 224px/64px RGB).
+  const isImageFamily = family === 'cnn' || family === 'gan' || family === 'diffusion';
+  const imageDefaultRes = family === 'diffusion' ? 64 : family === 'gan' ? 64 : 224;
+  const imageDefaultChannels = family === 'diffusion' ? 4 : 3;
+  const cnnShapes = isImageFamily
+    ? computeCnnShapes(
+        flatBlocks, connections, batch,
+        inChannels ?? imageDefaultChannels,
+        imgHeight ?? imageDefaultRes,
+        imgWidth ?? imageDefaultRes,
+      )
+    : null;
+  const gnnShapes = family === 'gnn'
+    ? computeGnnShapes(flatBlocks, connections, batch, numNodes ?? 2708, nodeFeatDim ?? 16)
     : null;
 
   const layers: NeuraxLayer[] = flatBlocks.map(block => {
@@ -2608,10 +2706,10 @@ export function compileToNeuraxIR(
 
     const p = block.params ?? {};
 
-    const cnnShape = cnnShapes?.get(block.id);
-    if (cnnShape) {
-      inputShape = cnnShape.input;
-      outputShape = cnnShape.output;
+    const graphShape = cnnShapes?.get(block.id) ?? gnnShapes?.get(block.id);
+    if (graphShape) {
+      inputShape = graphShape.input;
+      outputShape = graphShape.output;
     } else switch (block.type) {
       case 'Input': {
         inputShape = [];
