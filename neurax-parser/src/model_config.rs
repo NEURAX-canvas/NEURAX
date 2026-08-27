@@ -213,12 +213,18 @@ pub enum LayerType {
     /// GAT-style graph attention — the same shape as `GraphConvNet` but with
     /// per-edge attention weights, computed per head.
     GraphAttentionNet,
-    /// A generic message-passing layer (MPNN, GraphSAGE, GIN, RGCN, ...) that
-    /// doesn't specialise into GCN or GAT — modelled as the same linear
+    /// A generic message-passing layer (MPNN, GraphSAGE, GIN, ...) that
+    /// doesn't specialise into GCN, GAT or RGCN — modelled as the same linear
     /// transform `GraphConvNet` uses. Not exact for every variant (GIN's
     /// 2-layer MLP aggregator in particular), but real and non-zero, where
     /// this used to fall through to `Custom` and cost nothing at all.
     MessagePassing,
+    /// Relational GCN (Schlichtkrull et al., 2018) — a weight matrix per
+    /// relation type (or a shared basis decomposition), not the single
+    /// shared matrix `GraphConvNet`/`MessagePassing` use. Used to fall
+    /// through to a generic Conv2D match on the canvas side, costing it as
+    /// an image convolution with no relation-aware weight at all.
+    RgcnConv,
     // Custom layer with user-defined equations
     Custom,
 }
@@ -296,6 +302,7 @@ impl LayerType {
             "graph_conv" | "gcn_conv" | "gcn" | "graph_convolution" => Ok(Self::GraphConvNet),
             "graph_attention" | "gat_attention" | "gat_conv" | "gat" => Ok(Self::GraphAttentionNet),
             "message_passing" | "mpnn" | "graph_sage" | "graphsage" => Ok(Self::MessagePassing),
+            "rgcn_conv" | "rgcn" | "relational_gcn" => Ok(Self::RgcnConv),
             // Custom layer
             "custom" | "custom_layer" | "user_defined" => Ok(Self::Custom),
             _ => Err(ParserError::InvalidLayerType(s.to_string())),
@@ -366,6 +373,7 @@ impl LayerType {
             Self::GraphConvNet => "graph_conv",
             Self::GraphAttentionNet => "graph_attention",
             Self::MessagePassing => "message_passing",
+            Self::RgcnConv => "rgcn_conv",
             // Custom
             Self::Custom => "custom",
         }
@@ -410,6 +418,16 @@ pub struct LayerParams {
     // Dense/Linear parameters
     pub in_features: Option<usize>,
     pub out_features: Option<usize>,
+
+    // RGCN parameters
+    /// Number of distinct edge/relation types (e.g. FB15k: 1,345) — an RGCN
+    /// layer keeps a separate weight matrix per relation.
+    pub num_relations: Option<usize>,
+    /// Basis decomposition size — when set and smaller than `num_relations`,
+    /// relation weights are a shared combination of this many basis
+    /// matrices instead of one full matrix each (Schlichtkrull et al. 2018's
+    /// regularization for graphs with many relation types).
+    pub num_bases: Option<usize>,
 
     // Conv parameters
     pub kernel_size: Option<usize>,
@@ -555,6 +573,9 @@ impl LayerParams {
             // Dense/Linear parameters
             in_features: raw.get_usize("in_features"),
             out_features: raw.get_usize("out_features"),
+            // RGCN parameters
+            num_relations: raw.get_usize("num_relations"),
+            num_bases: raw.get_usize("num_bases"),
             kernel_size: raw.get_usize("kernel_size"),
             kernel_h: raw.get_usize("kernel_h"),
             kernel_w: raw.get_usize("kernel_w"),

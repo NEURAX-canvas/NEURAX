@@ -331,9 +331,10 @@ fn propagate_shape(
         // handled by the operator/architecture passes' own in/out-features
         // reading; this pass is reserved for future shape inference and
         // isn't in the live pipeline yet, see this function's doc comment)
-        LayerType::GraphConvNet | LayerType::GraphAttentionNet | LayerType::MessagePassing => {
-            Shape::known(input.to_vec())
-        }
+        LayerType::GraphConvNet
+        | LayerType::GraphAttentionNet
+        | LayerType::MessagePassing
+        | LayerType::RgcnConv => Shape::known(input.to_vec()),
         // Custom layer - preserve input shape
         LayerType::Custom => Shape::known(input.to_vec()),
     }

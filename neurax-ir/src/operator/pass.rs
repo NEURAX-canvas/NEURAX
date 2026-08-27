@@ -720,6 +720,26 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
+        LayerType::RgcnConv => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            let num_relations = layer.params.num_relations.unwrap_or(1);
+            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
+            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
+            let flops =
+                gnn::rgcn_flops(num_nodes, in_features, out_features, num_edges, num_relations);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
+                output_shape: Shape::known(vec![num_nodes, out_features]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
         // Custom layer - use custom equations if provided
         LayerType::Custom => {
             let hidden = layer.params.hidden_size.unwrap_or(512);

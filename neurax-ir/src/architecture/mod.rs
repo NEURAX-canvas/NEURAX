@@ -354,9 +354,11 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         // wired here for the first time: these three used to fall through to
         // `Custom` with no `param_count` supplied, costing 0 regardless of
         // the design. `MessagePassing` reuses the GCN linear-transform shape
-        // rather than a dedicated formula — exact for GraphSAGE/RGCN-style
-        // layers, an approximation for GIN's 2-layer MLP aggregator, but a
-        // real, non-zero number either way.
+        // rather than a dedicated formula — an approximation for
+        // GraphSAGE/GIN's own aggregators, but a real, non-zero number
+        // either way. RGCN gets its own arm below: a shared single matrix
+        // understates it badly once there's more than a couple of relation
+        // types (real knowledge graphs: hundreds).
         LayerType::GraphConvNet | LayerType::MessagePassing => {
             let in_features = layer.params.in_features.unwrap_or(64);
             let out_features = layer.params.out_features.unwrap_or(64);
@@ -367,6 +369,18 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let out_features = layer.params.out_features.unwrap_or(64);
             let num_heads = layer.params.num_heads.unwrap_or(8);
             gnn::gat_params(in_features, out_features, num_heads, layer.params.bias)
+        }
+        LayerType::RgcnConv => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            let num_relations = layer.params.num_relations.unwrap_or(1);
+            gnn::rgcn_params(
+                in_features,
+                out_features,
+                num_relations,
+                layer.params.num_bases,
+                layer.params.bias,
+            )
         }
         // Custom layer - use param_count if provided, else estimate from shapes
         LayerType::Custom => {

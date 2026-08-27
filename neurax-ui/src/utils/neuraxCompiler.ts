@@ -1240,6 +1240,13 @@ function toParserLayerType(blockType: string): string {
   ) {
     return 'message_passing';
   }
+  // rgcn_conv used to fall through to the generic `.includes('conv')` catch-all
+  // below and get costed as a plain Conv2D (in_channels/out_channels/kernel) —
+  // a weight matrix per relation type (num_relations) is what actually makes
+  // an RGCN layer expensive, and it has none of a Conv2D's params at all.
+  if (normalized === 'rgcn_conv' || normalized === 'rgcn' || normalized === 'relational_gcn') {
+    return 'rgcn_conv';
+  }
 
   if (
     normalized === 'embedding' ||
