@@ -223,13 +223,14 @@ pub enum DiagnosticCode {
     E004, // Unsupported layer
     E005, // Cycle in graph
 
-    // Warnings (W001-W006) - Precision reduced
+    // Warnings (W001-W007) - Precision reduced
     W001, // Custom layer without formula
     W002, // Symbolic dimensions remaining
     W003, // ZeRO not recommended
     W004, // Flash Attention not enabled
     W005, // Memory close to GPU limit
     W006, // Inefficient parallelism
+    W007, // Cross-layer shape mismatch
 
     // Info (I001-I003) - Observations
     I001, // GQA detected
@@ -258,6 +259,7 @@ impl DiagnosticCode {
             Self::W004 => "W004",
             Self::W005 => "W005",
             Self::W006 => "W006",
+            Self::W007 => "W007",
             Self::I001 => "I001",
             Self::I002 => "I002",
             Self::I003 => "I003",
@@ -282,6 +284,7 @@ impl DiagnosticCode {
             Self::W004 => "Flash Attention not enabled",
             Self::W005 => "Memory usage close to GPU limit",
             Self::W006 => "Inefficient parallelism strategy",
+            Self::W007 => "A layer's declared input shape does not match the previous layer's output shape",
             Self::I001 => "Grouped Query Attention (GQA) detected",
             Self::I002 => "Mixture of Experts (MoE) detected",
             Self::I003 => "Flash Attention detected",

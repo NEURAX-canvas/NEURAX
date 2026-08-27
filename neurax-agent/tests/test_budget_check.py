@@ -75,6 +75,53 @@ def test_a_design_over_budget_fails_and_says_by_how_much():
     assert "Model size" in feedback[0]
 
 
+# ─── Per-layer shapes for sequence families ────────────────────────────
+#
+# A real bug: an agent-built transformer had a positional_encoding/output_head
+# layer whose hidden size disagreed with the layer right before it — invisible
+# to `measure_and_check` because `spec_to_topology` sent no shapes at all, so
+# the compiler's own cross-layer check (which only runs when shapes are
+# present) never had anything to compare.
+
+def test_sequence_families_get_a_real_per_node_hidden_dim_threaded_through():
+    topo = spec_to_topology(TINY, HW)
+    layers = {l["id"]: l for l in topo["model"]["layers"]}
+    # "emb" declares hidden_size 64; "attn" right after it must see that as
+    # its own input, not a placeholder.
+    assert layers["attn"]["input_shape"] == [1, 1, 64]
+    assert layers["attn"]["output_shape"] == [1, 1, 64]
+
+
+def test_a_node_with_a_mismatched_hidden_size_carries_its_own_declared_shape():
+    mismatched = ArchSpec.from_dict({
+        "family": "transformer",
+        "nodes": [
+            {"id": "attn", "type": "mha_attention", "params": {"hidden_size": 768, "num_heads": 12}},
+            {"id": "posenc", "type": "positional_encoding", "params": {"hidden_size": 512}},
+        ],
+        "edges": [{"from": "attn", "to": "posenc"}],
+    })
+    topo = spec_to_topology(mismatched, HW)
+    layers = {l["id"]: l for l in topo["model"]["layers"]}
+    # "posenc" inherits attn's actual output as its declared input...
+    assert layers["posenc"]["input_shape"] == [1, 1, 768]
+    # ...but states its own, different, hidden size as its output — exactly
+    # the disagreement the compiler's cross-layer check exists to catch.
+    assert layers["posenc"]["output_shape"] == [1, 1, 512]
+
+
+def test_non_sequence_families_get_no_fabricated_shapes():
+    cnn_spec = ArchSpec.from_dict({
+        "family": "cnn",
+        "nodes": [{"id": "c1", "type": "conv2d", "params": {"in_channels": 3, "out_channels": 16}}],
+        "edges": [],
+    })
+    topo = spec_to_topology(cnn_spec, HW)
+    layer = topo["model"]["layers"][0]
+    assert "input_shape" not in layer
+    assert "output_shape" not in layer
+
+
 def test_no_budget_means_no_constraint():
     budget = extract_budget("build me something nice")
     report = asyncio.run(measure_and_check(TINY, budget, HW))
@@ -110,6 +157,23 @@ def test_blocking_diagnostics_keeps_only_what_stops_a_design():
     blocking = report.blocking_diagnostics()
     assert len(blocking) == 1
     assert "954.5 GB" in blocking[0]["message"]
+
+
+def test_a_shape_mismatch_blocks_even_though_the_compiler_only_calls_it_a_warning():
+    """W007 must reach the planner even at 'warning' severity.
+
+    The compiler can't always tell a real cross-layer mismatch from a merge
+    point it has no representation for, so it reports this conservatively.
+    An agent's own freshly-planned design has no such excuse: it should never
+    disagree with itself, so this side treats it as blocking regardless.
+    """
+    report = BudgetReport(
+        fits=True,
+        diagnostics=[_diag("Warning", "posenc declares 512 but attn produced 768", code="W007")],
+    )
+    blocking = report.blocking_diagnostics()
+    assert len(blocking) == 1
+    assert blocking[0]["code"] == "W007"
 
 
 def test_a_design_that_fits_the_budget_still_reports_a_blocking_diagnostic():

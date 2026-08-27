@@ -337,6 +337,7 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
 
         // Generate diagnostics
         report.diagnostics = generate_diagnostics(&report.metrics, &input.memory);
+        report.diagnostics.extend(check_shape_consistency(input.graph));
         report.metrics.diagnostic_count = report.diagnostics.len(); // Update count
 
         // Generate recommendations
@@ -385,6 +386,73 @@ fn compute_confidence_score(
     }
 
     score.clamp(0.0, 1.0)
+}
+
+/// Flag a layer whose declared input shape does not match the single
+/// upstream layer feeding it.
+///
+/// Restricted to nodes with exactly one incoming edge: a merge point (concat,
+/// add from a skip connection) legitimately combines tensors of different
+/// shape, so comparing against just one of several predecessors would be a
+/// false positive rather than a real inconsistency. Shapes are compared
+/// skipping the batch dimension, and only when both sides are non-empty and
+/// of equal rank — an omitted shape is a missing-input problem (see
+/// `unresolved_dim_count`), not a mismatch.
+fn check_shape_consistency(graph: &GraphIR) -> Vec<Diagnostic> {
+    use petgraph::visit::EdgeRef;
+    use petgraph::Direction;
+
+    let mut diagnostics = Vec::new();
+
+    for &idx in &graph.topo_order {
+        let mut incoming = graph.dag.edges_directed(idx, Direction::Incoming);
+        let (Some(edge), None) = (incoming.next(), incoming.next()) else {
+            continue; // no predecessor, or a merge — not checked here
+        };
+        let Some(node) = graph.dag.node_weight(idx) else {
+            continue;
+        };
+        let Some(prev) = graph.dag.node_weight(edge.source()) else {
+            continue;
+        };
+
+        let Some(declared_input) = node.input_shapes.first() else {
+            continue;
+        };
+        if declared_input.is_empty() || prev.output_shape.is_empty() {
+            continue;
+        }
+        if declared_input.len() != prev.output_shape.len() {
+            continue;
+        }
+        let matches = declared_input
+            .iter()
+            .skip(1)
+            .zip(prev.output_shape.iter().skip(1))
+            .all(|(a, b)| a == b);
+        if matches {
+            continue;
+        }
+
+        diagnostics.push(Diagnostic {
+            category: DiagnosticCategory::ShapeInference,
+            severity: Severity::Warning,
+            code: DiagnosticCode::W007,
+            message: format!(
+                "Layer '{}' declares input shape {:?}, but '{}' right before it \
+                 produces {:?}. Downstream shapes past this point are unreliable.",
+                node.layer_id, declared_input, prev.layer_id, prev.output_shape
+            ),
+            layer_id: Some(node.layer_id.clone()),
+            suggestion: Some(format!(
+                "Recompute '{}' from '{}'s actual output rather than a fixed value.",
+                node.layer_id, prev.layer_id
+            )),
+            precision_impact: 0.5,
+        });
+    }
+
+    diagnostics
 }
 
 /// Check if custom layers have custom equations defined

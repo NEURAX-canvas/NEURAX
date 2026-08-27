@@ -186,11 +186,22 @@ class BudgetReport:
         that exceeds the target GPU is a design that cannot run, and no budget
         check would catch it — the model may be well under the size limit and
         still never start.
+
+        W007 (a layer's declared input shape disagreeing with what the layer
+        before it produces) is included here even though the compiler reports
+        it at "warning" severity — it stays a warning there because a linear
+        list is all the compiler ever sees, so it cannot always tell a real
+        mismatch from a merge point it has no representation for. But on this
+        side, a design an agent just planned has no legitimate reason to
+        disagree with itself layer-to-layer, so it is treated as blocking:
+        this is what lets the planner catch and fix a mismatched hidden size
+        before the client ever sees it, instead of only after materializing.
         """
         return [
             d
             for d in self.diagnostics
             if str(d.get("severity", "")).lower() in {"critical", "error"}
+            or str(d.get("code", "")).upper() == "W007"
         ]
 
     def summary(self) -> str:
@@ -248,6 +259,30 @@ class BudgetReport:
         return messages
 
 
+#: Families the compiler models as [batch, sequence, hidden] end to end. CNN,
+#: GNN and diffusion need real conv/pool/graph arithmetic to know a shape —
+#: that engine exists client-side (`neuraxCompiler.ts`) and runs once the
+#: canvas has the design, which is too late for a pre-materialization check.
+#: A sequence model's hidden dim, by contrast, is a scalar each node already
+#: states in its own params, which is enough to catch the bug this exists
+#: for: one node's `hidden_size` disagreeing with the node right before it.
+_SEQUENCE_SHAPE_FAMILIES = {"transformer", "moe", "ssm", "rnn"}
+
+#: Param keys that carry a node's own hidden/embedding width, checked in
+#: order — the catalogue spells this differently per family (`hidden_size`
+#: for attention/MLP blocks, `d_model` in some presets, `dim` on a few norm
+#: layers).
+_HIDDEN_DIM_KEYS = ("hidden_size", "d_model", "hidden_dim", "embed_dim", "dim")
+
+
+def _node_hidden_dim(params: dict[str, Any]) -> Optional[int]:
+    for key in _HIDDEN_DIM_KEYS:
+        value = params.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+            return int(value)
+    return None
+
+
 def spec_to_topology(
     spec: Any,
     hw_config: dict[str, Any] | None = None,
@@ -258,15 +293,35 @@ def spec_to_topology(
     # precision while the agent asked for int8 would check a different model.
     hw = {**(hw_config or {}), **(getattr(spec, "hw_config", None) or {})}
     precision = hw.get("precision") or "fp16"
+    family = str(getattr(spec, "family", "") or "").lower()
+
+    # Threaded forward across nodes in topological order (the planner emits
+    # `spec.nodes` that way already) so each node's declared input shape is
+    # the previous node's actual output — the same shape the compiler will
+    # see once this design reaches the canvas. Left at 0 (shape omitted)
+    # until a node states a real width; a self-check with no width to check
+    # is silent rather than reporting a false mismatch.
+    batch = int(hw.get("batchSize") or 1)
+    seq = int(hw.get("seqLen") or hw.get("sequenceLength") or 1)
+    running_hidden = int(hw.get("hiddenDim") or hw.get("hiddenSize") or 0)
+    thread_shapes = family in _SEQUENCE_SHAPE_FAMILIES
 
     layers = []
     for node in spec.nodes:
         raw_type = str(getattr(node, "type", "")).lower()
+        params = dict(getattr(node, "params", {}) or {})
         layer = {
             "id": getattr(node, "id", f"layer_{len(layers)}"),
             "layer_type": LAYER_TYPE_MAP.get(raw_type, raw_type),
-            "params": dict(getattr(node, "params", {}) or {}),
+            "params": params,
         }
+        if thread_shapes:
+            if running_hidden > 0:
+                layer["input_shape"] = [batch, seq, running_hidden]
+            node_hidden = _node_hidden_dim(params) or running_hidden
+            if node_hidden > 0:
+                layer["output_shape"] = [batch, seq, node_hidden]
+            running_hidden = node_hidden
         equations = dict(getattr(node, "custom_equations", {}) or {})
         if equations:
             layer["custom_equations"] = equations

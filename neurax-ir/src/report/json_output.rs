@@ -281,6 +281,7 @@ pub struct BehavioralMetricsOutput {
 pub struct DiagnosticOutput {
     pub category: String,
     pub severity: String,
+    pub code: String,
     pub message: String,
     pub layer_id: Option<String>,
     pub suggestion: Option<String>,
@@ -602,6 +603,7 @@ impl From<&crate::report::Diagnostic> for DiagnosticOutput {
         Self {
             category: format!("{:?}", d.category).to_lowercase(),
             severity: format!("{:?}", d.severity).to_lowercase(),
+            code: d.code.as_str().to_string(),
             message: d.message.clone(),
             layer_id: d.layer_id.clone(),
             suggestion: d.suggestion.clone(),
