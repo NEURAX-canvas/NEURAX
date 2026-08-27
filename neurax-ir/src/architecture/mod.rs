@@ -608,7 +608,8 @@ pub fn scaled_active_parameters(config: &neurax_parser::ModelConfig) -> u64 {
                     let num_experts = layer.params.num_experts.unwrap_or(8);
                     let top_k = layer.params.top_k.unwrap_or(2).min(num_experts);
                     let shared_experts = layer.params.shared_experts.unwrap_or(0);
-                    let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
+                    let expert_params =
+                        mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
                     moe::moe_active_params_with_shared(
                         hidden,
                         num_experts,

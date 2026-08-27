@@ -145,7 +145,11 @@ impl IrPass for MemoryPass {
         // `batch * seq_len(default 2048) * hidden_size(default 512) * num_layers`
         // guess applied identically to every family, CNN included — visibly
         // wrong for anything that isn't a plain [batch, seq, hidden] model.
-        let liveness_sum_bytes: u64 = output.liveness.iter().map(|interval| interval.size_bytes).sum();
+        let liveness_sum_bytes: u64 = output
+            .liveness
+            .iter()
+            .map(|interval| interval.size_bytes)
+            .sum();
 
         // Gradient checkpointing reduces activation memory to ~sqrt(L) layers kept
         // Formula: sqrt(num_layers) / num_layers for L layers

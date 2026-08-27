@@ -37,8 +37,16 @@ fn rgcn_parses_as_its_own_layer_type_not_conv() {
 
 #[test]
 fn more_relations_means_more_parameters() {
-    let few = analyze_json(&rgcn_json(2)).unwrap().arch.metrics.total_parameters;
-    let many = analyze_json(&rgcn_json(50)).unwrap().arch.metrics.total_parameters;
+    let few = analyze_json(&rgcn_json(2))
+        .unwrap()
+        .arch
+        .metrics
+        .total_parameters;
+    let many = analyze_json(&rgcn_json(50))
+        .unwrap()
+        .arch
+        .metrics
+        .total_parameters;
     assert!(
         many > few,
         "an RGCN with 50 relation types must cost more than one with 2 — got {many} vs {few}"
@@ -49,7 +57,11 @@ fn more_relations_means_more_parameters() {
 fn a_plain_conv2d_with_the_same_channel_numbers_costs_a_different_amount() {
     // The exact bug this fixes: rgcn_conv used to be indistinguishable from
     // a Conv2D with in_channels/out_channels matching in/out_features.
-    let rgcn = analyze_json(&rgcn_json(5)).unwrap().arch.metrics.total_parameters;
+    let rgcn = analyze_json(&rgcn_json(5))
+        .unwrap()
+        .arch
+        .metrics
+        .total_parameters;
 
     let conv_json = r#"
     {
@@ -66,7 +78,11 @@ fn a_plain_conv2d_with_the_same_channel_numbers_costs_a_different_amount() {
         "data": {"dtype": "fp32"}
     }
     "#;
-    let conv = analyze_json(conv_json).unwrap().arch.metrics.total_parameters;
+    let conv = analyze_json(conv_json)
+        .unwrap()
+        .arch
+        .metrics
+        .total_parameters;
 
     assert_ne!(
         rgcn, conv,

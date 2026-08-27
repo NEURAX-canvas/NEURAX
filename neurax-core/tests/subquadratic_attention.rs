@@ -30,7 +30,11 @@ fn attention_json(extra_params: &str) -> String {
 
 #[test]
 fn a_sliding_window_costs_less_than_dense_at_long_context() {
-    let dense = analyze_json(&attention_json("")).unwrap().compute.metrics.total_flops;
+    let dense = analyze_json(&attention_json(""))
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
     let windowed = analyze_json(&attention_json(r#","window_size": 4096"#))
         .unwrap()
         .compute
@@ -49,7 +53,11 @@ fn a_sliding_window_costs_less_than_dense_at_long_context() {
 
 #[test]
 fn block_sparse_attention_also_costs_less_than_dense() {
-    let dense = analyze_json(&attention_json("")).unwrap().compute.metrics.total_flops;
+    let dense = analyze_json(&attention_json(""))
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
     let sparse = analyze_json(&attention_json(r#","block_size": 64"#))
         .unwrap()
         .compute

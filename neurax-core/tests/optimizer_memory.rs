@@ -27,17 +27,36 @@ fn model_json(optimizer: &str) -> String {
 
 #[test]
 fn lion_costs_the_same_as_sgd_not_adamw() {
-    let sgd = analyze_json(&model_json("sgd")).unwrap().memory.metrics.optimizer_state_bytes;
-    let lion = analyze_json(&model_json("lion")).unwrap().memory.metrics.optimizer_state_bytes;
-    let adamw = analyze_json(&model_json("adamw")).unwrap().memory.metrics.optimizer_state_bytes;
+    let sgd = analyze_json(&model_json("sgd"))
+        .unwrap()
+        .memory
+        .metrics
+        .optimizer_state_bytes;
+    let lion = analyze_json(&model_json("lion"))
+        .unwrap()
+        .memory
+        .metrics
+        .optimizer_state_bytes;
+    let adamw = analyze_json(&model_json("adamw"))
+        .unwrap()
+        .memory
+        .metrics
+        .optimizer_state_bytes;
 
     assert_eq!(lion, sgd, "Lion has one momentum buffer, same as SGD");
-    assert!(lion < adamw, "Lion must report less memory than AdamW's two states");
+    assert!(
+        lion < adamw,
+        "Lion must report less memory than AdamW's two states"
+    );
 }
 
 #[test]
 fn adafactor_costs_less_than_adamw() {
-    let adamw = analyze_json(&model_json("adamw")).unwrap().memory.metrics.optimizer_state_bytes;
+    let adamw = analyze_json(&model_json("adamw"))
+        .unwrap()
+        .memory
+        .metrics
+        .optimizer_state_bytes;
     let adafactor = analyze_json(&model_json("adafactor"))
         .unwrap()
         .memory

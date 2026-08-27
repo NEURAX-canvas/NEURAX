@@ -96,5 +96,8 @@ fn stays_silent_on_a_chain_whose_shapes_actually_line_up() {
         .diagnostics
         .iter()
         .any(|d| matches!(d.code, neurax_ir::DiagnosticCode::W007));
-    assert!(!hit, "a coherent chain should not raise a shape-mismatch diagnostic");
+    assert!(
+        !hit,
+        "a coherent chain should not raise a shape-mismatch diagnostic"
+    );
 }

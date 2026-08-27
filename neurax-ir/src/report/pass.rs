@@ -337,7 +337,9 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
 
         // Generate diagnostics
         report.diagnostics = generate_diagnostics(&report.metrics, &input.memory);
-        report.diagnostics.extend(check_shape_consistency(input.graph));
+        report
+            .diagnostics
+            .extend(check_shape_consistency(input.graph));
         report.metrics.diagnostic_count = report.diagnostics.len(); // Update count
 
         // Generate recommendations

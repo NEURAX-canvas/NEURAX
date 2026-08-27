@@ -30,8 +30,16 @@ fn ssm_json(layer_type: &str) -> String {
 
 #[test]
 fn s4_and_mamba_report_different_flops_for_the_same_shape() {
-    let mamba = analyze_json(&ssm_json("mamba_block")).unwrap().compute.metrics.total_flops;
-    let s4 = analyze_json(&ssm_json("s4_block")).unwrap().compute.metrics.total_flops;
+    let mamba = analyze_json(&ssm_json("mamba_block"))
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
+    let s4 = analyze_json(&ssm_json("s4_block"))
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
     assert_ne!(
         mamba, s4,
         "S4 (non-selective) should not report the identical FLOPs Mamba (selective) does"
@@ -40,15 +48,27 @@ fn s4_and_mamba_report_different_flops_for_the_same_shape() {
 
 #[test]
 fn h3_and_mamba_report_different_flops_for_the_same_shape() {
-    let mamba = analyze_json(&ssm_json("mamba_block")).unwrap().compute.metrics.total_flops;
-    let h3 = analyze_json(&ssm_json("h3_block")).unwrap().compute.metrics.total_flops;
+    let mamba = analyze_json(&ssm_json("mamba_block"))
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
+    let h3 = analyze_json(&ssm_json("h3_block"))
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
     assert_ne!(mamba, h3);
 }
 
 #[test]
 fn all_three_still_compile_to_nonzero_real_numbers() {
     for layer_type in ["mamba_block", "s4_block", "h3_block", "state_space"] {
-        let flops = analyze_json(&ssm_json(layer_type)).unwrap().compute.metrics.total_flops;
+        let flops = analyze_json(&ssm_json(layer_type))
+            .unwrap()
+            .compute
+            .metrics
+            .total_flops;
         assert!(flops > 0.0, "{layer_type} should report nonzero FLOPs");
     }
 }

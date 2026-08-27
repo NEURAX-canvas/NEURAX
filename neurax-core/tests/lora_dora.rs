@@ -61,7 +61,10 @@ fn dora_costs_slightly_more_than_lora() {
         .metrics
         .total_parameters;
 
-    assert!(dora > lora, "DoRA's magnitude vector should add some parameters over plain LoRA");
+    assert!(
+        dora > lora,
+        "DoRA's magnitude vector should add some parameters over plain LoRA"
+    );
     assert!(
         dora < lora * 2,
         "DoRA shouldn't cost anywhere close to double LoRA — got {dora} vs {lora}"

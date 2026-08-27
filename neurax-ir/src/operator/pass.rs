@@ -179,8 +179,9 @@ fn decompose_layer_to_ops(
                 output_shape: crate::tensor::Shape::known(vec![batch, seq, dim]),
                 flops: embedding::embedding_flops(batch, seq, dim),
                 param_count: (vocab * dim) as u64,
-                activation_memory: ((batch * seq * dim) as f64 * neurax_formulas::dtype_bytes(dtype))
-                    .round() as u64,
+                activation_memory: ((batch * seq * dim) as f64
+                    * neurax_formulas::dtype_bytes(dtype))
+                .round() as u64,
                 is_custom: false,
             });
         }
@@ -577,7 +578,14 @@ fn decompose_layer_to_ops(
                 let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
                 let cardinality = layer.params.cardinality.unwrap_or(1);
                 cnn_blocks::resnet_bottleneck_block_flops(
-                    batch, in_ch, mid_ch, out_ch, side, side, stride, cardinality,
+                    batch,
+                    in_ch,
+                    mid_ch,
+                    out_ch,
+                    side,
+                    side,
+                    stride,
+                    cardinality,
                 )
             } else {
                 cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, stride)
@@ -810,8 +818,13 @@ fn decompose_layer_to_ops(
             let num_relations = layer.params.num_relations.unwrap_or(1);
             let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
             let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
-            let flops =
-                gnn::rgcn_flops(num_nodes, in_features, out_features, num_edges, num_relations);
+            let flops = gnn::rgcn_flops(
+                num_nodes,
+                in_features,
+                out_features,
+                num_edges,
+                num_relations,
+            );
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Linear,

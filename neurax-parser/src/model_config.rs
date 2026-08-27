@@ -60,7 +60,10 @@ impl Model {
         let connections = raw
             .connections
             .into_iter()
-            .map(|c| Connection { from: c.from, to: c.to })
+            .map(|c| Connection {
+                from: c.from,
+                to: c.to,
+            })
             .collect();
 
         Ok(Self {
@@ -492,14 +495,14 @@ pub struct LayerParams {
     pub num_blocks: Option<usize>,
     pub num_layers: Option<usize>, // Number of layers in a block
     pub expand_ratio: Option<usize>,
-    pub cardinality: Option<usize>,      // ResNeXt groups
-    pub bottleneck: bool,                // ResNet bottleneck
-    pub bottleneck_width: Option<usize>, // ResNeXt bottleneck width
-    pub groups: Option<usize>,           // Grouped convolutions
-    pub se: bool,                        // Squeeze-and-Excitation
+    pub cardinality: Option<usize>,        // ResNeXt groups
+    pub bottleneck: bool,                  // ResNet bottleneck
+    pub bottleneck_width: Option<usize>,   // ResNeXt bottleneck width
+    pub groups: Option<usize>,             // Grouped convolutions
+    pub se: bool,                          // Squeeze-and-Excitation
     pub se_reduction_ratio: Option<usize>, // SE squeeze ratio (EfficientNet/MobileNetV3 default: 4)
-    pub h_swish: bool,                   // MobileNet-V3 activation
-    pub pool_type: Option<String>,       // max, avg, global
+    pub h_swish: bool,                     // MobileNet-V3 activation
+    pub pool_type: Option<String>,         // max, avg, global
     pub num_classes: Option<usize>,
     pub num_anchors: Option<usize>,     // YOLO
     pub growth_rate: Option<usize>,     // DenseNet
@@ -647,7 +650,9 @@ impl LayerParams {
             bottleneck_width: raw.get_usize("bottleneck_width"),
             groups: raw.get_usize("groups"),
             se: raw.get_bool("se").unwrap_or(false),
-            se_reduction_ratio: raw.get_usize("se_reduction_ratio").or_else(|| raw.get_usize("reduction_ratio")),
+            se_reduction_ratio: raw
+                .get_usize("se_reduction_ratio")
+                .or_else(|| raw.get_usize("reduction_ratio")),
             h_swish: raw.get_bool("h_swish").unwrap_or(false),
             pool_type: raw.get_string("pool_type"),
             num_classes: raw.get_usize("num_classes"),

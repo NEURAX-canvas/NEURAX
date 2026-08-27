@@ -183,7 +183,11 @@ mod tests {
         let expert_params = 500_000u64;
 
         let active = moe_active_params_with_shared(
-            hidden, num_experts, top_k, shared_experts, expert_params,
+            hidden,
+            num_experts,
+            top_k,
+            shared_experts,
+            expert_params,
         );
         let router = (hidden * num_experts) as u64;
         let routed = top_k as u64 * expert_params;
@@ -195,6 +199,9 @@ mod tests {
         // top_k/num_experts would have under-counted this.
         let total = moe_params_with_shared(hidden, 0, num_experts, shared_experts, expert_params);
         let old_wrong = (total as f64 * top_k as f64 / num_experts as f64).round() as u64;
-        assert!(active > old_wrong, "the fix must count more than the flat-scaling bug did");
+        assert!(
+            active > old_wrong,
+            "the fix must count more than the flat-scaling bug did"
+        );
     }
 }

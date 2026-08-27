@@ -50,7 +50,11 @@ fn timesteps_multiply_the_reported_cost() {
     let with_steps = diffusion_json(Some(50), None);
 
     let one_pass = analyze_json(&baseline).unwrap().compute.metrics.total_flops;
-    let fifty_steps = analyze_json(&with_steps).unwrap().compute.metrics.total_flops;
+    let fifty_steps = analyze_json(&with_steps)
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
 
     assert!(
         (fifty_steps / one_pass - 50.0).abs() < 0.01,
@@ -64,7 +68,11 @@ fn classifier_free_guidance_doubles_it_again() {
     let with_steps = diffusion_json(Some(50), None);
     let with_cfg = diffusion_json(Some(50), Some(7.5));
 
-    let without_guidance = analyze_json(&with_steps).unwrap().compute.metrics.total_flops;
+    let without_guidance = analyze_json(&with_steps)
+        .unwrap()
+        .compute
+        .metrics
+        .total_flops;
     let with_guidance = analyze_json(&with_cfg).unwrap().compute.metrics.total_flops;
 
     assert!(
@@ -87,6 +95,12 @@ fn a_real_sdxl_shaped_config_reflects_both_factors_in_latency_too() {
     let latency_ratio =
         full_sample.hardware.metrics.latency_ms / one_pass.hardware.metrics.latency_ms;
 
-    assert!((flops_ratio - 2000.0).abs() < 1.0, "flops ratio: {flops_ratio}");
-    assert!((latency_ratio - 2000.0).abs() < 1.0, "latency ratio: {latency_ratio}");
+    assert!(
+        (flops_ratio - 2000.0).abs() < 1.0,
+        "flops ratio: {flops_ratio}"
+    );
+    assert!(
+        (latency_ratio - 2000.0).abs() < 1.0,
+        "latency ratio: {latency_ratio}"
+    );
 }

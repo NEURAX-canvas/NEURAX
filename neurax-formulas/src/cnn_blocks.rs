@@ -109,7 +109,11 @@ pub fn resnet_bottleneck_block_flops(
     let conv1 = 2.0 * b * mid_channels as f64 * height as f64 * width as f64 * in_channels as f64;
     // 3×3 conv, at the (possibly strided) output resolution — grouped when
     // cardinality > 1, same reduction the parameter count above applies.
-    let conv2 = 2.0 * b * mid_channels as f64 * out_h as f64 * out_w as f64
+    let conv2 = 2.0
+        * b
+        * mid_channels as f64
+        * out_h as f64
+        * out_w as f64
         * (mid_channels as f64 / cardinality)
         * 9.0;
     // 1×1 expansion, at output resolution.
@@ -475,7 +479,10 @@ mod tests {
         // (and only its weight count) should divide by 32 versus cardinality=1.
         let plain = resnet_bottleneck_block_params(256, 128, 512, 1, 1, false);
         let grouped = resnet_bottleneck_block_params(256, 128, 512, 1, 32, false);
-        assert!(grouped < plain, "grouping the middle conv must reduce total params");
+        assert!(
+            grouped < plain,
+            "grouping the middle conv must reduce total params"
+        );
 
         let conv1 = conv_params(256, 128, 1, false);
         let conv3 = conv_params(128, 512, 1, false);

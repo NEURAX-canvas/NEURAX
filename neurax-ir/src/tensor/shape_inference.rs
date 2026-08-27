@@ -118,7 +118,11 @@ fn image_output_shape(layer_type: LayerType, params: &LayerParams, input: &[usiz
     }
 }
 
-fn sequence_output_shape(layer_type: LayerType, params: &LayerParams, input: &[usize]) -> Vec<usize> {
+fn sequence_output_shape(
+    layer_type: LayerType,
+    params: &LayerParams,
+    input: &[usize],
+) -> Vec<usize> {
     if layer_type == LayerType::Embedding && input.len() == 2 {
         let hidden = params.embedding_dim.or(params.hidden_size).unwrap_or(512);
         return vec![input[0], input[1], hidden];
@@ -156,7 +160,10 @@ fn infer_output_shape(
 /// output) shape from its real predecessor's actual output — not array
 /// position. A client-declared shape is never overwritten, only filled in
 /// when empty, so a caller that already sends its own shapes sees no change.
-pub fn infer_shapes(graph: &GraphIR, config: &ModelConfig) -> HashMap<String, (Vec<usize>, Vec<usize>)> {
+pub fn infer_shapes(
+    graph: &GraphIR,
+    config: &ModelConfig,
+) -> HashMap<String, (Vec<usize>, Vec<usize>)> {
     let family = shape_family(config.model.model_type);
     let batch = config.training.batch_size;
     let params_by_id: HashMap<&str, &LayerParams> = config

@@ -284,7 +284,9 @@ impl DiagnosticCode {
             Self::W004 => "Flash Attention not enabled",
             Self::W005 => "Memory usage close to GPU limit",
             Self::W006 => "Inefficient parallelism strategy",
-            Self::W007 => "A layer's declared input shape does not match the previous layer's output shape",
+            Self::W007 => {
+                "A layer's declared input shape does not match the previous layer's output shape"
+            }
             Self::I001 => "Grouped Query Attention (GQA) detected",
             Self::I002 => "Mixture of Experts (MoE) detected",
             Self::I003 => "Flash Attention detected",

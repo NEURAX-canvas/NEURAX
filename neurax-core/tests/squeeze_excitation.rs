@@ -34,7 +34,11 @@ fn a_block_with_se_costs_more_than_without() {
         .arch
         .metrics
         .total_parameters;
-    let with_se = analyze_json(&mbconv_json(true)).unwrap().arch.metrics.total_parameters;
+    let with_se = analyze_json(&mbconv_json(true))
+        .unwrap()
+        .arch
+        .metrics
+        .total_parameters;
 
     assert!(
         with_se > without_se,
