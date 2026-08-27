@@ -8,69 +8,72 @@
 
 @layer base {
   :root {
-    /* ── Gruvbox Light — the mark's own palette, worn by the product ──
-     * Values are exact HSL conversions of real Gruvbox hex (bg0_h #f9f5d7,
-     * bg1 #ebdbb2, fg1 #3c3836, gold #b57614, ...), not approximated —
-     * the same colors the NEURAX spider mark already uses, finally shared
-     * by the interface around it instead of sitting on a generic indigo. */
-    --background: 53 74% 91%;
-    --foreground: 20 5% 22%;
+    /* ── White + blue, not white + brown ──
+     * First pass whitened the background but kept Gruvbox's gold accent
+     * (37 80% 39%, an amber/brown hue) and warm-tinted (hue ~20-40) grays —
+     * still read as "white-brown" overall. This pass cools every neutral to
+     * a true blue-gray (hue 217-220) and swaps the accent for a clean blue
+     * (221 83% 53%), everywhere the old gold appeared: primary/accent/ring/
+     * sidebar-primary/sidebar-ring/canvas-connection. Semantic status colors
+     * (destructive/warning/success/info) are untouched — they're red/orange/
+     * green/cyan already, not brown. */
+    --background: 0 0% 100%;
+    --foreground: 220 9% 18%;
 
-    --card: 48 87% 88%;
-    --card-foreground: 20 5% 22%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 9% 18%;
 
-    --popover: 46 67% 84%;
-    --popover-foreground: 20 5% 22%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 9% 18%;
 
-    /* Gruvbox gold, darkened for contrast on a light ground */
-    --primary: 37 80% 39%;
-    --primary-foreground: 48 87% 94%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 43 59% 81%;
-    --secondary-foreground: 20 5% 22%;
+    --secondary: 217 20% 96%;
+    --secondary-foreground: 220 9% 18%;
 
-    --muted: 43 59% 81%;
-    --muted-foreground: 28 11% 44%;
+    --muted: 217 20% 96%;
+    --muted-foreground: 220 9% 40%;
 
-    --accent: 37 80% 39%;
-    --accent-foreground: 48 87% 94%;
+    --accent: 221 83% 53%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 358 100% 31%;
-    --destructive-foreground: 48 87% 94%;
+    --destructive-foreground: 0 0% 100%;
 
     --warning: 19 97% 35%;
-    --warning-foreground: 48 87% 94%;
+    --warning-foreground: 0 0% 100%;
 
     --success: 57 79% 26%;
-    --success-foreground: 48 87% 94%;
+    --success-foreground: 0 0% 100%;
 
     --info: 190 89% 25%;
-    --info-foreground: 48 87% 94%;
+    --info-foreground: 0 0% 100%;
 
-    --border: 40 38% 73%;
-    --input: 43 59% 81%;
-    --ring: 37 80% 39%;
+    --border: 217 15% 90%;
+    --input: 217 20% 96%;
+    --ring: 221 83% 53%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 46 67% 84%;
-    --sidebar-foreground: 20 5% 22%;
-    --sidebar-primary: 37 80% 39%;
-    --sidebar-primary-foreground: 48 87% 94%;
-    --sidebar-accent: 43 59% 81%;
-    --sidebar-accent-foreground: 20 5% 22%;
-    --sidebar-border: 40 38% 73%;
-    --sidebar-ring: 37 80% 39%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 220 9% 18%;
+    --sidebar-primary: 221 83% 53%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 217 20% 96%;
+    --sidebar-accent-foreground: 220 9% 18%;
+    --sidebar-border: 217 15% 90%;
+    --sidebar-ring: 221 83% 53%;
 
     /* Canvas specific */
-    --canvas-bg: 53 74% 91%;
-    --canvas-grid: 40 38% 73%;
-    --canvas-node: 48 87% 88%;
-    --canvas-node-border: 40 38% 73%;
-    --canvas-connection: 37 80% 39%;
+    --canvas-bg: 0 0% 100%;
+    --canvas-grid: 217 15% 90%;
+    --canvas-node: 0 0% 100%;
+    --canvas-node-border: 217 15% 90%;
+    --canvas-connection: 221 83% 53%;
 
     /* Panel specific */
-    --panel-header: 46 67% 84%;
+    --panel-header: 0 0% 100%;
 
     /* Chart colors — Gruvbox's own accent set, not a separate palette */
     --chart-1: 37 80% 39%;
