@@ -1356,10 +1356,12 @@ params: params as Record<string, ParameterValue>,
     const toNode = nodes.find(n => n.id === to) || (groups.find(g => g.id === to) as any);
     const toNodeType = toNode?.type;
 
-    // Synchronized with backend MERGE_BLOCK_TYPES
+    // Synchronized with backend MERGE_BLOCK_TYPES (neurax-agent/block_constraints.json's
+    // merge_capable_types — checked by Index.fanin.test.ts against that file directly)
     const isFanInCapable = [
       'concat', 'merge', 'add', 'residual', 'residual_add', 'skip_connection',
-      'expert_combine', 'gate', 'lm_head', 'moe_block', 'unet_block', 'router_softmax'
+      'expert_combine', 'gate', 'lm_head', 'moe_block', 'unet_block', 'router_softmax',
+      'output_combination'
     ].includes(toNodeType || '');
 
     // Allow connection if:

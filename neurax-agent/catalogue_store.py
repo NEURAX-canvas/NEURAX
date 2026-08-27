@@ -23,6 +23,16 @@ import logging
 from pathlib import Path
 from typing import Any
 
+# Fan-in limits are `topology_validator`'s job — it loads block_constraints.json,
+# the actual gate a design is checked against. This module used to keep its
+# own separate, hand-written set here, which had silently drifted from the
+# validator's (this one had `output_combination` but not `unet_block`; the
+# validator's had the reverse) — meaning the LLM prompt (built from this
+# module's `maxInputs`) and the check that actually rejects a design could
+# disagree about the same block type. Importing the one function both now
+# read from means they can't drift again.
+from topology_validator import get_max_inputs as _get_max_inputs
+
 logger = logging.getLogger(__name__)
 
 # Path to catalogue file
@@ -63,20 +73,6 @@ def get_family_info(family: str) -> dict[str, Any] | None:
     """Get full info for a family (description, taskHints, blocks, etc.)."""
     catalogue = _load_catalogue()
     return catalogue.get(family.lower())
-
-
-# Block types that can accept multiple inputs (fan-in allowed)
-# -1 means unlimited inputs, 1 means single input only
-FAN_IN_CAPABLE_TYPES = {
-    "concat", "residual_add", "skip_connection", "residual", "merge", "add",
-    "router_softmax", "gate", "lm_head", "expert_combine",
-    "output_combination", "moe_block"
-}
-
-
-def _get_max_inputs(block_type: str) -> int:
-    """Get max inputs for a block type. -1 = unlimited, 1 = single input."""
-    return -1 if block_type.lower() in FAN_IN_CAPABLE_TYPES else 1
 
 
 def get_catalogue_for_family(family: str) -> list[dict[str, Any]]:
