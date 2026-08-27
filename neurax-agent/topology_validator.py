@@ -10,7 +10,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +194,80 @@ def _count_incoming(spec: ArchSpec) -> dict[str, int]:
         if edge.to_id in counts:
             counts[edge.to_id] += 1
     return counts
+
+
+# ── Deterministic fan-in repair ─────────────────────────────────────────────────
+#
+# Structural merge blocks, ranked by how safe they are to insert without being
+# asked: a plain sum or concatenation changes nothing about what the branches
+# compute. `lm_head`, `gate`, `moe_block` and the rest of MERGE_BLOCK_TYPES are
+# fan-in capable too, but each *is* a specific operation with its own meaning —
+# inserting one where the design never asked for it would silently change what
+# the model does, not just how its edges are drawn.
+_AUTO_REPAIR_MERGE_PRIORITY: tuple[str, ...] = (
+    "residual_add", "add", "concat", "merge", "skip_connection",
+)
+
+
+def auto_repair_fanin_violations(
+    spec: ArchSpec, catalogue: list[dict[str, Any]]
+) -> Optional[ArchSpec]:
+    """Insert a merge node ahead of any single-input node fed by more than one edge.
+
+    A multi-task or multimodal design routinely produces more than one branch
+    that needs to land on one downstream node — most often several heads
+    converging on `output`. The planner is told how to avoid this (the fan-in
+    error names the exact fix), but a model that gets it wrong once tends to
+    get it wrong the same way on retry, spending every attempt on an edit any
+    graph library would apply mechanically. Doing it here first means a retry
+    is only spent when the design is wrong in some way this cannot fix.
+
+    Returns a repaired copy, or None if no catalogue block is available to
+    merge with — every family carries no such block, and there's nothing to
+    insert.
+    """
+    available = [b.get("type") for b in catalogue if b.get("type") in MERGE_BLOCK_TYPES]
+    merge_type = next((t for t in _AUTO_REPAIR_MERGE_PRIORITY if t in available), None)
+    if merge_type is None:
+        return None
+
+    incoming = _count_incoming(spec)
+    violations = [
+        n for n in spec.nodes
+        if get_max_inputs(n.type) == 1 and incoming.get(n.id, 0) > 1
+    ]
+    if not violations:
+        return None
+
+    existing_ids = {n.id for n in spec.nodes}
+    nodes = list(spec.nodes)
+    edges = list(spec.edges)
+
+    for node in violations:
+        merge_id = f"{node.id}_merge_auto"
+        suffix = 2
+        while merge_id in existing_ids:
+            merge_id = f"{node.id}_merge_auto{suffix}"
+            suffix += 1
+        existing_ids.add(merge_id)
+
+        nodes.append(ArchNode(id=merge_id, type=merge_type, params={}))
+        redirected = False
+        for i, edge in enumerate(edges):
+            if edge.to_id == node.id:
+                edges[i] = ArchEdge(from_id=edge.from_id, to_id=merge_id)
+                redirected = True
+        if redirected:
+            edges.append(ArchEdge(from_id=merge_id, to_id=node.id))
+
+    return ArchSpec(
+        family=spec.family,
+        nodes=nodes,
+        edges=edges,
+        rationale=spec.rationale,
+        hw_config=spec.hw_config,
+        hyperparams=spec.hyperparams,
+    )
 
 
 # ── Main validation function ──────────────────────────────────────────────────

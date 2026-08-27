@@ -8,7 +8,7 @@ all `add_node` calls precede `connect` calls (no forward reference issues).
 from __future__ import annotations
 
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
 from topology_validator import ArchSpec
 from layout_engine import assign_positions
@@ -18,6 +18,43 @@ logger = logging.getLogger(__name__)
 
 def _tool(name: str, args: dict) -> dict:
     return {"name": name, "args": args}
+
+
+_ATTENTION_TYPES = {"mha", "gqa", "mqa", "mla"}
+
+
+def _first_param(spec: ArchSpec, *keys: str) -> Optional[int]:
+    """First positive value found for any of `keys`, checked across every
+    node in plan order — the value a design already states beats a guess."""
+    for node in spec.nodes:
+        for key in keys:
+            value = node.params.get(key)
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+                return int(value)
+    return None
+
+
+def _sequence_family_hw_defaults(spec: ArchSpec) -> dict[str, object]:
+    """seqLen/numLayers/vocabSize the canvas requires before Run Analysis will
+    run for transformer/moe (HardwareContext.tsx's MANDATORY_FIELDS) — derived
+    from the design itself rather than a flat guess, since numLayers in
+    particular scales total_parameters directly and getting it wrong would
+    misreport the very design it describes.
+
+    numLayers counts real attention blocks rather than reading a global
+    `num_layers`: this pipeline's designs are individually-typed nodes, not a
+    `layer_stack` placeholder repeated N times, so the attention-block count
+    already *is* the depth.
+    """
+    defaults: dict[str, object] = {
+        "seqLen": _first_param(spec, "max_len", "max_position_embeddings", "sequence_length") or 2048,
+        "numLayers": sum(1 for n in spec.nodes if n.type in _ATTENTION_TYPES) or 1,
+        "vocabSize": _first_param(spec, "vocab_size") or 32000,
+    }
+    if spec.family == "moe":
+        defaults["numExperts"] = _first_param(spec, "num_experts") or 8
+        defaults["topK"] = _first_param(spec, "top_k", "topk") or 2
+    return defaults
 
 
 async def materialize(
@@ -75,7 +112,12 @@ async def materialize(
         "gnn": {"numNodes": 1000, "numEdges": 5000, "nodeFeatDim": 64},
         "ssm": {"dState": 16},
     }
-    for key, default in _HW_MANDATORY_DEFAULTS.get(spec.family, {}).items():
+    family_defaults = (
+        _sequence_family_hw_defaults(spec)
+        if spec.family in ("transformer", "moe")
+        else _HW_MANDATORY_DEFAULTS.get(spec.family, {})
+    )
+    for key, default in family_defaults.items():
         hw_config.setdefault(key, default)
 
     if hw_config:

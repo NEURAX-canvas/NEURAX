@@ -11,7 +11,7 @@ from suggestions import _rehydrate_catalogue
 
 # New 3-phase modules
 from arch_planner import plan_architecture, plan_strategy
-from topology_validator import validate_arch_spec, ArchSpec
+from topology_validator import validate_arch_spec, auto_repair_fanin_violations, ArchSpec
 from requirements import extract_budget
 from budget_check import measure_and_check, narrow_precision_to_fit
 from layout_engine import assign_positions
@@ -155,6 +155,24 @@ async def _run_agent(
 
                 # ── 2. Phase 2: Structural validation ──
                 validation_result = validate_arch_spec(spec, family_catalogue, constraints)
+
+                # A fan-in violation (usually several heads converging on one
+                # node) has one mechanical fix — insert a merge block — that a
+                # graph transform applies deterministically. Try that before
+                # spending a planning attempt asking the model to do the same
+                # edit, which it does not reliably get right even when told
+                # exactly what is wrong.
+                if not validation_result.valid:
+                    repaired = auto_repair_fanin_violations(spec, family_catalogue)
+                    if repaired is not None:
+                        repaired_result = validate_arch_spec(repaired, family_catalogue, constraints)
+                        if repaired_result.valid:
+                            logger.info("🔧 Auto-repaired a fan-in violation without a planning retry")
+                            await q.put(_event("assistant", {
+                                "content": "Auto-fixed: merged multiple branches before the node that only accepts one input."
+                            }))
+                            spec = repaired
+                            validation_result = repaired_result
 
                 if not validation_result.valid:
                     previous_errors = validation_result.errors
