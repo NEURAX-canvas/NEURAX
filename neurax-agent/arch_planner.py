@@ -518,6 +518,10 @@ You translate non-technical business needs (e.g., "classify documents", "detect 
    - Match `out_features` or `num_classes` for the head to the HW Config's `numClasses`
    - Match `hidden_size` or `d_model` if specified in HW Config
    - Ensure `stride`, `padding`, and `kernel_size` are technically sound
+   - Activation (relu/gelu/silu/tanh/sigmoid/...) is set via the `activation`
+     field on the block it applies to (conv, dense, ffn, ...) — it is never
+     its own node. There is no "ReLU block" in this catalogue; set
+     `activation` on the preceding block instead.
 10. **Interpretive Rationale**: In your `rationale`, explain in clear, professional language *how* this architecture addresses the user's business goal. Avoid overly dense jargon where possible.
 11. The `edges` list MUST be COMPLETE — every connection must be explicitly listed:
     - For MoE: Gate → Expert_1, Gate → Expert_2, ..., Expert_1 → Expert_n...

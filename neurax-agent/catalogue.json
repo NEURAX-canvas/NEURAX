@@ -133,21 +133,6 @@
         }
       },
       {
-        "type": "relu",
-        "name": "ReLU",
-        "defaultParams": {}
-      },
-      {
-        "type": "gelu",
-        "name": "GELU",
-        "defaultParams": {}
-      },
-      {
-        "type": "silu",
-        "name": "SiLU",
-        "defaultParams": {}
-      },
-      {
         "type": "residual",
         "name": "Residual / Skip Connection",
         "defaultParams": {
@@ -781,11 +766,6 @@
         "defaultParams": {}
       },
       {
-        "type": "silu",
-        "name": "SiLU",
-        "defaultParams": {}
-      },
-      {
         "type": "lm_head",
         "name": "LM Head",
         "defaultParams": {
@@ -944,16 +924,6 @@
         "defaultParams": {
           "p": 0.1
         }
-      },
-      {
-        "type": "relu",
-        "name": "ReLU",
-        "defaultParams": {}
-      },
-      {
-        "type": "tanh",
-        "name": "Tanh",
-        "defaultParams": {}
       },
       {
         "type": "layernorm",
@@ -1156,11 +1126,6 @@
         }
       },
       {
-        "type": "relu",
-        "name": "ReLU",
-        "defaultParams": {}
-      },
-      {
         "type": "residual",
         "name": "Residual Connection",
         "defaultParams": {
@@ -1339,28 +1304,6 @@
         "defaultParams": {
           "scale_factor": 2
         }
-      },
-      {
-        "type": "leaky_relu",
-        "name": "LeakyReLU",
-        "defaultParams": {
-          "negative_slope": 0.2
-        }
-      },
-      {
-        "type": "relu",
-        "name": "ReLU",
-        "defaultParams": {}
-      },
-      {
-        "type": "tanh",
-        "name": "Tanh",
-        "defaultParams": {}
-      },
-      {
-        "type": "sigmoid",
-        "name": "Sigmoid",
-        "defaultParams": {}
       },
       {
         "type": "add",
@@ -1543,16 +1486,6 @@
         "defaultParams": {
           "projection": false
         }
-      },
-      {
-        "type": "silu",
-        "name": "SiLU",
-        "defaultParams": {}
-      },
-      {
-        "type": "relu",
-        "name": "ReLU",
-        "defaultParams": {}
       },
       {
         "type": "unet_block",
@@ -1875,7 +1808,7 @@
         "name": "Layer Normalization",
         "defaultParams": {
           "normalized_shape": 256,
-          "eps": 1e-5
+          "eps": 1e-05
         }
       },
       {
@@ -1883,7 +1816,7 @@
         "name": "RMS Normalization",
         "defaultParams": {
           "normalized_shape": 256,
-          "eps": 1e-6
+          "eps": 1e-06
         }
       },
       {
@@ -1891,7 +1824,7 @@
         "name": "Batch Normalization",
         "defaultParams": {
           "num_features": 64,
-          "eps": 1e-5,
+          "eps": 1e-05,
           "momentum": 0.1
         }
       },
@@ -1910,16 +1843,6 @@
         "defaultParams": {
           "p": 0.1
         }
-      },
-      {
-        "type": "relu",
-        "name": "ReLU",
-        "defaultParams": {}
-      },
-      {
-        "type": "gelu",
-        "name": "GELU",
-        "defaultParams": {}
       },
       {
         "type": "residual",
@@ -1959,7 +1882,10 @@
     "macroBlocks": [],
     "presets": [],
     "constraints": {
-      "requiredBlocks": ["input", "output"],
+      "requiredBlocks": [
+        "input",
+        "output"
+      ],
       "incompatibleBlocks": []
     }
   },

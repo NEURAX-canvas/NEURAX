@@ -38,8 +38,9 @@ REFERENCE_MODELS = {
     ],
     "cnn": [
         {"id": "c1", "type": "conv2d", "params": {"in_channels": 3, "out_channels": 64, "kernel_size": 7}},
-        {"id": "bn", "type": "batchnorm", "params": {"hidden_size": 64}},
-        {"id": "act", "type": "relu", "params": {}},
+        # Activation isn't its own block — it's a param on the block it
+        # applies to (see arch_planner.py rule 9).
+        {"id": "bn", "type": "batchnorm", "params": {"hidden_size": 64, "activation": "relu"}},
         {"id": "pool", "type": "max_pool", "params": {"kernel_size": 2}},
         {"id": "fc", "type": "dense", "params": {"in_features": 64, "out_features": 1000}},
     ],
@@ -72,8 +73,7 @@ REFERENCE_MODELS = {
     "gan": [
         {"id": "z", "type": "dense", "params": {"in_features": 100, "out_features": 4096}},
         {"id": "up", "type": "conv_transpose2d", "params": {"in_channels": 256, "out_channels": 128, "kernel_size": 4}},
-        {"id": "bn", "type": "batchnorm", "params": {"hidden_size": 128}},
-        {"id": "act", "type": "tanh", "params": {}},
+        {"id": "bn", "type": "batchnorm", "params": {"hidden_size": 128, "activation": "tanh"}},
     ],
     "diffusion": [
         {"id": "t", "type": "timestep_embedding", "params": {"hidden_size": 256}},
