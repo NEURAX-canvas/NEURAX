@@ -64,6 +64,7 @@ LAYER_TYPE_MAP = {
     "lm_head": "dense",
     "classification_head": "dense",
     "linear": "dense",
+    "linear_projection": "dense",
     "dense": "dense",
     "output": "dense",
     "input": "embedding",
@@ -259,28 +260,10 @@ class BudgetReport:
         return messages
 
 
-#: Families the compiler models as [batch, sequence, hidden] end to end. CNN,
-#: GNN and diffusion need real conv/pool/graph arithmetic to know a shape —
-#: that engine exists client-side (`neuraxCompiler.ts`) and runs once the
-#: canvas has the design, which is too late for a pre-materialization check.
-#: A sequence model's hidden dim, by contrast, is a scalar each node already
-#: states in its own params, which is enough to catch the bug this exists
-#: for: one node's `hidden_size` disagreeing with the node right before it.
-_SEQUENCE_SHAPE_FAMILIES = {"transformer", "moe", "ssm", "rnn"}
-
-#: Param keys that carry a node's own hidden/embedding width, checked in
-#: order — the catalogue spells this differently per family (`hidden_size`
-#: for attention/MLP blocks, `d_model` in some presets, `dim` on a few norm
-#: layers).
-_HIDDEN_DIM_KEYS = ("hidden_size", "d_model", "hidden_dim", "embed_dim", "dim")
-
-
-def _node_hidden_dim(params: dict[str, Any]) -> Optional[int]:
-    for key in _HIDDEN_DIM_KEYS:
-        value = params.get(key)
-        if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
-            return int(value)
-    return None
+#: Image-shaped families ([batch, channels, height, width]) — the compiler
+#: reads their entry shape from `data.image_*`, the same fields
+#: materializer.py already backstops into hw_config for these families.
+_IMAGE_SHAPE_FAMILIES = {"cnn", "vit", "gan", "diffusion"}
 
 
 def spec_to_topology(
@@ -295,17 +278,16 @@ def spec_to_topology(
     precision = hw.get("precision") or "fp16"
     family = str(getattr(spec, "family", "") or "").lower()
 
-    # Threaded forward across nodes in topological order (the planner emits
-    # `spec.nodes` that way already) so each node's declared input shape is
-    # the previous node's actual output — the same shape the compiler will
-    # see once this design reaches the canvas. Left at 0 (shape omitted)
-    # until a node states a real width; a self-check with no width to check
-    # is silent rather than reporting a false mismatch.
-    batch = int(hw.get("batchSize") or 1)
-    seq = int(hw.get("seqLen") or hw.get("sequenceLength") or 1)
-    running_hidden = int(hw.get("hiddenDim") or hw.get("hiddenSize") or 0)
-    thread_shapes = family in _SEQUENCE_SHAPE_FAMILIES
-
+    # No shape guessing here anymore — send the real graph (`connections`,
+    # matching the wire field the compiler now understands) and real
+    # per-node params, and let the compiler's own shape-inference engine
+    # (conv/pool arithmetic, hidden-dim threading, ...) do what it already
+    # does for the frontend. This used to hand-thread a hidden dimension
+    # through sequence-family nodes only, because at the time the compiler
+    # had no graph to walk and no shape engine of its own for any family —
+    # both now exist, and this pre-flight check gets the same real answer
+    # the frontend would compute post-materialization, before that instead
+    # of after it.
     layers = []
     for node in spec.nodes:
         raw_type = str(getattr(node, "type", "")).lower()
@@ -315,17 +297,15 @@ def spec_to_topology(
             "layer_type": LAYER_TYPE_MAP.get(raw_type, raw_type),
             "params": params,
         }
-        if thread_shapes:
-            if running_hidden > 0:
-                layer["input_shape"] = [batch, seq, running_hidden]
-            node_hidden = _node_hidden_dim(params) or running_hidden
-            if node_hidden > 0:
-                layer["output_shape"] = [batch, seq, node_hidden]
-            running_hidden = node_hidden
         equations = dict(getattr(node, "custom_equations", {}) or {})
         if equations:
             layer["custom_equations"] = equations
         layers.append(layer)
+
+    connections = [
+        {"from": getattr(edge, "from_id", ""), "to": getattr(edge, "to_id", "")}
+        for edge in getattr(spec, "edges", None) or []
+    ]
 
     global_params: dict[str, Any] = {}
     for key, source in (
@@ -338,6 +318,17 @@ def spec_to_topology(
         if value:
             global_params[key] = value
 
+    data: dict[str, Any] = {"dtype": precision}
+    if family in _IMAGE_SHAPE_FAMILIES:
+        for key, source in (
+            ("image_channels", "inChannels"),
+            ("image_height", "imgHeight"),
+            ("image_width", "imgWidth"),
+        ):
+            value = hw.get(source)
+            if value:
+                data[key] = value
+
     return {
         "schema_version": "1.0.0",
         "model": {
@@ -345,6 +336,7 @@ def spec_to_topology(
             "type": spec.family or "transformer",
             "global_params": global_params,
             "layers": layers,
+            "connections": connections,
         },
         "training": {
             "batch_size": hw.get("batchSize") or 1,
@@ -358,7 +350,7 @@ def spec_to_topology(
                 }
             ]
         },
-        "data": {"dtype": precision},
+        "data": data,
     }
 
 

@@ -75,51 +75,49 @@ def test_a_design_over_budget_fails_and_says_by_how_much():
     assert "Model size" in feedback[0]
 
 
-# ─── Per-layer shapes for sequence families ────────────────────────────
+# ─── Real graph, not hand-threaded shapes ───────────────────────────────
 #
-# A real bug: an agent-built transformer had a positional_encoding/output_head
-# layer whose hidden size disagreed with the layer right before it — invisible
-# to `measure_and_check` because `spec_to_topology` sent no shapes at all, so
-# the compiler's own cross-layer check (which only runs when shapes are
-# present) never had anything to compare.
+# spec_to_topology used to hand-thread a hidden dimension through
+# sequence-family nodes only, because at the time the compiler had no real
+# graph to walk (no `connections` field existed) and no shape-inference
+# engine of its own for any family. Both now exist (Phase 1 of the
+# representation-mère plan) — this pre-flight self-check sends the real
+# graph and lets the compiler's own engine answer, the same way the
+# frontend does post-materialization, just before that instead of after.
 
-def test_sequence_families_get_a_real_per_node_hidden_dim_threaded_through():
+def test_edges_are_forwarded_as_connections():
     topo = spec_to_topology(TINY, HW)
-    layers = {l["id"]: l for l in topo["model"]["layers"]}
-    # "emb" declares hidden_size 64; "attn" right after it must see that as
-    # its own input, not a placeholder.
-    assert layers["attn"]["input_shape"] == [1, 1, 64]
-    assert layers["attn"]["output_shape"] == [1, 1, 64]
+    connections = topo["model"]["connections"]
+    assert {"from": "img", "to": "attn"} in connections
+    assert {"from": "emb", "to": "attn"} in connections
+    assert {"from": "attn", "to": "ffn"} in connections
+    assert {"from": "ffn", "to": "head"} in connections
+    assert len(connections) == 4
 
 
-def test_a_node_with_a_mismatched_hidden_size_carries_its_own_declared_shape():
-    mismatched = ArchSpec.from_dict({
-        "family": "transformer",
-        "nodes": [
-            {"id": "attn", "type": "mha_attention", "params": {"hidden_size": 768, "num_heads": 12}},
-            {"id": "posenc", "type": "positional_encoding", "params": {"hidden_size": 512}},
-        ],
-        "edges": [{"from": "attn", "to": "posenc"}],
-    })
-    topo = spec_to_topology(mismatched, HW)
-    layers = {l["id"]: l for l in topo["model"]["layers"]}
-    # "posenc" inherits attn's actual output as its declared input...
-    assert layers["posenc"]["input_shape"] == [1, 1, 768]
-    # ...but states its own, different, hidden size as its output — exactly
-    # the disagreement the compiler's cross-layer check exists to catch.
-    assert layers["posenc"]["output_shape"] == [1, 1, 512]
+def test_no_layer_carries_a_hand_computed_shape_anymore():
+    topo = spec_to_topology(TINY, HW)
+    for layer in topo["model"]["layers"]:
+        assert "input_shape" not in layer
+        assert "output_shape" not in layer
 
 
-def test_non_sequence_families_get_no_fabricated_shapes():
+def test_image_families_forward_their_entry_shape_into_data():
     cnn_spec = ArchSpec.from_dict({
         "family": "cnn",
         "nodes": [{"id": "c1", "type": "conv2d", "params": {"in_channels": 3, "out_channels": 16}}],
         "edges": [],
     })
-    topo = spec_to_topology(cnn_spec, HW)
-    layer = topo["model"]["layers"][0]
-    assert "input_shape" not in layer
-    assert "output_shape" not in layer
+    hw = {**HW, "inChannels": 3, "imgHeight": 224, "imgWidth": 224}
+    topo = spec_to_topology(cnn_spec, hw)
+    assert topo["data"]["image_channels"] == 3
+    assert topo["data"]["image_height"] == 224
+    assert topo["data"]["image_width"] == 224
+
+
+def test_non_image_families_dont_carry_image_fields():
+    topo = spec_to_topology(TINY, HW)
+    assert "image_channels" not in topo["data"]
 
 
 def test_no_budget_means_no_constraint():
