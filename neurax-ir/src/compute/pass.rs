@@ -6,6 +6,25 @@ use crate::operator::OperatorIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
 
+/// How many full U-Net forward passes one sample actually costs — 1.0 for
+/// every non-diffusion family, and for a diffusion model without a stated
+/// `diffusion_timesteps` (nothing to scale by, so it stays a single pass
+/// rather than guessing a step count).
+fn diffusion_sample_factor(ctx: &NeuraxContext) -> f64 {
+    if ctx.config.model.model_type != neurax_parser::ModelType::Diffusion {
+        return 1.0;
+    }
+    let Some(steps) = ctx.config.model.global_params.diffusion_timesteps else {
+        return 1.0;
+    };
+    let guidance = if ctx.config.model.global_params.guidance_scale.is_some() {
+        2.0
+    } else {
+        1.0
+    };
+    steps as f64 * guidance
+}
+
 /// Compute pass implementation
 pub struct ComputePass;
 
@@ -22,17 +41,32 @@ impl IrPass for ComputePass {
     fn build(
         &self,
         input: &Self::Input,
-        _ctx: &NeuraxContext,
+        ctx: &NeuraxContext,
     ) -> Result<Self::Output, Self::PassError> {
         let mut compute_ir = ComputeIR::default();
 
+        // A diffusion model's layers describe one U-Net forward pass, but
+        // generating a sample means running that pass repeatedly — the
+        // JSON's `layers` list was never multiplied by `diffusion_timesteps`
+        // anywhere in the pipeline, so every diffusion model's reported
+        // FLOPs/latency/cost were the price of one denoising step, not the
+        // 20-1000 a real sample takes. Classifier-free guidance (Ho &
+        // Salimans, 2022 — the default in Stable Diffusion, SDXL, DALL-E)
+        // doubles that again: the U-Net runs once conditioned, once not,
+        // every step. Scaling every op's FLOPs here — rather than only the
+        // aggregate metric below — matters because `HardwarePass` derives
+        // `latency_ms` (and everything the cost pass computes from it) by
+        // re-reading these same per-op numbers, not the aggregate.
+        let sample_factor = diffusion_sample_factor(ctx);
+
         // Convert operator FLOPs to compute FLOPs
         for op in &input.operations {
+            let flops = op.flops * sample_factor;
             compute_ir.op_flops.push(OpFlops {
                 op_id: op.id,
                 layer_id: op.layer_id.clone(),
-                forward_flops: op.flops,
-                backward_flops: op.flops * 2.0, // Standard approximation
+                forward_flops: flops,
+                backward_flops: flops * 2.0, // Standard approximation
             });
         }
 

@@ -171,6 +171,11 @@ pub struct RawGlobalParams {
     pub embedding_dim: Option<usize>,
     pub num_experts: Option<usize>,
     pub diffusion_timesteps: Option<usize>,
+    /// Classifier-free guidance scale (Ho & Salimans, 2022). When set, the
+    /// U-Net runs twice per denoising step (conditioned + unconditioned) —
+    /// the near-universal default in deployed diffusion models (Stable
+    /// Diffusion, SDXL, DALL-E all ship with CFG on).
+    pub guidance_scale: Option<f64>,
     pub graph_message_dim: Option<usize>,
     /// Total number of transformer/repeatable layers in the full model.
     /// Use this when the JSON only lists a subset of representative layers.

@@ -705,6 +705,9 @@ pub struct GlobalParams {
     pub embedding_dim: Option<usize>,
     pub num_experts: Option<usize>,
     pub diffusion_timesteps: Option<usize>,
+    /// Classifier-free guidance scale — when set, a diffusion model's U-Net
+    /// runs twice per denoising step (conditioned + unconditioned).
+    pub guidance_scale: Option<f64>,
     pub graph_message_dim: Option<usize>,
     /// Total number of transformer layers in the full model (may be > number of JSON layers)
     pub num_layers: Option<u64>,
@@ -836,6 +839,7 @@ impl GlobalParams {
             embedding_dim: raw.embedding_dim,
             num_experts: raw.num_experts,
             diffusion_timesteps: raw.diffusion_timesteps,
+            guidance_scale: raw.guidance_scale,
             graph_message_dim: raw.graph_message_dim,
             num_layers,
             num_dense_layers,
