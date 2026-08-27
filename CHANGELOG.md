@@ -9,6 +9,89 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-08
+
+### Changed
+- **The Rust compiler is now the single shape authority.** The frontend and
+  agent used to compute or guess tensor shapes themselves before sending a
+  design to the compiler; a model's `connections` (real graph edges) can now
+  be sent instead, and a new per-family shape-inference pass
+  (`neurax-ir::tensor::shape_inference`) walks the real graph topologically
+  to derive every shape. `neurax-agent`'s own pre-flight self-check
+  (`budget_check.spec_to_topology`) was rewritten to send the real graph
+  instead of hand-threading a hidden dimension through sequence-family
+  nodes only — the same path the frontend already used post-materialization.
+- **Consolidated four independently-drifted fan-in/merge-capable-type
+  lists into one.** The frontend, agent's catalogue store, and agent's
+  constants module each hand-maintained their own list of which block types
+  can accept multiple inputs; they had already drifted apart. All three now
+  read `block_constraints.json`'s `merge_capable_types` as the single source
+  of truth.
+
+### Fixed
+- **Diffusion models were never charged for their denoising steps.** A
+  diffusion model's reported cost came from a single U-Net forward pass —
+  `diffusion_timesteps` was parsed but never multiplied into any real
+  calculation, and classifier-free guidance's second forward pass wasn't
+  accounted for either. A 1000-step Stable Diffusion XL run was reported at
+  roughly 1/1000th (or 1/2000th, with CFG) of its real inference cost. Fixed
+  by wiring `diffusion_sampling_flops` into the live compute pass and adding
+  `guidance_scale` as a real, parseable field.
+- **RGCN was routed to a plain Conv2D formula**, not even the right GNN
+  formula — `rgcn_conv` had no dedicated backend type and fell through the
+  frontend's generic `.includes('conv')` catch-all. Added `RgcnConv` as a
+  real type with its own params (`num_relations`, `num_bases`) and formula.
+- **int4 quantization was costed at int8's memory footprint** — `dtype_bytes`
+  returned `1` for int4 instead of `0.5`, a 2x memory overstatement for
+  every int4-quantized model.
+- **LoRA/DoRA adapters were costed as a full dense layer** instead of their
+  actual low-rank parameter count — `lora_linear`/`dora_linear` had no
+  dedicated type or `rank`/`lora_alpha` fields and collapsed to `dense`.
+- **Sliding-window, dilated, and sparse attention were costed as dense
+  O(seq²) attention.** Mistral-shaped long-context models in particular were
+  reported at many times their real attention cost. `window_size`/
+  `block_size`/`dilation` are now real fields that reduce the KV span the
+  FLOPs formula sees.
+- Squeeze-and-Excitation blocks were declared (`LayerParams.se`) but
+  `mbconv_params`/`mbconv_flops` had no `se` parameter in their signature at
+  all — the branch was structurally absent, not just unused.
+- S4/H3/StateSpace blocks reused Mamba's selective-scan formula, which
+  charges for input-dependent projection matrices those non-selective
+  architectures don't have.
+- Adafactor and Lion optimizers — both real, reachable choices in the
+  hyperparameter dropdown — were costed as AdamW (2x parameter memory)
+  instead of their real, much smaller memory footprint.
+- Removed `sparse_moe_flops`: dead code with zero callers that silently
+  discarded its own `capacity_factor` argument.
+- MoE's active-parameter count was double-scaling shared-expert
+  parameters; ResNeXt's `cardinality` (grouped-convolution width) was
+  parsed but never read by the params/FLOPs formulas.
+- `neurax-mcp`'s standalone server had three independent bugs found only by
+  actually running it end-to-end, not by reading it: it failed to import at
+  all against `mcp>=2.0` (pinned to `<2.0.0`), sent graph edges under a
+  `graph.edges` key the compiler's schema doesn't have (silently dropped —
+  fixed to `connections`), and carried a small, stale layer-type vocabulary
+  missing MoE/GNN/SSM/RGCN/LoRA types entirely.
+- The light theme's neutral colors (background/card/border/etc.) were
+  Gruvbox Light's actual warm cream (`#f9f5d7`/`#ebdbb2`) despite the
+  file's own header comment already claiming "Pure White Board Theme."
+  Replaced with genuine white/cool-gray neutrals and a clean blue accent.
+  The dark theme's Gruvbox gold/olive pairing was replaced with a dark
+  neutral and a single pink accent for the same reason, and is now the
+  default a first-time visitor sees.
+
+### Removed
+- Two root-level files with zero references anywhere in the repo:
+  `templates.ts` (a stale, unimported 471-line duplicate of
+  `neurax-ui/src/data/modelTemplates.ts`, the file actually used) and
+  `tests/absorption_integration.rs` (never wired to any Cargo package —
+  root `Cargo.toml` is workspace-only, so `cargo test --workspace` never
+  ran it). A root-level `models/` directory duplicating the documented
+  `examples/models/` fixture location, including 8 committed
+  `neurax analyze` output files that should never have been tracked, was
+  also removed (its two files actually used by `neurax-core`'s test suite,
+  `gpt2_medium.json`/`gpt2_small.json`, were kept in place).
+
 ## [0.10.0] — 2026-08
 
 ### Changed
