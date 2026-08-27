@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-// 'gruvbox' isn't a separate option here anymore — Light and Dark *are* the
-// Gruvbox pair now (see index.css), not an alternative to it. A visitor with
-// 'gruvbox' still in localStorage from before falls back to 'light' below,
-// which today looks the same as what they had picked.
+// 'gruvbox' isn't a separate option here — Light and Dark used to *be* the
+// Gruvbox pair (see index.css); both are now a plain white/blue-on-white
+// light theme and a dark/pink-accent dark theme instead. A visitor with
+// 'gruvbox' still in localStorage from before falls back to 'light' below.
 export type Theme = 'light' | 'dark' | 'nord' | 'onedark' | 'kanagawa' | 'catppuccin' | 'tokyonight' | 'everforest' | 'dracula' | 'nightfox' | 'rose-pine' | 'solarized-dark' | 'molten' | 'signal' | 'amber' | 'slate';
 
 const THEMES: Theme[] = ['light', 'dark', 'nord', 'onedark', 'kanagawa', 'catppuccin', 'tokyonight', 'everforest', 'dracula', 'nightfox', 'rose-pine', 'solarized-dark', 'molten', 'signal', 'amber', 'slate'];
@@ -22,9 +22,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('neurax-theme') as Theme;
       if (stored && THEMES.includes(stored)) return stored;
-      return 'light';
+      return 'dark';
     }
-    return 'light';
+    return 'dark';
   });
 
   useEffect(() => {

@@ -321,7 +321,7 @@ In `neurax-agent/catalogue.json`, add blocks for the new family. Each block shou
 
 ### 4. Add template
 
-In `templates.ts`, add reference templates for the new family.
+In `neurax-ui/src/data/modelTemplates.ts`, add reference templates for the new family.
 
 ### 5. Add constraints
 
