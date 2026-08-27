@@ -140,7 +140,7 @@ fn calculate_tensor_size(shape: &[usize], dtype: &str) -> u64 {
         return 0;
     }
     let elements: usize = shape.iter().product();
-    (elements * dtype_bytes(dtype)) as u64
+    (elements as f64 * dtype_bytes(dtype)).round() as u64
 }
 
 #[cfg(test)]

@@ -79,13 +79,13 @@ impl IrPass for TensorPass {
                                 LayerType::Embedding => vec![batch, seq],
                                 _ => vec![batch, seq, hidden],
                             });
-                        let bytes = default_shape.iter().product::<usize>()
+                        let bytes = default_shape.iter().product::<usize>() as f64
                             * neurax_formulas::dtype_bytes(&dtype);
-                        (default_shape, bytes as u64)
+                        (default_shape, bytes.round() as u64)
                     } else {
-                        let bytes =
-                            shape.iter().product::<usize>() * neurax_formulas::dtype_bytes(&dtype);
-                        (shape.clone(), bytes as u64)
+                        let bytes = shape.iter().product::<usize>() as f64
+                            * neurax_formulas::dtype_bytes(&dtype);
+                        (shape.clone(), bytes.round() as u64)
                     };
 
                     let tensor_id = format!("{}_input_{}", node.layer_id, i);

@@ -217,7 +217,8 @@ fn estimate_bytes_accessed(ctx: &NeuraxContext) -> u64 {
                 params: l.params.clone(),
                 custom_equations: l.custom_equations.clone(),
             });
-            params * neurax_formulas::dtype_bytes(&ctx.config.training.precision) as u64
+            (params as f64 * neurax_formulas::dtype_bytes(&ctx.config.training.precision)).round()
+                as u64
         })
         .sum::<u64>();
 
@@ -230,9 +231,9 @@ fn estimate_bytes_accessed(ctx: &NeuraxContext) -> u64 {
         .or(ctx.config.model.global_params.sequence_length)
         .unwrap_or(512);
     let hidden = ctx.config.model.global_params.embedding_dim.unwrap_or(512);
-    let activation_bytes =
-        (batch * seq * hidden * neurax_formulas::dtype_bytes(&ctx.config.training.precision))
-            as u64;
+    let activation_bytes = ((batch * seq * hidden) as f64
+        * neurax_formulas::dtype_bytes(&ctx.config.training.precision))
+    .round() as u64;
 
     param_bytes + activation_bytes * ctx.config.model.layers.len() as u64
 }

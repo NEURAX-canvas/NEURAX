@@ -179,7 +179,8 @@ fn decompose_layer_to_ops(
                 output_shape: crate::tensor::Shape::known(vec![batch, seq, dim]),
                 flops: embedding::embedding_flops(batch, seq, dim),
                 param_count: (vocab * dim) as u64,
-                activation_memory: (batch * seq * dim * neurax_formulas::dtype_bytes(dtype)) as u64,
+                activation_memory: ((batch * seq * dim) as f64 * neurax_formulas::dtype_bytes(dtype))
+                    .round() as u64,
                 is_custom: false,
             });
         }
@@ -216,8 +217,9 @@ fn decompose_layer_to_ops(
                 output_shape: crate::tensor::Shape::known(vec![batch, seq, hidden]),
                 flops: attn_flops,
                 param_count: qkv_param_count as u64,
-                activation_memory: (batch * seq * hidden * neurax_formulas::dtype_bytes(dtype))
-                    as u64,
+                activation_memory: ((batch * seq * hidden) as f64
+                    * neurax_formulas::dtype_bytes(dtype))
+                .round() as u64,
                 is_custom: false,
             });
 
@@ -254,11 +256,9 @@ fn decompose_layer_to_ops(
                 output_shape: crate::tensor::Shape::known(vec![batch, seq, hidden]),
                 flops,
                 param_count: layer.param_count,
-                activation_memory: (batch
-                    * seq
-                    * intermediate
+                activation_memory: ((batch * seq * intermediate) as f64
                     * neurax_formulas::dtype_bytes(dtype))
-                    as u64,
+                .round() as u64,
                 is_custom: false,
             });
         }
@@ -296,7 +296,8 @@ fn decompose_layer_to_ops(
                 output_shape: crate::tensor::Shape::known(layer.output_shape.clone()),
                 flops: 2.0 * outer_dims as f64 * in_f as f64 * out_f as f64,
                 param_count: layer.param_count,
-                activation_memory: (output_elements * neurax_formulas::dtype_bytes(dtype)) as u64,
+                activation_memory: (output_elements as f64 * neurax_formulas::dtype_bytes(dtype))
+                    .round() as u64,
                 is_custom: false,
             });
         }

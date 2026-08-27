@@ -169,7 +169,7 @@ pub fn compile_model_to_mlir(
                     &format!("{}_weights", layer.id),
                     &tensor_shape,
                     &dtype,
-                    param_count * neurax_formulas::dtype_bytes(&dtype) as i64,
+                    (param_count as f64 * neurax_formulas::dtype_bytes(&dtype)).round() as i64,
                     &layer.id,
                     location,
                 )

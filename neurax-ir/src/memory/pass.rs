@@ -50,7 +50,7 @@ impl IrPass for MemoryPass {
         ctx: &NeuraxContext,
     ) -> Result<Self::Metrics, Self::PassError> {
         let dtype = &ctx.config.training.precision;
-        let dtype_bytes_val = dtype_bytes(dtype) as u64;
+        let dtype_bytes_val = dtype_bytes(dtype);
 
         // Use total_parameters from ArchitectureIR (stored in MemoryIR during build)
         let total_parameters = output.total_parameters;
@@ -127,7 +127,7 @@ impl IrPass for MemoryPass {
         // Use total_parameters already calculated with correct scaling
         // `dtype_bytes` already represents the storage width. Applying a second
         // precision factor here undercounted FP16/BF16 parameters by 50%.
-        let parameter_memory_bytes = total_parameters * dtype_bytes_val;
+        let parameter_memory_bytes = (total_parameters as f64 * dtype_bytes_val).round() as u64;
 
         // ── Activation memory from liveness ──────────────────────────────────
         // Training keeps every layer's forward activations alive at once —
@@ -184,7 +184,7 @@ impl IrPass for MemoryPass {
         // Report gradients in the active training precision, consistently with
         // parameter and optimizer metrics.
         let gradient_memory_bytes = if is_training {
-            total_parameters * dtype_bytes_val
+            (total_parameters as f64 * dtype_bytes_val).round() as u64
         } else {
             0
         };
