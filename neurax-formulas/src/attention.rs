@@ -60,6 +60,45 @@ pub fn attention_flops(
     qkv_flops + (attn_scores_flops + attn_v_flops + softmax_flops) * causal_factor + out_proj_flops
 }
 
+/// FLOPs for attention with a bounded receptive field per query — sliding
+/// window, dilated, or block-sparse attention, whose whole efficiency
+/// argument (Mistral 7B, arXiv:2310.06825 — 4096-token sliding window
+/// instead of full attention) is that a query attends to `kv_len`
+/// positions, not all `seq_len` of them. Dense attention is the `kv_len ==
+/// seq_len` special case of this, not a different formula — passing
+/// `kv_len == seq_len` reproduces `attention_flops` exactly.
+///
+/// Every sub-quadratic pattern used to collapse into plain `attention_flops`
+/// on the wire (sliding_window/dilated/sparse/linear attention all mapped
+/// to `LayerType::Attention` with no pattern-carrying param even reaching
+/// it), so choosing one of them changed nothing about the reported cost —
+/// exactly the number a long-context design picks that block to reduce.
+#[inline(always)]
+pub fn windowed_attention_flops(
+    batch: usize,
+    seq_len: usize,
+    kv_len: usize,
+    hidden_size: usize,
+    num_heads: usize,
+    causal: bool,
+) -> f64 {
+    let head_dim = head_dim_of(hidden_size, num_heads);
+    let kv_len = kv_len.min(seq_len).max(1);
+
+    let qkv_flops =
+        3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64);
+    let attn_scores_flops =
+        2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * kv_len as f64 * head_dim as f64;
+    let attn_v_flops =
+        2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * kv_len as f64 * head_dim as f64;
+    let out_proj_flops =
+        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+    let softmax_flops = 5.0 * batch as f64 * num_heads as f64 * seq_len as f64 * kv_len as f64;
+    let causal_factor = if causal { 0.5 } else { 1.0 };
+
+    qkv_flops + (attn_scores_flops + attn_v_flops + softmax_flops) * causal_factor + out_proj_flops
+}
+
 /// Compute FLOPs for FlashAttention (memory-optimized, same FLOPs as standard)
 #[inline(always)]
 pub fn flash_attention_flops(
@@ -167,6 +206,28 @@ pub fn gqa_params(hidden_size: usize, num_heads: usize, num_kv_heads: usize, bia
 mod tests {
     use super::*;
     use approx::assert_relative_eq;
+
+    #[test]
+    fn test_windowed_attention_at_full_seq_matches_dense_attention_exactly() {
+        // kv_len == seq_len is dense attention, not a different formula.
+        let dense = attention_flops(2, 4096, 4096, 32, true);
+        let windowed = windowed_attention_flops(2, 4096, 4096, 4096, 32, true);
+        assert_eq!(dense, windowed);
+    }
+
+    #[test]
+    fn test_mistral_shaped_sliding_window_costs_far_less_than_dense_at_long_context() {
+        // Mistral 7B: 4096-token sliding window. At a 32k context, dense
+        // attention's O(S^2) term dwarfs the windowed O(S*W) one.
+        let seq_len = 32768;
+        let window = 4096;
+        let dense = attention_flops(1, seq_len, 4096, 32, true);
+        let windowed = windowed_attention_flops(1, seq_len, window, 4096, 32, true);
+        assert!(
+            windowed < dense / 2.0,
+            "a 4096-token window at 32k context should cost well under half of dense, got {windowed} vs {dense}"
+        );
+    }
 
     #[test]
     fn test_attention_flops_gpt2_small() {

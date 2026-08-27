@@ -469,6 +469,15 @@ pub struct LayerParams {
     // Attention parameters
     pub causal: bool,
     pub num_kv_heads: Option<usize>,
+    /// Sliding-window attention's span — a query attends to this many
+    /// preceding positions, not the full sequence (Mistral 7B: 4096).
+    pub window_size: Option<usize>,
+    /// Block-sparse attention's block size — a query attends within its own
+    /// block rather than the full sequence.
+    pub block_size: Option<usize>,
+    /// Dilated attention's stride — a query attends to every `dilation`-th
+    /// position, expanding receptive field without full O(S²) cost.
+    pub dilation: Option<usize>,
 
     // MLP parameters
     pub gated: bool,
@@ -620,6 +629,9 @@ impl LayerParams {
             num_kv_heads: raw
                 .get_usize("num_kv_heads")
                 .or_else(|| raw.get_usize("num_key_value_heads")),
+            window_size: raw.get_usize("window_size"),
+            block_size: raw.get_usize("block_size"),
+            dilation: raw.get_usize("dilation"),
             gated: raw.get_bool("gated").unwrap_or(false),
             activation: raw.get_string("activation"),
             num_experts: raw.get_usize("num_experts"),

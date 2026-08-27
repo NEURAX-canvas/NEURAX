@@ -194,8 +194,23 @@ fn decompose_layer_to_ops(
             let causal = layer.params.causal;
             let head_dim = hidden / heads;
 
+            // A bounded receptive field (sliding window, block-sparse, or
+            // dilated) — sub-quadratic attention's whole efficiency argument
+            // (Mistral 7B, arXiv:2310.06825) is that a query attends to this
+            // many positions, not the full sequence. Every one of these
+            // patterns used to collapse into plain dense attention on the
+            // wire, so picking one changed nothing about the reported cost.
+            let kv_span = layer
+                .params
+                .window_size
+                .or(layer.params.block_size)
+                .or(layer.params.dilation.map(|d| (seq / d.max(1)).max(1)))
+                .unwrap_or(seq);
+
             // Use GQA formula if kv_heads < heads (Multi-Query or Grouped-Query Attention)
-            let attn_flops = if kv_heads < heads {
+            let attn_flops = if kv_span < seq {
+                attention::windowed_attention_flops(batch, seq, kv_span, hidden, heads, causal)
+            } else if kv_heads < heads {
                 attention::gqa_flops(batch, seq, hidden, heads, kv_heads, causal)
             } else {
                 attention::attention_flops(batch, seq, hidden, heads, causal)
