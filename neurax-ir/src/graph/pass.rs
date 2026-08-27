@@ -24,7 +24,7 @@ impl IrPass for GraphPass {
     fn build(
         &self,
         input: &Self::Input,
-        _ctx: &NeuraxContext,
+        ctx: &NeuraxContext,
     ) -> Result<Self::Output, Self::PassError> {
         if input.layers.is_empty() {
             return Err(GraphError::EmptyGraph);
@@ -32,8 +32,8 @@ impl IrPass for GraphPass {
 
         let mut graph = GraphIR::new();
 
-        // Add all layers as nodes
-        let mut prev_idx: Option<NodeIndex> = None;
+        // Add all layers as nodes first — edges (below) need every node's
+        // index to already exist, whichever source decides them.
         for layer in &input.layers {
             let node = GraphNode {
                 layer_id: layer.id.clone(),
@@ -47,23 +47,50 @@ impl IrPass for GraphPass {
                 output_shape: layer.output_shape.clone(),
                 param_count: layer.param_count,
             };
+            graph.add_node(node);
+        }
 
-            let idx = graph.add_node(node);
-
-            // Add edge from previous layer (sequential model assumption)
-            if let Some(prev) = prev_idx {
-                let edge = GraphEdge {
-                    tensor_shape: layer.input_shape.clone(),
-                    dtype: input.training_config.precision.clone(),
-                    size_bytes: calculate_tensor_size(
-                        &layer.input_shape,
-                        &input.training_config.precision,
-                    ),
+        // A client's real graph wins when it sends one. Absent that (every
+        // fixture shipped before this field existed, and any client that
+        // still doesn't send one), fall back to the original assumption:
+        // each layer's only predecessor is the one before it in the array.
+        if !ctx.config.model.connections.is_empty() {
+            for conn in &ctx.config.model.connections {
+                let (Some(&from), Some(&to)) = (
+                    graph.node_index.get(&conn.from),
+                    graph.node_index.get(&conn.to),
+                ) else {
+                    continue; // an edge naming an id absent from `layers` — ignore, don't fail the whole graph
                 };
-                graph.add_edge(prev, idx, edge);
+                let to_shape = graph
+                    .dag
+                    .node_weight(to)
+                    .map(|n| n.input_shapes.first().cloned().unwrap_or_default())
+                    .unwrap_or_default();
+                let edge = GraphEdge {
+                    tensor_shape: to_shape.clone(),
+                    dtype: input.training_config.precision.clone(),
+                    size_bytes: calculate_tensor_size(&to_shape, &input.training_config.precision),
+                };
+                graph.add_edge(from, to, edge);
             }
-
-            prev_idx = Some(idx);
+        } else {
+            let mut prev_idx: Option<NodeIndex> = None;
+            for layer in &input.layers {
+                let idx = graph.node_index[&layer.id];
+                if let Some(prev) = prev_idx {
+                    let edge = GraphEdge {
+                        tensor_shape: layer.input_shape.clone(),
+                        dtype: input.training_config.precision.clone(),
+                        size_bytes: calculate_tensor_size(
+                            &layer.input_shape,
+                            &input.training_config.precision,
+                        ),
+                    };
+                    graph.add_edge(prev, idx, edge);
+                }
+                prev_idx = Some(idx);
+            }
         }
 
         // Compute topological order

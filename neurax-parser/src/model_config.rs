@@ -43,18 +43,32 @@ pub struct Model {
     pub model_type: ModelType,
     pub layers: Vec<Layer>,
     pub global_params: GlobalParams,
+    pub connections: Vec<Connection>,
+}
+
+/// A single edge in the model's real computation graph — see `RawConnection`.
+#[derive(Debug, Clone)]
+pub struct Connection {
+    pub from: String,
+    pub to: String,
 }
 
 impl Model {
     pub fn from_raw(raw: RawModel) -> Result<Self, ParserError> {
         let model_type = ModelType::from_str(&raw.model_type)?;
         let layers: Result<Vec<_>, _> = raw.layers.into_iter().map(Layer::from_raw).collect();
+        let connections = raw
+            .connections
+            .into_iter()
+            .map(|c| Connection { from: c.from, to: c.to })
+            .collect();
 
         Ok(Self {
             name: raw.name,
             model_type,
             layers: layers?,
             global_params: GlobalParams::from_raw(raw.global_params),
+            connections,
         })
     }
 }

@@ -3,6 +3,7 @@
 mod ir;
 mod metrics;
 mod pass;
+mod shape_inference;
 
 pub use ir::*;
 pub use metrics::*;

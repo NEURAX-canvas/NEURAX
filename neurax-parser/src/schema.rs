@@ -31,6 +31,20 @@ pub struct RawModel {
     pub layers: Vec<RawLayer>,
     #[serde(default)]
     pub global_params: RawGlobalParams,
+    /// The graph's real edges. Optional and empty by default: a client that
+    /// omits it (every fixture shipped today does) keeps the previous
+    /// "each layer's only predecessor is the one before it in `layers`"
+    /// behavior — see `GraphPass::build`.
+    #[serde(default)]
+    pub connections: Vec<RawConnection>,
+}
+
+/// A single edge in the model's real computation graph.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RawConnection {
+    pub from: String,
+    pub to: String,
 }
 
 /// Raw layer definition

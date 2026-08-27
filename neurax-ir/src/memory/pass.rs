@@ -36,7 +36,7 @@ impl IrPass for MemoryPass {
         memory_ir.total_parameters = total_parameters;
 
         // Calculate liveness intervals
-        memory_ir.liveness = calculate_liveness(tensor_ir, arch_ir);
+        memory_ir.liveness = calculate_liveness(tensor_ir, arch_ir, &ctx.config);
 
         // Build memory timeline
         memory_ir.memory_timeline = build_memory_timeline(&memory_ir.liveness, arch_ir);
@@ -130,6 +130,23 @@ impl IrPass for MemoryPass {
         let parameter_memory_bytes = total_parameters * dtype_bytes_val;
 
         // ── Activation memory from liveness ──────────────────────────────────
+        // Training keeps every layer's forward activations alive at once —
+        // the backward pass needs each one to compute its gradient — so the
+        // real quantity is the sum of every tensor `TensorPass` computed
+        // (real, per-family shapes: conv output size, propagated hidden dim,
+        // ...), the same sum `TensorPass` itself already reports as
+        // `tensor.metrics.activation_memory_bytes`, recomputed here from
+        // `output.liveness` (built from the same tensors) so the repeat
+        // scaling above applies to it too. A *peak simultaneous* reading —
+        // the more usual meaning of "liveness" — undercounts training memory
+        // by an order of magnitude, which is not what this metric measures.
+        //
+        // This used to be a generic
+        // `batch * seq_len(default 2048) * hidden_size(default 512) * num_layers`
+        // guess applied identically to every family, CNN included — visibly
+        // wrong for anything that isn't a plain [batch, seq, hidden] model.
+        let liveness_sum_bytes: u64 = output.liveness.iter().map(|interval| interval.size_bytes).sum();
+
         // Gradient checkpointing reduces activation memory to ~sqrt(L) layers kept
         // Formula: sqrt(num_layers) / num_layers for L layers
         let gradient_checkpointing = ctx.config.training.gradient_checkpointing;
@@ -140,35 +157,21 @@ impl IrPass for MemoryPass {
             1.0
         };
 
-        // Use realistic activation memory formula instead of raw liveness
-        // Activation memory ≈ batch_size * seq_len * hidden_size * num_layers * dtype_bytes
-        // With tensor parallelism, this is divided by tensor_parallel degree
-        let batch_size = ctx.config.training.batch_size;
-        let seq_len = ctx
-            .config
-            .training
-            .sequence_length
-            .or(ctx.config.model.global_params.sequence_length)
-            .unwrap_or(2048);
-        let hidden_size = ctx.config.model.global_params.embedding_dim.unwrap_or(512) as usize;
-
-        // For MoE models, account for expert routing overhead
+        // For MoE models, account for expert routing overhead — not itself
+        // represented as a tensor in TensorIR, so this stays a multiplicative
+        // adjustment on top of the real peak rather than something the
+        // liveness analysis could derive on its own.
         let moe_factor = if ctx.config.model.model_type.as_str() == "moe" {
             1.5 // MoE models have ~50% more activation memory due to expert routing
         } else {
             1.0
         };
 
-        // Per-layer activation: batch * seq * hidden * dtype_bytes
-        let per_layer_activation = batch_size * seq_len * hidden_size * dtype_bytes_val as usize;
-
-        // Total activation across all layers
-        let total_activation =
-            per_layer_activation as f64 * num_layers as f64 * moe_factor * checkpoint_factor;
-
         // Divide by tensor parallelism degree (activations are sharded across TP ranks)
         let tensor_parallel = ctx.config.training.parallelism.tensor_parallel.max(1) as f64;
-        let activation_memory_bytes = (total_activation / tensor_parallel).round() as u64;
+        let activation_memory_bytes = ((liveness_sum_bytes as f64 * moe_factor * checkpoint_factor)
+            / tensor_parallel)
+            .round() as u64;
 
         // ── Determine if this is a training run ───────────────────────────────
         // Training = optimizer is not "none"/"inference" AND there are steps
@@ -284,7 +287,11 @@ impl IrPass for MemoryPass {
     }
 }
 
-fn calculate_liveness(tensor_ir: &TensorIR, arch_ir: &ArchitectureIR) -> Vec<LivenessInterval> {
+fn calculate_liveness(
+    tensor_ir: &TensorIR,
+    arch_ir: &ArchitectureIR,
+    config: &neurax_parser::ModelConfig,
+) -> Vec<LivenessInterval> {
     let mut intervals = Vec::new();
 
     for (id, tensor) in &tensor_ir.tensors {
@@ -302,9 +309,23 @@ fn calculate_liveness(tensor_ir: &TensorIR, arch_ir: &ArchitectureIR) -> Vec<Liv
             .max()
             .unwrap_or(start_step);
 
+        // A tensor produced by a block the client said repeats N times (a
+        // compact `layer_stack`-style design, one JSON block standing for N)
+        // is alive N times over, not once — the same scale factor parameter
+        // counting already applies (`scaled_total_parameters`), kept
+        // consistent here rather than only ever counting the one block
+        // that's literally present.
+        let scale = config
+            .model
+            .layers
+            .iter()
+            .find(|l| l.id == tensor.produced_by)
+            .map(|l| crate::architecture::repeat_scale_for(config, l))
+            .unwrap_or(1.0);
+
         intervals.push(LivenessInterval {
             tensor_id: id.clone(),
-            size_bytes: tensor.size_bytes,
+            size_bytes: (tensor.size_bytes as f64 * scale).round() as u64,
             start_step,
             end_step,
         });

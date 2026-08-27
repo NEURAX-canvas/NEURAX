@@ -1,5 +1,6 @@
 //! Tensor IR pass
 
+use super::shape_inference::infer_shapes;
 use super::{LayerTensors, Shape, TensorIR, TensorInfo, TensorMetrics};
 use crate::error::TensorError;
 use crate::graph::GraphIR;
@@ -55,18 +56,29 @@ impl IrPass for TensorPass {
             })
             .unwrap_or(512);
 
+        // Real, per-family shapes (conv/pool arithmetic, hidden-dim
+        // threading, ...) for every layer whose declared shape is empty —
+        // see `shape_inference`. A client-declared shape always wins; this
+        // only fills gaps, so a caller already sending its own shapes sees
+        // no change.
+        let inferred = infer_shapes(input, &ctx.config);
+
         // Process each node in topological order
         for &node_idx in &input.topo_order {
             if let Some(node) = input.dag.node_weight(node_idx) {
+                let inferred_shapes = inferred.get(&node.layer_id);
+
                 // Create input tensors with proper shapes if not provided
                 let mut input_tensors = Vec::new();
                 for (i, shape) in node.input_shapes.iter().enumerate() {
                     let (tensor_shape, size_bytes) = if shape.is_empty() {
-                        // Default shape based on layer type
-                        let default_shape = match node.layer_type {
-                            LayerType::Embedding => vec![batch, seq],
-                            _ => vec![batch, seq, hidden],
-                        };
+                        let default_shape = inferred_shapes
+                            .map(|(input, _)| input.clone())
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or_else(|| match node.layer_type {
+                                LayerType::Embedding => vec![batch, seq],
+                                _ => vec![batch, seq, hidden],
+                            });
                         let bytes = default_shape.iter().product::<usize>()
                             * neurax_formulas::dtype_bytes(&dtype);
                         (default_shape, bytes as u64)
@@ -93,11 +105,10 @@ impl IrPass for TensorPass {
                 let output_shape = if !node.output_shape.is_empty() {
                     Shape::known(node.output_shape.clone())
                 } else {
-                    // Use default shape based on layer type
-                    let default_shape = match node.layer_type {
-                        LayerType::Embedding => vec![batch, seq, hidden],
-                        _ => vec![batch, seq, hidden],
-                    };
+                    let default_shape = inferred_shapes
+                        .map(|(_, output)| output.clone())
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or_else(|| vec![batch, seq, hidden]);
                     Shape::known(default_shape)
                 };
 
