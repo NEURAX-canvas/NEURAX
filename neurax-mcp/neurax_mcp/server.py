@@ -165,7 +165,19 @@ AVAILABLE_TOOLS = [
                         "connections": {
                             "type": "array",
                             "items": {"type": "object"},
-                            "description": "List of connections between nodes"
+                            "description": "List of connections between nodes, each {\"from\": node_id, \"to\": node_id}"
+                        },
+                        "image_channels": {
+                            "type": "integer",
+                            "description": "Required for cnn/vit/gan/diffusion families — input image channel count (e.g. 3 for RGB).",
+                        },
+                        "image_height": {
+                            "type": "integer",
+                            "description": "Required for cnn/vit/gan/diffusion families — input image height in pixels.",
+                        },
+                        "image_width": {
+                            "type": "integer",
+                            "description": "Required for cnn/vit/gan/diffusion families — input image width in pixels.",
                         },
                         "hardware": {
                             "type": "object",
@@ -302,28 +314,66 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
             raw_connections = arch.get("connections", [])
             raw_hardware = arch.get("hardware", {})
 
-            # Map frontend layer types to backend-compatible names
+            # Map canvas/agent layer types to the compiler's LayerType
+            # vocabulary. Kept in sync with neurax-agent/budget_check.py's
+            # LAYER_TYPE_MAP by hand (this package installs standalone, with
+            # no dependency on neurax-agent) — this one had drifted to a
+            # fraction of that table's size (no MoE/GNN/SSM/LoRA entries at
+            # all), so any of those block types sent through this server
+            # reached the compiler as their own unrecognized name and failed
+            # to parse outright.
             LAYER_TYPE_MAP = {
                 "token_embedding": "embedding",
                 "embedding": "embedding",
                 "pos_embed": "positional_embed",
+                "positional_encoding": "positional_embed",
+                "rope": "positional_embed",
+                "alibi": "positional_embed",
                 "mha_attention": "attention",
+                "mha": "attention",
                 "attention": "attention",
-                "cross_attention": "cross_attention",
+                "gqa": "attention",
                 "flash_attention": "attention",
-                "ffn_standard": "ffn",
-                "ffn_gated": "ffn",
+                "self_attention": "attention",
+                "cross_attention": "cross_attention",
+                "bahdanau_attention": "attention",
+                "ffn_standard": "mlp",
+                "ffn_gated": "mlp",
+                "ffn": "mlp",
                 "mlp": "mlp",
-                "layer_norm": "normalization",
-                "rmsnorm": "normalization",
+                "swiglu": "mlp",
+                "lm_head": "dense",
+                "classification_head": "dense",
                 "linear": "dense",
+                "linear_projection": "dense",
                 "dense": "dense",
+                "output": "dense",
+                "input": "embedding",
+                "layer_norm": "normalization",
+                "layernorm": "normalization",
+                "rmsnorm": "normalization",
+                "batchnorm": "normalization",
+                "groupnorm": "normalization",
+                "instancenorm": "normalization",
                 "conv2d": "conv",
                 "conv1d": "conv",
+                "depthwise_conv2d": "conv",
+                "conv_transpose2d": "conv",
                 "max_pool": "pooling",
                 "avg_pool": "pooling",
-                "input": "embedding",  # input layers mapped to embedding
-                "output": "dense",     # output layers mapped to dense
+                "global_pool": "pooling",
+                "moe_block": "moe",
+                "expert": "moe",
+                "mamba_block": "mamba_block",
+                "s4_block": "s4_block",
+                "lstm": "lstm",
+                "gru": "gru",
+                "gcn_conv": "graph_conv",
+                "gat_conv": "graph_attention",
+                "message_passing": "message_passing",
+                "rgcn_conv": "rgcn_conv",
+                "lora_linear": "lora_linear",
+                "dora_linear": "dora_linear",
             }
 
             # Build proper topology format required by NEURAX backend
@@ -370,15 +420,27 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 },
             }
 
-            # Add connections as graph edges
+            # Image-shaped families (cnn/vit/gan/diffusion) need their entry
+            # shape stated here — the compiler's shape-inference engine reads
+            # it from exactly these three fields, defaulting to a 224x224x3
+            # placeholder image otherwise.
+            for key in ("image_channels", "image_height", "image_width"):
+                if key in arch:
+                    topology["data"][key] = arch[key]
+
+            # `model.connections`, not `model.graph.edges` — the field the
+            # compiler's wire schema actually defines (RawModel has `layers`/
+            # `global_params`/`connections`, no `graph` key at all). Sending
+            # `graph.edges` parsed without error (unknown keys are ignored)
+            # but the edges never reached anything: the compiler fell back to
+            # its positional-chain assumption regardless of what topology the
+            # caller actually described.
             if raw_connections:
-                topology["model"]["graph"] = {
-                    "edges": [
-                        {"from": c["from"], "to": c["to"]}
-                        for c in raw_connections
-                        if "from" in c and "to" in c
-                    ]
-                }
+                topology["model"]["connections"] = [
+                    {"from": c["from"], "to": c["to"]}
+                    for c in raw_connections
+                    if "from" in c and "to" in c
+                ]
 
             result = await _call_backend("/analyze", method="POST", data={"topology": topology})
             if name == "analyze_architecture":
