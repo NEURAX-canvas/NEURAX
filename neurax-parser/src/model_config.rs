@@ -136,6 +136,16 @@ pub enum LayerType {
     Mlp,
     Conv,
     Dense,
+    /// Low-rank adaptation (Hu et al., 2021) — two small matrices (`rank ×
+    /// in`, `out × rank`) instead of one full `in × out` one. Used to
+    /// collapse into `Dense` on the wire, costing a fine-tuning technique
+    /// that exists specifically to be cheap as if it were the full layer
+    /// it adapts.
+    LoraLinear,
+    /// LoRA plus a learned per-output-channel magnitude vector (Liu et al.,
+    /// 2024) — decomposes the adapted weight into direction (LoRA's low-rank
+    /// update) and magnitude, rather than only ever a direction update.
+    DoraLinear,
     Normalization,
     Pooling,
     MoE,
@@ -243,6 +253,8 @@ impl LayerType {
             "mlp" | "ffn" | "feed_forward" => Ok(Self::Mlp),
             "conv" | "conv2d" | "convolution" => Ok(Self::Conv),
             "dense" | "linear" => Ok(Self::Dense),
+            "lora_linear" | "lora" => Ok(Self::LoraLinear),
+            "dora_linear" | "dora" => Ok(Self::DoraLinear),
             "normalization" | "layer_norm" | "batch_norm" | "rms_norm" => Ok(Self::Normalization),
             "pooling" | "max_pool" | "avg_pool" => Ok(Self::Pooling),
             "moe" | "mixture_of_experts" => Ok(Self::MoE),
@@ -316,6 +328,8 @@ impl LayerType {
             Self::Mlp => "mlp",
             Self::Conv => "conv",
             Self::Dense => "dense",
+            Self::LoraLinear => "lora_linear",
+            Self::DoraLinear => "dora_linear",
             Self::Normalization => "normalization",
             Self::Pooling => "pooling",
             Self::MoE => "moe",
@@ -428,6 +442,16 @@ pub struct LayerParams {
     /// matrices instead of one full matrix each (Schlichtkrull et al. 2018's
     /// regularization for graphs with many relation types).
     pub num_bases: Option<usize>,
+
+    // LoRA/DoRA parameters
+    /// Low-rank adaptation rank (Hu et al., 2021) — the whole point of
+    /// LoRA is that this is far smaller than `in_features`/`out_features`.
+    pub rank: Option<usize>,
+    /// LoRA scaling factor. Named distinctly from `alpha` above (GAN
+    /// progressive-growing's alpha) — same wire key `"alpha"` on a
+    /// lora_linear/dora_linear block, a different field here since the two
+    /// concepts have nothing to do with each other.
+    pub lora_alpha: Option<f64>,
 
     // Conv parameters
     pub kernel_size: Option<usize>,
@@ -576,6 +600,9 @@ impl LayerParams {
             // RGCN parameters
             num_relations: raw.get_usize("num_relations"),
             num_bases: raw.get_usize("num_bases"),
+            // LoRA/DoRA parameters
+            rank: raw.get_usize("rank"),
+            lora_alpha: raw.get_f64("alpha"),
             kernel_size: raw.get_usize("kernel_size"),
             kernel_h: raw.get_usize("kernel_h"),
             kernel_w: raw.get_usize("kernel_w"),

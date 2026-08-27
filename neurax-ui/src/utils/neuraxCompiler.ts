@@ -1419,10 +1419,19 @@ function toParserLayerType(blockType: string): string {
     return 'conv';
   }
 
+  // lora_linear/dora_linear used to collapse into the generic 'dense' bucket
+  // below, costing a fine-tuning adapter as if it were the full dense layer
+  // it exists specifically to avoid materializing — rank * (in + out)
+  // instead of in * out, routinely a 100x+ difference.
+  if (normalized === 'lora_linear' || normalized === 'lora') {
+    return 'lora_linear';
+  }
+  if (normalized === 'dora_linear' || normalized === 'dora') {
+    return 'dora_linear';
+  }
+
   if (
     normalized === 'linear_projection' ||
-    normalized === 'lora_linear' ||
-    normalized === 'dora_linear' ||
     normalized === 'q_projection' ||
     normalized === 'k_projection' ||
     normalized === 'v_projection' ||

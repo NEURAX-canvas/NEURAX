@@ -11,6 +11,7 @@ pub mod custom;
 pub mod diffusion;
 pub mod embedding;
 pub mod gnn;
+pub mod lora;
 pub mod mlp;
 pub mod moe;
 pub mod normalization;

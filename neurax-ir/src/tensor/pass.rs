@@ -337,5 +337,7 @@ fn propagate_shape(
         | LayerType::RgcnConv => Shape::known(input.to_vec()),
         // Custom layer - preserve input shape
         LayerType::Custom => Shape::known(input.to_vec()),
+        // LoRA/DoRA - same output shape as the dense layer they adapt.
+        LayerType::LoraLinear | LayerType::DoraLinear => Shape::known(input.to_vec()),
     }
 }

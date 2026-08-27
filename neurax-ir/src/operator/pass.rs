@@ -301,6 +301,40 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
+        LayerType::LoraLinear | LayerType::DoraLinear => {
+            let in_f = layer.params.in_features.unwrap_or(512);
+            let out_f = layer.params.out_features.unwrap_or(512);
+            let rank = layer.params.rank.unwrap_or(16);
+            let outer_dims = layer
+                .input_shape
+                .iter()
+                .take(layer.input_shape.len().saturating_sub(1))
+                .copied()
+                .product::<usize>()
+                .max(1);
+            let flops = if matches!(layer.layer_type, LayerType::DoraLinear) {
+                neurax_formulas::lora::dora_flops(outer_dims, in_f, out_f, rank)
+            } else {
+                neurax_formulas::lora::lora_flops(outer_dims, in_f, out_f, rank)
+            };
+            let output_elements = if layer.output_shape.is_empty() {
+                outer_dims * out_f
+            } else {
+                layer.output_shape.iter().copied().product::<usize>()
+            };
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::MatMul,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![crate::tensor::Shape::known(layer.input_shape.clone())],
+                output_shape: crate::tensor::Shape::known(layer.output_shape.clone()),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: (output_elements as f64 * neurax_formulas::dtype_bytes(dtype))
+                    .round() as u64,
+                is_custom: false,
+            });
+        }
         LayerType::Normalization => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let is_rms = layer.params.activation.as_deref() == Some("rms");

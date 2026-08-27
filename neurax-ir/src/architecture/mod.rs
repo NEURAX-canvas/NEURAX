@@ -57,6 +57,19 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let bias = if layer.params.bias { out_features } else { 0 };
             (in_features * out_features + bias) as u64
         }
+        LayerType::LoraLinear | LayerType::DoraLinear => {
+            let in_features = layer.params.in_features.unwrap_or(512);
+            let out_features = layer.params.out_features.unwrap_or(512);
+            // The rank is the whole point of LoRA — defaulting it to
+            // something in the tens (not `in_features`, which would just
+            // reproduce a full dense layer's cost) when unset.
+            let rank = layer.params.rank.unwrap_or(16);
+            if layer.layer_type == LayerType::DoraLinear {
+                lora::dora_params(in_features, out_features, rank)
+            } else {
+                lora::lora_params(in_features, out_features, rank)
+            }
+        }
         LayerType::Conv => {
             let in_ch = layer.params.in_channels.unwrap_or(3);
             let out_ch = layer.params.out_channels.unwrap_or(64);
