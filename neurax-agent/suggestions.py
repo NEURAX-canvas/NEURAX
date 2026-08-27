@@ -3,8 +3,7 @@ import logging
 import re
 from typing import Any, Optional
 from graph_utils import (
-    _node_type, _graph_sets, _reachable, _main_flow_nodes, _orphan_nodes,
-    _has_orphans, _unique_node_id
+    _node_type, _graph_sets, _reachable, _main_flow_nodes, _unique_node_id
 )
 
 logger = logging.getLogger(__name__)
@@ -85,8 +84,6 @@ def _suggest_attach_orphan(snapshot: dict[str, Any]) -> Optional[dict[str, Any]]
         
         source_id = tail if tail else next(iter(inputs))
         return {"name": "connect", "args": {"from_id": source_id, "to_id": target_id}}
-
-    return None
 
 
 def _suggest_family(snapshot: dict[str, Any], user_message: str) -> Optional[dict[str, Any]]:
