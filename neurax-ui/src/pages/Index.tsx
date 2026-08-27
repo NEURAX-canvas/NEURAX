@@ -102,13 +102,25 @@ import { hasAnalysisReportData } from '@/components/simulation/simulationData.ts
  * `embedding`) were all that survived.
  *
  * This is the direct fix for that: on a miss, retry the lookup through this
- * alias before giving up. Scoped to the transformer/MoE vocabulary that's
- * confirmed broken today — the same class of mismatch exists for other
- * families too (e.g. `dense` → `linear_projection`, activation names like
- * `relu`/`gelu` that aren't separate blocks on this canvas at all), left
- * for a follow-up rather than folded in here blind.
+ * alias before giving up. Covers every 1:1 rename confirmed across the
+ * agent's catalogue (catalogue.json) against this canvas's registry, family
+ * by family. A few agent type names have no real counterpart at all rather
+ * than just a different spelling:
+ *   - `relu`/`gelu`/`silu`/`tanh`/`sigmoid`/`leaky_relu` aren't separate
+ *     blocks here — activation is a *parameter* on the block before them
+ *     (`hasActivation: true` + an `activation` field), never its own node.
+ *   - SNN neuron/encoder types (`rate_encoder`, `lif_neuron`, ...) have no
+ *     equivalent on this canvas at all — the SNN family isn't buildable by
+ *     the agent yet.
+ *   - A handful of rare ones (`pixelnorm`, `bahdanau_attention`) don't have
+ *     a close-enough match to alias safely.
+ * Every one of those still add_node-fails today — but `handleAgentToolEvent`
+ * bridges connections across whatever gap that leaves (see
+ * `droppedNodeIdsRef` below), so the design stays fully wired even where an
+ * alias genuinely can't help.
  */
 const AGENT_TYPE_ALIASES: Record<string, string> = {
+  // transformer / moe
   mha: 'mha_attention',
   gqa: 'gqa_attention',
   mqa: 'mqa_attention',
@@ -119,9 +131,19 @@ const AGENT_TYPE_ALIASES: Record<string, string> = {
   positional_encoding: 'pos_absolute',
   rope: 'pos_rope',
   alibi: 'pos_alibi',
-  mamba_block: 'mamba_mixer',
   gate: 'router_linear',
   expert: 'expert_gated_ffn',
+  add: 'residual_add',
+  merge: 'concat',
+  // cnn / gan / diffusion / gnn / multimodal
+  dense: 'linear_projection',
+  depthwise_conv2d: 'depthwise_conv',
+  conv_transpose2d: 'transposed_conv',
+  se_block: 'se_layer',
+  graphnorm: 'graph_norm',
+  downsample: 'downsample_block',
+  // ssm
+  mamba_block: 'mamba_mixer',
 };
 
 const _hashString = (input: string): string => {
@@ -2262,11 +2284,26 @@ params: params as Record<string, ParameterValue>,
       .catch(() => { /* credits unavailable in dev mode */ });
   }, []);
 
+  // Bridges connections across a node the agent tried to add but that
+  // failed to land on the canvas (unknown/unaliased type, or any other
+  // add_node rejection) — instead of two dangling edges into and out of a
+  // node that was never actually there, wire its would-be neighbors
+  // straight to each other. Without this, every silently-dropped node left
+  // the design with a hole: real blocks on either side of it, no path
+  // between them, which is exactly what disconnected, "same block
+  // everywhere" architectures came from — the agent kept adding whatever
+  // few types happened to survive, oblivious that everything around them
+  // had stopped connecting.
+  const droppedNodeIdsRef = useRef<Set<string>>(new Set());
+  const bridgeSourcesRef = useRef<Map<string, Set<string>>>(new Map());
+
   const handleAgentToolEvent = useCallback((tool: { name: string; args?: Record<string, unknown> }) => {
     const name = tool?.name;
     const args = tool?.args ?? {};
 
     if (name === 'clear_canvas') {
+      droppedNodeIdsRef.current = new Set();
+      bridgeSourcesRef.current = new Map();
       handleClearCanvas();
       return;
     }
@@ -2302,6 +2339,7 @@ params: params as Record<string, ParameterValue>,
       const cfg = layerConfigByType.get(layerType)
         ?? layerConfigByType.get(AGENT_TYPE_ALIASES[layerType] ?? '');
       if (!cfg) {
+        if (nodeId) droppedNodeIdsRef.current.add(nodeId);
         toast({
           title: 'Agent tool rejected',
           description: `Unknown layer type: ${layerType}`,
@@ -2344,8 +2382,35 @@ params: params as Record<string, ParameterValue>,
       const fromId = String(args.from_id ?? '');
       const toId = String(args.to_id ?? '');
       if (!fromId || !toId) return;
-      handleAddConnection(fromId, toId, true);
-      triggerAgentAutoAnalysis();
+
+      // Resolve a dropped id to the real (or already-bridged) node(s) that
+      // actually feed it, recursing through any run of consecutive dropped
+      // nodes. `seen` guards against a cycle turning this into a loop.
+      const resolveSources = (id: string, seen: Set<string> = new Set()): string[] => {
+        if (!droppedNodeIdsRef.current.has(id)) return [id];
+        if (seen.has(id)) return [];
+        seen.add(id);
+        const upstream = bridgeSourcesRef.current.get(id);
+        if (!upstream || upstream.size === 0) return [];
+        return [...upstream].flatMap((u) => resolveSources(u, seen));
+      };
+
+      if (droppedNodeIdsRef.current.has(toId)) {
+        // The target never landed — hold onto its real source(s) so that
+        // whatever the agent next connects FROM `toId` gets wired to them
+        // directly instead.
+        const sources = resolveSources(fromId);
+        if (sources.length > 0) {
+          const set = bridgeSourcesRef.current.get(toId) ?? new Set<string>();
+          sources.forEach((s) => set.add(s));
+          bridgeSourcesRef.current.set(toId, set);
+        }
+        return;
+      }
+
+      const sources = resolveSources(fromId);
+      sources.forEach((src) => handleAddConnection(src, toId, true));
+      if (sources.length > 0) triggerAgentAutoAnalysis();
       return;
     }
 
