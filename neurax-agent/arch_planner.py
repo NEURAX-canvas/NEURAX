@@ -514,7 +514,16 @@ You translate non-technical business needs (e.g., "classify documents", "detect 
 7. Nodes with max_inputs=1 (not marked fan-in capable) can only have ONE incoming edge
 8. For multiple branches merging: use one of these available merge blocks [{merge_hint}] BEFORE the target
 9. Set `params` using defaultParams from the catalogue as a starting baseline, then adjust to the user's needs AND the Training Environment:
-   - Match `in_channels` for the input layer to the HW Config's `inChannels`
+   - Match `in_channels` for the input layer to the HW Config's `inChannels` —
+     but a from-scratch build has no HW Config to inherit from (nothing has
+     established it yet), and leaving it unset or at 0 there is what has
+     collapsed a real build into a network of zero-sized tensors end to end.
+     When there's nothing to match, default `in_channels` to 3 (RGB) unless
+     the request says otherwise (grayscale -> 1, an explicit channel count ->
+     that count). Every dimension a node's `params` sets — `in_channels`,
+     `out_channels`, `in_features`, `out_features`, `hidden_size`, `d_model`,
+     `vocab_size`, `num_heads`, `kernel_size` — must be a real positive
+     number; 0 or missing is never a valid value for any of them.
    - Match `out_features` or `num_classes` for the head to the HW Config's `numClasses`
    - Match `hidden_size` or `d_model` if specified in HW Config
    - Ensure `stride`, `padding`, and `kernel_size` are technically sound

@@ -5,7 +5,7 @@
  * `projectFacts.test.ts`, because a landing page is the one surface where a
  * wrong number is a claim rather than a bug. The previous copy advertised "680+
  * configurable block types" and broke that down per family in the FAQ; the
- * catalogue holds 208. It also carried market statistics — a $2M average cost
+ * catalogue holds 193. It also carried market statistics — a $2M average cost
  * for a failed training run, 73% of models needing redesign, a 5x production
  * overrun — with no source behind any of them.
  *
@@ -15,16 +15,16 @@
 
 /** Blocks and macro-blocks in the architecture catalogue, per family. */
 export const CATALOGUE = {
-  cnn: { blocks: 23, macroBlocks: 3 },
-  diffusion: { blocks: 18, macroBlocks: 3 },
+  cnn: { blocks: 20, macroBlocks: 3 },
+  diffusion: { blocks: 16, macroBlocks: 3 },
   experimental: { blocks: 8, macroBlocks: 0 },
-  gan: { blocks: 17, macroBlocks: 2 },
-  gnn: { blocks: 18, macroBlocks: 3 },
+  gan: { blocks: 13, macroBlocks: 2 },
+  gnn: { blocks: 17, macroBlocks: 3 },
   moe: { blocks: 19, macroBlocks: 2 },
-  multimodal: { blocks: 24, macroBlocks: 0 },
-  rnn: { blocks: 16, macroBlocks: 3 },
+  multimodal: { blocks: 22, macroBlocks: 0 },
+  rnn: { blocks: 14, macroBlocks: 3 },
   snn: { blocks: 11, macroBlocks: 2 },
-  ssm: { blocks: 14, macroBlocks: 2 },
+  ssm: { blocks: 13, macroBlocks: 2 },
   transformer: { blocks: 17, macroBlocks: 3 },
 } as const;
 

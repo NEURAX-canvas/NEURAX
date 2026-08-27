@@ -387,4 +387,27 @@ def validate_arch_spec(
                     f"(or hidden size) where hidden_size % num_heads == 0."
                 )
 
+    # 13. Dimension params must never be 0.
+    #
+    # Live failure this catches: a from-scratch CNN build left the first
+    # conv's in_channels at 0 (the prompt told the planner to inherit it
+    # from HW Config, which a fresh build has nothing in yet) — the
+    # compiler then shaped every single downstream layer as a 0-sized
+    # tensor and rejected the whole design. Padding/stride/dropout/eps are
+    # legitimately 0 sometimes; a channel, feature, or vocab count never is.
+    ZERO_INVALID_DIM_KEYS = (
+        "in_channels", "out_channels", "in_features", "out_features",
+        "hidden_size", "d_model", "vocab_size", "num_heads", "n_heads",
+        "kernel_size",
+    )
+    for node in spec.nodes:
+        p = node.params if isinstance(node.params, dict) else {}
+        for key in ZERO_INVALID_DIM_KEYS:
+            if key in p and isinstance(p[key], (int, float)) and p[key] == 0:
+                errors.append(
+                    f"Node '{node.id}': '{key}' is 0 — every layer it flows "
+                    f"into will be shaped as an empty tensor. Set a real "
+                    f"value (e.g. 3 for RGB in_channels on the first conv)."
+                )
+
     return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)

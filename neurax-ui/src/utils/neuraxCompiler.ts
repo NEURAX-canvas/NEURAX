@@ -2441,10 +2441,21 @@ export function compileToNeuraxIR(
     const p = block.params ?? {};
 
     switch (block.type) {
-      case 'Input':
+      case 'Input': {
         inputShape = [];
-        outputShape = [batch, seq, p.dim ?? hidden];
+        // Image-shaped families describe their input as [B, C, H, W], not
+        // the [B, S, D] a sequence model uses — using the latter regardless
+        // of family (as this unconditionally did) fed every CNN build a
+        // shape built from `seq`/`hidden`, values that mean nothing for
+        // images, and 0 whenever nothing had set them. That 0 propagated
+        // through every downstream layer's shape inference, so the whole
+        // network came out empty and the compiler rejected it.
+        const isImageShaped = family === 'cnn' || family === 'gan' || family === 'diffusion';
+        outputShape = isImageShaped
+          ? [batch, inChannels ?? 3, imgHeight ?? 224, imgWidth ?? 224]
+          : [batch, seq, p.dim ?? hidden];
         break;
+      }
       case 'Embedding':
         inputShape = [batch, seq];
         outputShape = [batch, seq, p.d_model ?? hidden];

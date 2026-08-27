@@ -55,7 +55,29 @@ async def materialize(
 
     # Platform settings before the graph: the canvas derives block defaults from
     # them, and they decide the model's cost as much as the blocks do.
-    hw_config = getattr(spec, "hw_config", None) or {}
+    hw_config = dict(getattr(spec, "hw_config", None) or {})
+
+    # The canvas gates Run Analysis on a family-specific set of hw_config
+    # fields (HardwareContext.tsx's MANDATORY_FIELDS) that has nothing to do
+    # with what any individual node's own params carry — a conv node can
+    # have a perfectly correct in_channels and the build is still stuck
+    # forever on "Missing required field: inChannels" if this *global* field
+    # was never set. Nothing upstream (the planning prompt, `set_hw_config`)
+    # reliably sets these for every family, so backstop them here
+    # deterministically rather than hope the plan happened to include them —
+    # this is the same fallback-of-last-resort pattern as
+    # `initialize_hyperparams` below, just for the platform config instead
+    # of the training hyperparameters.
+    _HW_MANDATORY_DEFAULTS: dict[str, dict[str, object]] = {
+        "cnn": {"inChannels": 3, "imgHeight": 224, "imgWidth": 224},
+        "vit": {"inChannels": 3, "imgHeight": 224, "imgWidth": 224},
+        "diffusion": {"inChannels": 3, "imgHeight": 64, "imgWidth": 64, "numDenoisingSteps": 1000},
+        "gnn": {"numNodes": 1000, "numEdges": 5000, "nodeFeatDim": 64},
+        "ssm": {"dState": 16},
+    }
+    for key, default in _HW_MANDATORY_DEFAULTS.get(spec.family, {}).items():
+        hw_config.setdefault(key, default)
+
     if hw_config:
         yield _tool("set_hw_config", {"updates": hw_config})
 
