@@ -8,34 +8,35 @@
 
 @layer base {
   :root {
-    /* ── White + blue, not white + brown ──
-     * First pass whitened the background but kept Gruvbox's gold accent
-     * (37 80% 39%, an amber/brown hue) and warm-tinted (hue ~20-40) grays —
-     * still read as "white-brown" overall. This pass cools every neutral to
-     * a true blue-gray (hue 217-220) and swaps the accent for a clean blue
-     * (221 83% 53%), everywhere the old gold appeared: primary/accent/ring/
-     * sidebar-primary/sidebar-ring/canvas-connection. Semantic status colors
-     * (destructive/warning/success/info) are untouched — they're red/orange/
-     * green/cyan already, not brown. */
+    /* ── White + pink, not white + blue ──
+     * First pass whitened the background but kept a blue accent — asked
+     * for explicitly at the time, then reversed: the dark theme moved to
+     * pink instead of blue, and light was asked to follow so the pair
+     * reads as one family. Neutrals now carry a faint rose tint (hue 340,
+     * low saturation, so they stay clean/white rather than visibly pink)
+     * and the accent is a refined rose (336 70% 48% — deliberately deeper
+     * and less saturated than the dark theme's 330 81% 60%, so it reads as
+     * professional on white instead of candy-bright), applied everywhere
+     * the old blue appeared. Semantic status colors are untouched. */
     --background: 0 0% 100%;
-    --foreground: 220 9% 18%;
+    --foreground: 340 8% 18%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 9% 18%;
+    --card-foreground: 340 8% 18%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 9% 18%;
+    --popover-foreground: 340 8% 18%;
 
-    --primary: 221 83% 53%;
+    --primary: 336 70% 48%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 217 20% 96%;
-    --secondary-foreground: 220 9% 18%;
+    --secondary: 340 25% 96%;
+    --secondary-foreground: 340 8% 18%;
 
-    --muted: 217 20% 96%;
-    --muted-foreground: 220 9% 40%;
+    --muted: 340 25% 96%;
+    --muted-foreground: 340 8% 40%;
 
-    --accent: 221 83% 53%;
+    --accent: 336 70% 48%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 358 100% 31%;
@@ -50,27 +51,27 @@
     --info: 190 89% 25%;
     --info-foreground: 0 0% 100%;
 
-    --border: 217 15% 90%;
-    --input: 217 20% 96%;
-    --ring: 221 83% 53%;
+    --border: 340 20% 90%;
+    --input: 340 25% 96%;
+    --ring: 336 70% 48%;
 
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 220 9% 18%;
-    --sidebar-primary: 221 83% 53%;
+    --sidebar-foreground: 340 8% 18%;
+    --sidebar-primary: 336 70% 48%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 20% 96%;
-    --sidebar-accent-foreground: 220 9% 18%;
-    --sidebar-border: 217 15% 90%;
-    --sidebar-ring: 221 83% 53%;
+    --sidebar-accent: 340 25% 96%;
+    --sidebar-accent-foreground: 340 8% 18%;
+    --sidebar-border: 340 20% 90%;
+    --sidebar-ring: 336 70% 48%;
 
     /* Canvas specific */
     --canvas-bg: 0 0% 100%;
-    --canvas-grid: 217 15% 90%;
+    --canvas-grid: 340 20% 90%;
     --canvas-node: 0 0% 100%;
-    --canvas-node-border: 217 15% 90%;
-    --canvas-connection: 221 83% 53%;
+    --canvas-node-border: 340 20% 90%;
+    --canvas-connection: 336 70% 48%;
 
     /* Panel specific */
     --panel-header: 0 0% 100%;

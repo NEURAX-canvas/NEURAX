@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 
 const LABELS: Record<Theme, string> = {
-  light: 'Light — White & Blue',
+  light: 'Light — Rose',
   dark: 'Dark — Pink',
   molten: 'Molten Core',
   signal: 'Signal & Static',
