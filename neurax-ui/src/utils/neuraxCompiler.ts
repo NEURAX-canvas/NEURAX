@@ -1612,6 +1612,170 @@ function flattenBlocks(blocks: NeuraxBlock[]): NeuraxBlock[] {
   return flat;
 }
 
+/**
+ * CNN shape propagation.
+ *
+ * Every non-Input/Embedding/DenseProjection/LMHead block falls through to a
+ * `default` case elsewhere in this file that hardcodes `[batch, seq,
+ * hidden]` — values that describe a sequence model, not an image one, and
+ * are 0 whenever nothing set them. A CNN's actual shape changes at every
+ * conv/pool layer (channels grow, spatial size shrinks) and nothing here
+ * ever tracked that: every block computed its shape in isolation, with no
+ * awareness of what the block before it actually produced. This computes
+ * the real thing — standard conv/pool output-size arithmetic, propagated
+ * along the graph's real edges from the entry blocks (whatever is
+ * connected from the input) through to the head.
+ */
+type ShapeVec = number[];
+
+function convOutSpatial(inSize: number, kernel: number, stride: number, padding: number, dilation: number): number {
+  const size = Math.floor((inSize + 2 * padding - dilation * (kernel - 1) - 1) / Math.max(stride, 1) + 1);
+  return Math.max(1, size);
+}
+
+function transposeConvOutSpatial(inSize: number, kernel: number, stride: number, padding: number, outputPadding: number, dilation: number): number {
+  const size = (inSize - 1) * stride - 2 * padding + dilation * (kernel - 1) + outputPadding + 1;
+  return Math.max(1, size);
+}
+
+/** Output shape for one CNN block, given the shape(s) of whatever feeds it. */
+function cnnBlockOutputShape(blockType: string, params: Record<string, any> | undefined | null, inputShapes: ShapeVec[]): ShapeVec {
+  const primary = inputShapes[0] ?? [1, 1, 1, 1];
+  const [B, C, H, W] = [
+    primary[0] ?? 1,
+    primary[1] ?? 1,
+    primary[2] ?? 1,
+    primary[3] ?? 1,
+  ];
+  const p = params ?? {};
+  const kernel = Number(p.kernel_size ?? 3);
+  const stride = Number(p.stride ?? 1);
+  const padding = Number(p.padding ?? 0);
+  const dilation = Number(p.dilation ?? 1);
+
+  switch (blockType) {
+    case 'Conv2D':
+    case 'DepthwiseSep': {
+      const outC = Number(p.out_channels ?? C);
+      return [B, outC, convOutSpatial(H, kernel, stride, padding, dilation), convOutSpatial(W, kernel, stride, padding, dilation)];
+    }
+    case 'TransposeConv': {
+      const outC = Number(p.out_channels ?? C);
+      const outputPadding = Number(p.output_padding ?? 0);
+      return [
+        B, outC,
+        transposeConvOutSpatial(H, kernel, stride, padding, outputPadding, dilation),
+        transposeConvOutSpatial(W, kernel, stride, padding, outputPadding, dilation),
+      ];
+    }
+    case 'MaxPool':
+    case 'AvgPool': {
+      const poolSize = Number(p.pool_size ?? p.kernel_size ?? 2);
+      const poolStride = Number(p.stride ?? poolSize);
+      const poolPadding = Number(p.padding ?? 0);
+      return [B, C, convOutSpatial(H, poolSize, poolStride, poolPadding, 1), convOutSpatial(W, poolSize, poolStride, poolPadding, 1)];
+    }
+    case 'AdaptivePool': {
+      const outSize = Math.max(1, Number(p.output_size ?? 1));
+      return [B, C, outSize, outSize];
+    }
+    case 'GlobalPool':
+      return [B, C, 1, 1];
+    case 'Flatten':
+      return [B, C * H * W];
+    case 'DenseProjection': {
+      const inFeatures = primary.slice(1).reduce((a, b) => a * (b || 1), 1);
+      const outFeatures = Number(p.out_features ?? p.num_classes ?? inFeatures);
+      return [B, outFeatures];
+    }
+    case 'Concat': {
+      // Branches merging back together (e.g. Inception-style): same B/H/W,
+      // channels add up. Falls back to the primary branch's shape if the
+      // branches don't actually line up (mismatched resolution is a real
+      // architecture error the validator should catch, not something to
+      // paper over with a wrong number here).
+      const fourD = inputShapes.filter((s) => s.length === 4);
+      if (fourD.length === inputShapes.length && fourD.length > 1) {
+        const [b0, , h0, w0] = fourD[0];
+        const sameSpatial = fourD.every((s) => s[0] === b0 && s[2] === h0 && s[3] === w0);
+        if (sameSpatial) {
+          const totalC = fourD.reduce((sum, s) => sum + (s[1] ?? 0), 0);
+          return [b0, totalC, h0, w0];
+        }
+      }
+      return primary;
+    }
+    case 'BatchNorm':
+    case 'GroupNorm':
+    case 'InstanceNorm':
+    case 'LayerNorm':
+    case 'RmsNorm':
+    case 'Dropout':
+    case 'ResidualAdd':
+    case 'Add':
+    default:
+      return primary;
+  }
+}
+
+/**
+ * Propagates shapes along the graph's real edges for a CNN, starting from
+ * whatever the entry blocks (directly connected from the canvas's `input`
+ * node, which never appears in `flatBlocks` itself) actually see: a real
+ * `[B, C, H, W]` image tensor, not a sequence model's placeholder.
+ */
+function computeCnnShapes(
+  flatBlocks: NeuraxBlock[],
+  connections: Connection[],
+  batch: number,
+  inChannels: number,
+  imgHeight: number,
+  imgWidth: number,
+): Map<string, { input: ShapeVec; output: ShapeVec }> {
+  const shapes = new Map<string, { input: ShapeVec; output: ShapeVec }>();
+  const byId = new Map(flatBlocks.map((b) => [b.id, b]));
+  const predsOf = new Map<string, string[]>();
+  for (const b of flatBlocks) predsOf.set(b.id, []);
+  for (const c of connections) {
+    if (byId.has(c.to) && byId.has(c.from)) predsOf.get(c.to)!.push(c.from);
+  }
+
+  const entryShape: ShapeVec = [batch, inChannels, imgHeight, imgWidth];
+  const pending = new Set(flatBlocks.map((b) => b.id));
+  const queue: string[] = flatBlocks
+    .filter((b) => (predsOf.get(b.id) ?? []).length === 0)
+    .map((b) => b.id);
+
+  // Kahn-style traversal with requeueing: bounded so a cycle (which
+  // shouldn't exist — the validator rejects one — but this must never hang
+  // the compiler if one somehow does) degrades to "unresolved nodes fall
+  // back to the entry shape" instead of an infinite loop.
+  let guard = flatBlocks.length * flatBlocks.length + flatBlocks.length + 8;
+  while (queue.length > 0 && guard-- > 0) {
+    const id = queue.shift()!;
+    if (!pending.has(id)) continue;
+    const preds = predsOf.get(id) ?? [];
+    if (preds.some((p) => pending.has(p))) {
+      queue.push(id);
+      continue;
+    }
+    const block = byId.get(id)!;
+    const inputShapes = preds.length > 0
+      ? preds.map((p) => shapes.get(p)?.output ?? entryShape)
+      : [entryShape];
+    const outputShape = cnnBlockOutputShape(block.type, block.params, inputShapes);
+    shapes.set(id, { input: inputShapes[0], output: outputShape });
+    pending.delete(id);
+    for (const c of connections) {
+      if (c.from === id && byId.has(c.to) && pending.has(c.to)) queue.push(c.to);
+    }
+  }
+  for (const id of pending) {
+    shapes.set(id, { input: entryShape, output: entryShape });
+  }
+  return shapes;
+}
+
 function toParserModelType(family: ArchitectureFamily): string {
   return family;
 }
@@ -2433,6 +2597,10 @@ export function compileToNeuraxIR(
     return t === 'attention' || t === 'mlp';
   });
 
+  const cnnShapes = family === 'cnn'
+    ? computeCnnShapes(flatBlocks, connections, batch, inChannels ?? 3, imgHeight ?? 224, imgWidth ?? 224)
+    : null;
+
   const layers: NeuraxLayer[] = flatBlocks.map(block => {
     // Derive shapes from block type and params
     let inputShape: number[] = [];
@@ -2440,7 +2608,11 @@ export function compileToNeuraxIR(
 
     const p = block.params ?? {};
 
-    switch (block.type) {
+    const cnnShape = cnnShapes?.get(block.id);
+    if (cnnShape) {
+      inputShape = cnnShape.input;
+      outputShape = cnnShape.output;
+    } else switch (block.type) {
       case 'Input': {
         inputShape = [];
         // Image-shaped families describe their input as [B, C, H, W], not
