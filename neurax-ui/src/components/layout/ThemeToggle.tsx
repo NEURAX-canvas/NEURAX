@@ -10,8 +10,8 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 
 const LABELS: Record<Theme, string> = {
-  light: 'Light — Gruvbox',
-  dark: 'Dark — Gruvbox',
+  light: 'Light — White & Blue',
+  dark: 'Dark — Pink',
   molten: 'Molten Core',
   signal: 'Signal & Static',
   amber: 'Web & Amber',
