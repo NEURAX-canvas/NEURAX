@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "MCP server for NEURAX neural architecture compiler"
 requires-python = ">=3.10"
 dependencies = [
-    "mcp>=0.9.0",
+    # mcp 2.0 renamed/restructured the low-level Server API this file uses
+    # (list_tools/call_tool decorators no longer exist on it at all — the
+    # SDK's own import error names the migration guide). Pinned below 2.0
+    # so `pip install -e .` installs a version this code actually runs on,
+    # rather than silently fetching one that fails at import time.
+    "mcp>=0.9.0,<2.0.0",
     "httpx>=0.27.0",
 ]
 
