@@ -87,28 +87,38 @@
   }
 
   .dark {
-    /* ── Gruvbox Dark — same exact conversions, dark half of the pair ── */
-    --background: 0 0% 16%;
-    --foreground: 43 59% 81%;
+    /* ── Dark + pink, not Gruvbox ──
+     * The old dark theme was Gruvbox Dark's exact conversions: an olive
+     * background (0 0% 16%) with tan/beige text (43 59% 81%, the same
+     * warm family the light theme was just fixed to stop using) and a
+     * gold/burnt-orange accent pair. Replaced with a true dark neutral
+     * (subtle pink undertone at hue 330, low saturation, so the accent
+     * feels native rather than dropped on top) and one clean pink accent
+     * (330 81% 60%) carried through every primary/ring/sidebar/canvas
+     * accent slot below. Semantic status colors (destructive/warning/
+     * success/info) and the multi-hue chart palette are untouched — they
+     * need to stay mutually distinguishable, which an all-pink set can't
+     * do. */
+    --background: 330 15% 9%;
+    --foreground: 330 10% 92%;
 
-    --card: 20 5% 22%;
-    --card-foreground: 43 59% 81%;
+    --card: 330 14% 12%;
+    --card-foreground: 330 10% 92%;
 
-    --popover: 22 7% 29%;
-    --popover-foreground: 43 59% 81%;
+    --popover: 330 14% 14%;
+    --popover-foreground: 330 10% 92%;
 
-    --primary: 40 73% 49%;
-    --primary-foreground: 0 0% 16%;
+    --primary: 330 81% 60%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 22 7% 29%;
-    --secondary-foreground: 43 59% 81%;
+    --secondary: 330 12% 18%;
+    --secondary-foreground: 330 10% 92%;
 
-    --muted: 22 7% 29%;
-    --muted-foreground: 35 17% 59%;
+    --muted: 330 12% 18%;
+    --muted-foreground: 330 8% 65%;
 
-    /* Burnt orange, distinct from the gold primary — the logo carries both. */
-    --accent: 24 88% 45%;
-    --accent-foreground: 0 0% 16%;
+    --accent: 330 81% 60%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 6 96% 59%;
     --destructive-foreground: 0 0% 16%;
@@ -122,28 +132,26 @@
     --info: 157 16% 58%;
     --info-foreground: 0 0% 16%;
 
-    --border: 27 10% 36%;
-    --input: 22 7% 29%;
-    --ring: 40 73% 49%;
+    --border: 330 12% 24%;
+    --input: 330 12% 18%;
+    --ring: 330 81% 60%;
 
-    --sidebar-background: 20 5% 22%;
-    --sidebar-foreground: 43 59% 81%;
-    --sidebar-primary: 40 73% 49%;
-    --sidebar-primary-foreground: 0 0% 16%;
-    --sidebar-accent: 22 7% 29%;
-    --sidebar-accent-foreground: 43 59% 81%;
-    --sidebar-border: 27 10% 36%;
-    --sidebar-ring: 40 73% 49%;
+    --sidebar-background: 330 14% 12%;
+    --sidebar-foreground: 330 10% 92%;
+    --sidebar-primary: 330 81% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 330 12% 18%;
+    --sidebar-accent-foreground: 330 10% 92%;
+    --sidebar-border: 330 12% 24%;
+    --sidebar-ring: 330 81% 60%;
 
-    /* The deepest Gruvbox tone (bg0_h) — also the favicon's own background,
-     * so the canvas "well" and the app icon read as the same material. */
-    --canvas-bg: 195 6% 12%;
-    --canvas-grid: 27 10% 36%;
-    --canvas-node: 20 5% 22%;
-    --canvas-node-border: 27 10% 36%;
-    --canvas-connection: 40 73% 49%;
+    --canvas-bg: 330 16% 7%;
+    --canvas-grid: 330 12% 24%;
+    --canvas-node: 330 14% 12%;
+    --canvas-node-border: 330 12% 24%;
+    --canvas-connection: 330 81% 60%;
 
-    --panel-header: 22 7% 29%;
+    --panel-header: 330 14% 14%;
 
     /* Chart colors — Gruvbox's bright accent set */
     --chart-1: 42 95% 58%;
