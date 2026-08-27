@@ -74,6 +74,27 @@ pub fn moe_params_with_shared(
     (router_params as u64) + routed_experts + shared_expert_params
 }
 
+/// Parameters actually touched per token for an MoE layer — the router
+/// (scores every expert, so always active) plus only the `top_k` routed
+/// experts a token is actually sent to, plus any shared experts (always
+/// active, not routed). Mirrors `moe_params_with_shared`'s structure but
+/// with the routed term scaled by `top_k` instead of `num_experts` — the
+/// same distinction `moe_flops`'s expert-compute term already makes
+/// correctly, which this had not.
+pub fn moe_active_params_with_shared(
+    hidden_size: usize,
+    num_experts: usize,
+    top_k: usize,
+    shared_experts: usize,
+    expert_params: u64,
+) -> u64 {
+    let router_params = hidden_size * num_experts;
+    let routed_experts = top_k as u64 * expert_params;
+    let shared_expert_params = shared_experts as u64 * expert_params;
+
+    (router_params as u64) + routed_experts + shared_expert_params
+}
+
 /// Compute FLOPs for sparse MoE (with load balancing)
 pub fn sparse_moe_flops(
     batch: usize,
@@ -159,5 +180,48 @@ mod tests {
 
         // Should be roughly 2 × expert_flops per token
         assert!(flops > 0.0);
+    }
+
+    #[test]
+    fn test_moe_active_params_only_scales_the_routed_experts() {
+        // 8 experts, top-2, no shared experts: router (hidden*num_experts,
+        // always active) + 2 routed experts — not 8, and not the router
+        // scaled down along with them.
+        let hidden = 4096;
+        let num_experts = 8;
+        let top_k = 2;
+        let expert_params = 1_000_000u64;
+
+        let active = moe_active_params_with_shared(hidden, num_experts, top_k, 0, expert_params);
+        let expected = (hidden * num_experts) as u64 + top_k as u64 * expert_params;
+        assert_eq!(active, expected);
+    }
+
+    #[test]
+    fn test_moe_active_params_counts_shared_experts_at_full_weight() {
+        // DeepSeek-style: shared experts run on every token, unlike the
+        // routed ones — a flat top_k/num_experts scaling of the whole
+        // layer (the bug this function replaces) would have shrunk their
+        // contribution too, which is wrong: they are never routed at all.
+        let hidden = 2048;
+        let num_experts = 64;
+        let top_k = 6;
+        let shared_experts = 2;
+        let expert_params = 500_000u64;
+
+        let active = moe_active_params_with_shared(
+            hidden, num_experts, top_k, shared_experts, expert_params,
+        );
+        let router = (hidden * num_experts) as u64;
+        let routed = top_k as u64 * expert_params;
+        let shared = shared_experts as u64 * expert_params;
+        assert_eq!(active, router + routed + shared);
+
+        // The old (wrong) behavior for comparison: scaling everything,
+        // including the always-active router and shared experts, by
+        // top_k/num_experts would have under-counted this.
+        let total = moe_params_with_shared(hidden, 0, num_experts, shared_experts, expert_params);
+        let old_wrong = (total as f64 * top_k as f64 / num_experts as f64).round() as u64;
+        assert!(active > old_wrong, "the fix must count more than the flat-scaling bug did");
     }
 }

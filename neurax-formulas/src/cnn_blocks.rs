@@ -45,19 +45,28 @@ pub fn resnet_basic_block_params(
 
 /// Compute parameters for ResNet Bottleneck Block (3 convs)
 ///
-/// Structure: 1×1 → 3×3 → 1×1 with expansion factor (typically 4)
+/// Structure: 1×1 → 3×3 → 1×1 with expansion factor (typically 4).
+/// `cardinality` splits the middle 3×3 conv into that many groups — 1 is a
+/// plain ResNet-50/101 bottleneck; ResNeXt's whole point is a larger value
+/// here (32 for ResNeXt-50 32x4d), which divides that conv's parameter and
+/// FLOP count accordingly. Passing 1 reproduces the ungrouped formula this
+/// function always used before `cardinality` existed as a real input.
 pub fn resnet_bottleneck_block_params(
     in_channels: usize,
     mid_channels: usize,
     out_channels: usize,
     stride: usize,
+    cardinality: usize,
     bias: bool,
 ) -> u64 {
+    let cardinality = cardinality.max(1);
+
     // 1×1 reduction
     let conv1 = conv_params(in_channels, mid_channels, 1, bias);
 
-    // 3×3 conv
-    let conv2 = conv_params(mid_channels, mid_channels, 3, bias);
+    // 3×3 conv — grouped when cardinality > 1 (ResNeXt), same grouped-conv
+    // arithmetic `conv2d_params` uses elsewhere: dividing by the group count.
+    let conv2 = super::conv::conv2d_params(mid_channels, mid_channels, 3, 3, cardinality, bias);
 
     // 1×1 expansion
     let conv3 = conv_params(mid_channels, out_channels, 1, bias);
@@ -89,16 +98,20 @@ pub fn resnet_bottleneck_block_flops(
     height: usize,
     width: usize,
     stride: usize,
+    cardinality: usize,
 ) -> f64 {
+    let cardinality = cardinality.max(1) as f64;
     let out_h = (height / stride).max(1);
     let out_w = (width / stride).max(1);
     let b = batch as f64;
 
     // 1×1 reduction, at full input resolution.
     let conv1 = 2.0 * b * mid_channels as f64 * height as f64 * width as f64 * in_channels as f64;
-    // 3×3 conv, at the (possibly strided) output resolution.
-    let conv2 =
-        2.0 * b * mid_channels as f64 * out_h as f64 * out_w as f64 * mid_channels as f64 * 9.0;
+    // 3×3 conv, at the (possibly strided) output resolution — grouped when
+    // cardinality > 1, same reduction the parameter count above applies.
+    let conv2 = 2.0 * b * mid_channels as f64 * out_h as f64 * out_w as f64
+        * (mid_channels as f64 / cardinality)
+        * 9.0;
     // 1×1 expansion, at output resolution.
     let conv3 = 2.0 * b * out_channels as f64 * out_h as f64 * out_w as f64 * mid_channels as f64;
 
@@ -421,9 +434,27 @@ mod tests {
     #[test]
     fn test_resnet_bottleneck() {
         // ResNet-50 style: 256 → 128 (mid) → 512, stride=1 but channels
-        // change → downsample projection included.
-        let params = resnet_bottleneck_block_params(256, 128, 512, 1, false);
+        // change → downsample projection included. cardinality=1 (plain
+        // ResNet, not ResNeXt) must reproduce the exact number this test
+        // asserted before `cardinality` was a real parameter.
+        let params = resnet_bottleneck_block_params(256, 128, 512, 1, 1, false);
         assert_eq!(params, 379_648);
+    }
+
+    #[test]
+    fn test_resnext_bottleneck_groups_the_middle_conv() {
+        // ResNeXt-50 32x4d style: same shape as the plain bottleneck above,
+        // but the middle 3x3 conv is split into 32 groups — its weight count
+        // (and only its weight count) should divide by 32 versus cardinality=1.
+        let plain = resnet_bottleneck_block_params(256, 128, 512, 1, 1, false);
+        let grouped = resnet_bottleneck_block_params(256, 128, 512, 1, 32, false);
+        assert!(grouped < plain, "grouping the middle conv must reduce total params");
+
+        let conv1 = conv_params(256, 128, 1, false);
+        let conv3 = conv_params(128, 512, 1, false);
+        let bn_and_downsample = plain - conv1 - conv3 - conv_params(128, 128, 3, false);
+        let expected_conv2 = crate::conv::conv2d_params(128, 128, 3, 3, 32, false);
+        assert_eq!(grouped, conv1 + expected_conv2 + conv3 + bn_and_downsample);
     }
 
     #[test]

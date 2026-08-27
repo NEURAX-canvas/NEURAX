@@ -525,8 +525,9 @@ fn decompose_layer_to_ops(
             let stride = layer.params.stride.unwrap_or(1);
             let flops = if matches!(layer.layer_type, LayerType::ResnetBottleneck) {
                 let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
+                let cardinality = layer.params.cardinality.unwrap_or(1);
                 cnn_blocks::resnet_bottleneck_block_flops(
-                    batch, in_ch, mid_ch, out_ch, side, side, stride,
+                    batch, in_ch, mid_ch, out_ch, side, side, stride, cardinality,
                 )
             } else {
                 cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, stride)

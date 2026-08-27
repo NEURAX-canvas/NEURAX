@@ -330,7 +330,7 @@
         "name": "Feed-Forward Network",
         "defaultParams": {
           "d_model": 512,
-          "hidden_dim": 2048,
+          "intermediate_size": 2048,
           "activation": "relu",
           "dropout": 0.0,
           "bias": true
@@ -341,7 +341,7 @@
         "name": "SwiGLU FFN",
         "defaultParams": {
           "d_model": 512,
-          "hidden_dim": 2048,
+          "intermediate_size": 2048,
           "bias": false,
           "dropout": 0.0
         }
@@ -499,7 +499,7 @@
         "name": "Expert FFN",
         "defaultParams": {
           "d_model": 512,
-          "hidden_dim": 2048,
+          "intermediate_size": 2048,
           "expert_id": 0,
           "activation": "relu",
           "bias": true
@@ -529,7 +529,7 @@
           "num_experts": 8,
           "top_k": 2,
           "d_model": 512,
-          "hidden_dim": 2048
+          "intermediate_size": 2048
         }
       },
       {
@@ -584,7 +584,7 @@
         "name": "Feed-Forward Network",
         "defaultParams": {
           "d_model": 512,
-          "hidden_dim": 2048,
+          "intermediate_size": 2048,
           "activation": "relu",
           "dropout": 0.0,
           "bias": true
@@ -595,7 +595,7 @@
         "name": "SwiGLU FFN",
         "defaultParams": {
           "d_model": 512,
-          "hidden_dim": 2048,
+          "intermediate_size": 2048,
           "bias": false,
           "dropout": 0.0
         }
@@ -1797,7 +1797,7 @@
         "name": "Feed-Forward Network",
         "defaultParams": {
           "d_model": 256,
-          "hidden_dim": 1024,
+          "intermediate_size": 1024,
           "activation": "gelu",
           "dropout": 0.1,
           "bias": true

@@ -147,11 +147,18 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let out_ch = layer.params.out_channels.unwrap_or(256);
             let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
             let stride = layer.params.stride.unwrap_or(1);
+            // ResNeXt's defining difference from a plain ResNet bottleneck is
+            // exactly this: the middle 3x3 conv split into `cardinality`
+            // groups. Declared in the schema (`LayerParams::cardinality`,
+            // "ResNeXt groups") but never read anywhere until now — a real
+            // ResNeXt config's grouping had zero effect on its parameter count.
+            let cardinality = layer.params.cardinality.unwrap_or(1);
             cnn_blocks::resnet_bottleneck_block_params(
                 in_ch,
                 mid_ch,
                 out_ch,
                 stride,
+                cardinality,
                 layer.params.bias,
             )
         }
@@ -537,25 +544,39 @@ pub fn scaled_active_parameters(config: &neurax_parser::ModelConfig) -> u64 {
         .layers
         .iter()
         .map(|layer| {
-            let raw = calculate_layer_params(layer);
             let scale = repeat_scale_for(config, layer);
-            let active_fraction = match layer.layer_type {
+            let active = match layer.layer_type {
                 // Only the routed experts a token is actually sent to are
                 // active for that token — the router picks `top_k` out of
                 // `num_experts`. The router's own gating matrix and any
-                // shared expert are excluded from this node's count already
-                // (see `calculate_layer_params`), so this fraction applies
-                // only to genuinely-routed weight.
+                // shared expert run on every token regardless, so they are
+                // computed here directly rather than by scaling the whole
+                // `raw` total (from `calculate_layer_params`) by a single
+                // fraction — that used to scale the router and shared-expert
+                // weight down along with the routed experts too, for exactly
+                // the single fused `MoE` node this arm handles (the split
+                // `MoeRouter`/`MoeSharedExpert` node case was already correct,
+                // since those fall into the `_ => raw` branch below at 1.0).
                 LayerType::MoE => {
-                    let num_experts = layer.params.num_experts.unwrap_or(8).max(1) as f64;
-                    let top_k = layer.params.top_k.unwrap_or(2) as f64;
-                    (top_k / num_experts).clamp(0.0, 1.0)
+                    let hidden = layer.params.hidden_size.unwrap_or(512);
+                    let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
+                    let num_experts = layer.params.num_experts.unwrap_or(8);
+                    let top_k = layer.params.top_k.unwrap_or(2).min(num_experts);
+                    let shared_experts = layer.params.shared_experts.unwrap_or(0);
+                    let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
+                    moe::moe_active_params_with_shared(
+                        hidden,
+                        num_experts,
+                        top_k,
+                        shared_experts,
+                        expert_params,
+                    )
                 }
                 // The router, a shared expert, and every non-MoE layer type
-                // run on every token.
-                _ => 1.0,
+                // run on every token — active parameters equal total.
+                _ => calculate_layer_params(layer),
             };
-            (raw as f64 * scale * active_fraction).round() as u64
+            (active as f64 * scale).round() as u64
         })
         .sum()
 }
