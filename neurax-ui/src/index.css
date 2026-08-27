@@ -14,9 +14,9 @@
      * pink instead of blue, and light was asked to follow so the pair
      * reads as one family. Neutrals now carry a faint rose tint (hue 340,
      * low saturation, so they stay clean/white rather than visibly pink)
-     * and the accent is a refined rose (336 70% 48% — deliberately deeper
-     * and less saturated than the dark theme's 330 81% 60%, so it reads as
-     * professional on white instead of candy-bright), applied everywhere
+     * and the accent is a refined rose (336 70% 48%, lower saturation than
+     * the dark theme's 330 81% 48%, so it reads as professional on white
+     * instead of candy-bright), applied everywhere
      * the old blue appeared. Semantic status colors are untouched. */
     --background: 0 0% 100%;
     --foreground: 340 8% 18%;
@@ -95,11 +95,13 @@
      * gold/burnt-orange accent pair. Replaced with a true dark neutral
      * (subtle pink undertone at hue 330, low saturation, so the accent
      * feels native rather than dropped on top) and one clean pink accent
-     * (330 81% 60%) carried through every primary/ring/sidebar/canvas
-     * accent slot below. Semantic status colors (destructive/warning/
-     * success/info) and the multi-hue chart palette are untouched — they
-     * need to stay mutually distinguishable, which an all-pink set can't
-     * do. */
+     * (330 81% 48% — darker than the light theme's rose, so white button
+     * text clears WCAG AA at normal size) carried through every primary/
+     * ring/sidebar/canvas accent slot below. Semantic status colors
+     * (destructive/warning/success/info) and the multi-hue chart palette
+     * are untouched, aside from darkening destructive-foreground from 16%
+     * to 10% — the old value read at 4.18:1 against its background, just
+     * under the 4.5:1 AA-normal floor. */
     --background: 330 15% 9%;
     --foreground: 330 10% 92%;
 
@@ -109,7 +111,7 @@
     --popover: 330 14% 14%;
     --popover-foreground: 330 10% 92%;
 
-    --primary: 330 81% 60%;
+    --primary: 330 81% 48%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 330 12% 18%;
@@ -118,11 +120,11 @@
     --muted: 330 12% 18%;
     --muted-foreground: 330 8% 65%;
 
-    --accent: 330 81% 60%;
+    --accent: 330 81% 48%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 6 96% 59%;
-    --destructive-foreground: 0 0% 16%;
+    --destructive-foreground: 0 0% 10%;
 
     --warning: 42 95% 58%;
     --warning-foreground: 0 0% 16%;
@@ -135,22 +137,22 @@
 
     --border: 330 12% 24%;
     --input: 330 12% 18%;
-    --ring: 330 81% 60%;
+    --ring: 330 81% 48%;
 
     --sidebar-background: 330 14% 12%;
     --sidebar-foreground: 330 10% 92%;
-    --sidebar-primary: 330 81% 60%;
+    --sidebar-primary: 330 81% 48%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 330 12% 18%;
     --sidebar-accent-foreground: 330 10% 92%;
     --sidebar-border: 330 12% 24%;
-    --sidebar-ring: 330 81% 60%;
+    --sidebar-ring: 330 81% 48%;
 
     --canvas-bg: 330 16% 7%;
     --canvas-grid: 330 12% 24%;
     --canvas-node: 330 14% 12%;
     --canvas-node-border: 330 12% 24%;
-    --canvas-connection: 330 81% 60%;
+    --canvas-connection: 330 81% 48%;
 
     --panel-header: 330 14% 14%;
 
