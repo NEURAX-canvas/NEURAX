@@ -114,10 +114,15 @@ fn test_cuda_conv2d() {
 }
 
 #[test]
-fn test_cuda_flash_attention() {
+fn test_cuda_attention_is_real_not_a_stub() {
+    // Not actually flash-attention (no tiling/online softmax) — but a
+    // complete, real self-attention computation, unlike the old
+    // tensor.empty() stub this replaces.
     let code = CudaBackend::lower_attention(2048, 8192, 64, "f16").unwrap();
-    assert!(code.contains("flash_attention"));
     assert!(code.contains("gpu.kernel"));
+    assert!(code.contains("linalg.softmax"));
+    assert!(code.contains("linalg.transpose"));
+    assert!(!code.contains("tensor.empty() : tensor<2048x8192xf16>\n    return"));
 }
 
 #[test]
@@ -289,7 +294,11 @@ fn test_conv2d_output_shape() {
 
 #[test]
 fn test_attention_head_dimension() {
-    // Test attention with hidden_size=8192, num_heads=64 => head_dim=128
+    // hidden_size=8192, num_heads=64 => head_dim=128 => scale = 1/sqrt(128).
+    // The lowering works at [seq, hidden] shape throughout (real Q/K/V/O
+    // projections are hidden x hidden matrices, not per-head tensors) — only
+    // the softmax scale depends on head_dim, so that's what this checks now.
     let code = CudaBackend::lower_attention(2048, 8192, 64, "f16").unwrap();
-    assert!(code.contains("tensor<2048x64x128xf16>"));
+    assert!(code.contains("tensor<2048x8192xf16>"));
+    assert!(code.contains("0.0883883476"));
 }

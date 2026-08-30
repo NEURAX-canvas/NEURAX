@@ -17,6 +17,7 @@
 //!
 //! Run with: PATH="/usr/lib/llvm-18/bin:$PATH" cargo run --example formula_mlir_crosscheck -p neurax-mlir
 
+use neurax_formulas::attention;
 use neurax_mlir::targets::CudaBackend;
 use neurax_mlir::TargetLowering;
 use neurax_parser::{LayerType, ModelConfig};
@@ -192,7 +193,20 @@ fn assess_layer(
             let w = cfg.data.image_width.unwrap_or(224);
             assess_conv(batch, in_ch, out_ch, h, w, kernel, stride, padding, dtype)
         }
-        LayerType::Attention => Verdict::StubOnly, // lower_attention() is tensor.empty() -> return
+        // Attention now has a real lowering (Q/K/V, QK^T, softmax, ctx, output
+        // projection — see targets::attention_body). It has no batch dimension
+        // and no causal mask, so mlir_flops isn't reparsed/compared here the way
+        // matmul is — formula_flops is reported for reference, mlir-opt
+        // verification is the real signal.
+        LayerType::Attention => {
+            let hidden = params.hidden_size.unwrap_or(512);
+            let heads = params.num_heads.unwrap_or(8);
+            let causal = params.causal;
+            let formula_flops = attention::attention_flops(batch, seq, hidden, heads, causal);
+            let mlir = CudaBackend::lower_attention(seq, hidden, heads, dtype).unwrap();
+            let verified = verify_with_mlir_opt(&mlir);
+            Verdict::Checked { formula_flops, mlir_flops: None, verified }
+        }
 
         // MoE: the router projection [B,S,H] -> [B,S,num_experts] is a real, plain
         // matmul component of moe::moe_router_flops (the softmax term alongside it
@@ -282,10 +296,19 @@ fn assess_layer(
             }
         }
 
-        // CrossAttention now has a real attention_flops() formula, but
-        // lower_attention() is still the hollow stub — same situation as plain
-        // Attention above.
-        LayerType::CrossAttention => Verdict::StubOnly,
+        // CrossAttention now has both a real attention_flops() formula and a
+        // real (non-stub) lower_attention() — checked the same way as plain
+        // Attention. Real cross-attention's K/V come from a shorter
+        // conditioning sequence than Q's image sequence; this lowering (like
+        // the production formula it's checked against) treats both as `seq`.
+        LayerType::CrossAttention => {
+            let hidden = params.hidden_size.unwrap_or(320);
+            let heads = params.num_heads.unwrap_or(8);
+            let formula_flops = attention::attention_flops(batch, seq, hidden, heads, false);
+            let mlir = CudaBackend::lower_attention(seq, hidden, heads, dtype).unwrap();
+            let verified = verify_with_mlir_opt(&mlir);
+            Verdict::Checked { formula_flops, mlir_flops: None, verified }
+        }
 
         // UnetBlock and friends now use cnn_blocks::resnet_basic_block_flops() —
         // a real formula, but a composite one (2 convs + skip), same situation as
@@ -325,9 +348,15 @@ fn assess_layer(
             Verdict::Checked { formula_flops, mlir_flops: None, verified }
         }
 
-        // SelfAttention now has a real attention_flops() formula; same stub
-        // limitation as every other attention variant.
-        LayerType::SelfAttention => Verdict::StubOnly,
+        // SelfAttention (GAN) — same real formula and real lowering as above.
+        LayerType::SelfAttention => {
+            let channels = params.out_channels.unwrap_or(512);
+            let heads = (channels / 64).max(1);
+            let formula_flops = attention::attention_flops(batch, seq, channels, heads, false);
+            let mlir = CudaBackend::lower_attention(seq, channels, heads, dtype).unwrap();
+            let verified = verify_with_mlir_opt(&mlir);
+            Verdict::Checked { formula_flops, mlir_flops: None, verified }
+        }
 
         // StyleMod/AdaIN/PixelNorm/MinibatchStd/SpectralNorm now have real,
         // small elementwise formulas (matching their own param formulas) instead

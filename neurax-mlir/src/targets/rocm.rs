@@ -75,20 +75,9 @@ impl TargetLowering for RocmBackend {
         num_heads: usize,
         dtype: &str,
     ) -> Result<String, String> {
-        let head_dim = hidden_size / num_heads;
-
         Ok(format!(
-            r#"  // ROCm attention for AMD GPU
-  // Uses MFMA for attention computation on CDNA architecture
-  func.func @attention(%q: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %k: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %v: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>) -> tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}> attributes {{gpu.kernel}} {{
-    %output = tensor.empty() : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
-    return %output : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
-  }}
-"#,
-            seq_len = seq_len,
-            num_heads = num_heads,
-            head_dim = head_dim,
-            dtype = dtype
+            "  // ROCm attention for AMD GPU\n  // Uses MFMA for attention computation on CDNA architecture\n{}",
+            super::attention_body(seq_len, hidden_size, num_heads, dtype, "attributes {gpu.kernel}")
         ))
     }
 

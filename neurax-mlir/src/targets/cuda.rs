@@ -70,19 +70,14 @@ impl TargetLowering for CudaBackend {
         num_heads: usize,
         dtype: &str,
     ) -> Result<String, String> {
-        let head_dim = hidden_size / num_heads;
-
+        // Not actually flash-attention (no tiling, no online softmax, the full
+        // [seq, seq] score matrix is materialized) — a real, complete
+        // self-attention nonetheless, unlike the tensor.empty() stub this
+        // replaces. Calling it "flash" when it wasn't even computing attention
+        // at all was the more misleading of the two.
         Ok(format!(
-            r#"  // Flash Attention for CUDA
-  func.func @flash_attention(%q: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %k: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %v: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>) -> tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}> attributes {{gpu.kernel}} {{
-    %output = tensor.empty() : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
-    return %output : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
-  }}
-"#,
-            seq_len = seq_len,
-            num_heads = num_heads,
-            head_dim = head_dim,
-            dtype = dtype
+            "  // Self-attention for CUDA (full softmax, not flash-attention's tiled/online kernel)\n{}",
+            super::attention_body(seq_len, hidden_size, num_heads, dtype, "attributes {gpu.kernel}")
         ))
     }
 
@@ -187,7 +182,7 @@ mod tests {
     #[test]
     fn test_cuda_attention() {
         let code = CudaBackend::lower_attention(2048, 8192, 64, "f16").unwrap();
-        assert!(code.contains("flash_attention"));
+        assert!(code.contains("linalg.softmax"));
     }
 
     #[test]

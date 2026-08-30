@@ -187,6 +187,58 @@ pub(crate) fn conv2d_body(
     )
 }
 
+/// Shared self-attention lowering body for every backend: real Q/K/V
+/// projections, `QKᵀ` via `linalg.transpose` + `linalg.matmul`, scaling by
+/// `1/sqrt(head_dim)`, a real `linalg.softmax`, then `softmax·V` and the
+/// output projection — verified against `mlir-opt` directly before landing
+/// here. Every backend's own `lower_attention()` used to stop after computing
+/// Q/K/V and return `tensor.empty()`: a hollow stub that never touched
+/// `QKᵀ`, softmax, or `V` at all, on every one of the 22 real attention layers
+/// this tool checks across GPT-3/Mixtral/SDXL.
+///
+/// Single-head shape (`[seq, hidden]`, no per-head split) — the same
+/// abstraction level the old stub already used; splitting into real per-head
+/// tensors is further work, not part of this fix.
+pub(crate) fn attention_body(
+    seq_len: usize,
+    hidden_size: usize,
+    num_heads: usize,
+    dtype: &str,
+    func_attrs: &str,
+) -> String {
+    let head_dim = (hidden_size / num_heads.max(1)).max(1);
+    let scale = 1.0 / (head_dim as f64).sqrt();
+
+    format!(
+        "  func.func @attention(%input: tensor<{seq_len}x{hidden_size}x{dtype}>, %wq: tensor<{hidden_size}x{hidden_size}x{dtype}>, %wk: tensor<{hidden_size}x{hidden_size}x{dtype}>, %wv: tensor<{hidden_size}x{hidden_size}x{dtype}>, %wo: tensor<{hidden_size}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> {func_attrs} {{\n\
+         \x20   %q_init = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %q = linalg.matmul ins(%input, %wq : tensor<{seq_len}x{hidden_size}x{dtype}>, tensor<{hidden_size}x{hidden_size}x{dtype}>) outs(%q_init : tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %k_init = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %k = linalg.matmul ins(%input, %wk : tensor<{seq_len}x{hidden_size}x{dtype}>, tensor<{hidden_size}x{hidden_size}x{dtype}>) outs(%k_init : tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %v_init = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %v = linalg.matmul ins(%input, %wv : tensor<{seq_len}x{hidden_size}x{dtype}>, tensor<{hidden_size}x{hidden_size}x{dtype}>) outs(%v_init : tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %kt_init = tensor.empty() : tensor<{hidden_size}x{seq_len}x{dtype}>\n\
+         \x20   %kt = linalg.transpose ins(%k : tensor<{seq_len}x{hidden_size}x{dtype}>) outs(%kt_init : tensor<{hidden_size}x{seq_len}x{dtype}>) permutation = [1, 0]\n\
+         \x20   %scores_init = tensor.empty() : tensor<{seq_len}x{seq_len}x{dtype}>\n\
+         \x20   %scores = linalg.matmul ins(%q, %kt : tensor<{seq_len}x{hidden_size}x{dtype}>, tensor<{hidden_size}x{seq_len}x{dtype}>) outs(%scores_init : tensor<{seq_len}x{seq_len}x{dtype}>) -> tensor<{seq_len}x{seq_len}x{dtype}>\n\
+         \x20   %scale = arith.constant {scale:.10} : {dtype}\n\
+         \x20   %scaled_init = tensor.empty() : tensor<{seq_len}x{seq_len}x{dtype}>\n\
+         \x20   %scaled = linalg.generic {{indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>, affine_map<(d0, d1) -> (d0, d1)>], iterator_types = [\"parallel\", \"parallel\"]}} ins(%scores : tensor<{seq_len}x{seq_len}x{dtype}>) outs(%scaled_init : tensor<{seq_len}x{seq_len}x{dtype}>) {{\n\
+         \x20   ^bb0(%s_in: {dtype}, %s_out: {dtype}):\n\
+         \x20     %s_scaled = arith.mulf %s_in, %scale : {dtype}\n\
+         \x20     linalg.yield %s_scaled : {dtype}\n\
+         \x20   }} -> tensor<{seq_len}x{seq_len}x{dtype}>\n\
+         \x20   %softmax_init = tensor.empty() : tensor<{seq_len}x{seq_len}x{dtype}>\n\
+         \x20   %attn = linalg.softmax dimension(1) ins(%scaled : tensor<{seq_len}x{seq_len}x{dtype}>) outs(%softmax_init : tensor<{seq_len}x{seq_len}x{dtype}>) -> tensor<{seq_len}x{seq_len}x{dtype}>\n\
+         \x20   %ctx_init = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %ctx = linalg.matmul ins(%attn, %v : tensor<{seq_len}x{seq_len}x{dtype}>, tensor<{seq_len}x{hidden_size}x{dtype}>) outs(%ctx_init : tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %out_init = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   %output = linalg.matmul ins(%ctx, %wo : tensor<{seq_len}x{hidden_size}x{dtype}>, tensor<{hidden_size}x{hidden_size}x{dtype}>) outs(%out_init : tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20   return %output : tensor<{seq_len}x{hidden_size}x{dtype}>\n\
+         \x20 }}\n"
+    )
+}
+
 impl std::fmt::Display for TargetBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())

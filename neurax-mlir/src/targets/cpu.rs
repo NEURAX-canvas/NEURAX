@@ -74,15 +74,14 @@ impl TargetLowering for CpuBackend {
         dtype: &str,
     ) -> Result<String, String> {
         Ok(format!(
-            r#"  // CPU attention using linalg
-  func.func @attention(%q: tensor<{seq_len}x{hidden_size}x{dtype}>, %k: tensor<{seq_len}x{hidden_size}x{dtype}>, %v: tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> attributes {{llvm.readonly}} {{
-    %output = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>
-    return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
-  }}
-"#,
-            seq_len = seq_len,
-            hidden_size = hidden_size,
-            dtype = dtype
+            "  // CPU attention using linalg\n{}",
+            super::attention_body(
+                seq_len,
+                hidden_size,
+                num_heads,
+                dtype,
+                "attributes {llvm.readonly}"
+            )
         ))
     }
 

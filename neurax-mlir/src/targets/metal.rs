@@ -75,20 +75,9 @@ impl TargetLowering for MetalBackend {
         num_heads: usize,
         dtype: &str,
     ) -> Result<String, String> {
-        let head_dim = hidden_size / num_heads;
-
         Ok(format!(
-            r#"  // Metal attention for Apple Silicon
-  // Optimized for unified memory architecture
-  func.func @attention(%q: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %k: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>, %v: tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>) -> tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}> {{
-    %output = tensor.empty() : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
-    return %output : tensor<{seq_len}x{num_heads}x{head_dim}x{dtype}>
-  }}
-"#,
-            seq_len = seq_len,
-            num_heads = num_heads,
-            head_dim = head_dim,
-            dtype = dtype
+            "  // Metal attention for Apple Silicon\n  // Optimized for unified memory architecture\n{}",
+            super::attention_body(seq_len, hidden_size, num_heads, dtype, "")
         ))
     }
 
