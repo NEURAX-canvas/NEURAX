@@ -48,29 +48,24 @@ impl TargetLowering for RocmBackend {
         height: usize,
         width: usize,
         kernel_size: usize,
+        stride: usize,
+        padding: usize,
         dtype: &str,
     ) -> Result<String, String> {
-        let out_h = height.saturating_sub(kernel_size) + 1;
-        let out_w = width.saturating_sub(kernel_size) + 1;
-
         Ok(format!(
-            r#"  // ROCm conv2d for AMD GPU
-  // Optimized for MI-series accelerators
-  func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{kernel_size}x{kernel_size}x{in_channels}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}> attributes {{gpu.kernel}} {{
-    %output_init = tensor.empty() : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
-    %output = linalg.conv_2d_nhwc_hwcf ins(%input, %filter : tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, tensor<{kernel_size}x{kernel_size}x{in_channels}x{out_channels}x{dtype}>) outs(%output_init : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
-    return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
-  }}
-"#,
-            batch = batch,
-            height = height,
-            width = width,
-            in_channels = in_channels,
-            out_channels = out_channels,
-            kernel_size = kernel_size,
-            dtype = dtype,
-            out_h = out_h,
-            out_w = out_w
+            "  // ROCm conv2d for AMD GPU\n  // Optimized for MI-series accelerators\n{}",
+            super::conv2d_body(
+                batch,
+                in_channels,
+                out_channels,
+                height,
+                width,
+                kernel_size,
+                stride,
+                padding,
+                dtype,
+                "attributes {gpu.kernel}",
+            )
         ))
     }
 

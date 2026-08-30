@@ -144,14 +144,12 @@ fn assess_conv(
     padding: usize,
     dtype: &str,
 ) -> Verdict {
-    if stride != 1 || padding != 0 {
-        return Verdict::Uncoverable(
-            "lower_conv2d has no stride/padding parameter (hardcodes stride=1, padding=0)",
-        );
-    }
-    let formula_flops =
-        neurax_formulas::conv::conv2d_flops(batch, in_ch, out_ch, h, w, kernel, kernel, 1, 0, 1);
-    let mlir = CudaBackend::lower_conv2d(batch, in_ch, out_ch, h, w, kernel, dtype).unwrap();
+    let formula_flops = neurax_formulas::conv::conv2d_flops(
+        batch, in_ch, out_ch, h, w, kernel, kernel, stride, padding, 1,
+    );
+    let mlir =
+        CudaBackend::lower_conv2d(batch, in_ch, out_ch, h, w, kernel, stride, padding, dtype)
+            .unwrap();
     let verified = verify_with_mlir_opt(&mlir);
     Verdict::Checked {
         formula_flops,
@@ -304,10 +302,12 @@ fn assess_layer(
         }
 
         // GAN — GeneratorBlock/DiscriminatorBlock/ProgressiveBlock now use a real
-        // conv2d formula too. Checkable in principle, but every real GAN
-        // architecture's transposed/strided convs use stride != 1 or padding != 0
-        // (this fixture's DCGAN layers included), which lower_conv2d cannot
-        // represent — the same API gap VGG-16's padding=1 convs hit.
+        // conv2d formula too, and lower_conv2d now models stride/padding via
+        // tensor.pad + explicit strides — but a GAN generator's blocks are
+        // *transposed* (upsampling) convolutions, which this regular
+        // (downsampling) linalg.conv_2d_nhwc_hwcf lowering cannot represent at
+        // any stride/padding: mlir-opt correctly rejects it when the declared
+        // output is larger than the input, which is exactly a generator's case.
         LayerType::GeneratorBlock | LayerType::DiscriminatorBlock | LayerType::ProgressiveBlock => {
             let in_ch = params.in_channels.unwrap_or(64);
             let out_ch = params.out_channels.unwrap_or(64);
@@ -315,16 +315,14 @@ fn assess_layer(
             let stride = params.stride.unwrap_or(1);
             let padding = params.padding.unwrap_or(0);
             let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            if stride != 1 || padding != 0 {
-                Verdict::Uncoverable("lower_conv2d has no stride/padding parameter (hardcodes stride=1, padding=0)")
-            } else {
-                let formula_flops = neurax_formulas::conv::conv2d_flops(
-                    batch, in_ch, out_ch, side, side, kernel, kernel, 1, 0, 1,
-                );
-                let mlir = CudaBackend::lower_conv2d(batch, in_ch, out_ch, side, side, kernel, dtype).unwrap();
-                let verified = verify_with_mlir_opt(&mlir);
-                Verdict::Checked { formula_flops, mlir_flops: None, verified }
-            }
+            let formula_flops = neurax_formulas::conv::conv2d_flops(
+                batch, in_ch, out_ch, side, side, kernel, kernel, stride, padding, 1,
+            );
+            let mlir =
+                CudaBackend::lower_conv2d(batch, in_ch, out_ch, side, side, kernel, stride, padding, dtype)
+                    .unwrap();
+            let verified = verify_with_mlir_opt(&mlir);
+            Verdict::Checked { formula_flops, mlir_flops: None, verified }
         }
 
         // SelfAttention now has a real attention_flops() formula; same stub

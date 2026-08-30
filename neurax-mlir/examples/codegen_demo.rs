@@ -57,7 +57,7 @@ fn main() {
     // Step 5: Generate Conv2D for CPU
     println!("Step 5: Generate Conv2D (CPU)");
     println!("-----------------------------");
-    let cpu_conv = CpuBackend::lower_conv2d(1, 3, 64, 224, 224, 7, "f32").unwrap();
+    let cpu_conv = CpuBackend::lower_conv2d(1, 3, 64, 224, 224, 7, 1, 0, "f32").unwrap();
     println!("CPU Conv2D MLIR:");
     println!("{}", indent(&cpu_conv, "  "));
     println!();

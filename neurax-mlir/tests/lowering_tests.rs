@@ -62,7 +62,7 @@ fn test_cpu_matmul() {
 
 #[test]
 fn test_cpu_conv2d() {
-    let code = CpuBackend::lower_conv2d(1, 3, 64, 224, 224, 3, "f32").unwrap();
+    let code = CpuBackend::lower_conv2d(1, 3, 64, 224, 224, 3, 1, 0, "f32").unwrap();
     assert!(code.contains("linalg.conv_2d"));
     assert!(code.contains("tensor<1x224x224x3xf32>"));
 }
@@ -108,7 +108,7 @@ fn test_cuda_matmul() {
 
 #[test]
 fn test_cuda_conv2d() {
-    let code = CudaBackend::lower_conv2d(1, 3, 64, 224, 224, 3, "f16").unwrap();
+    let code = CudaBackend::lower_conv2d(1, 3, 64, 224, 224, 3, 1, 0, "f16").unwrap();
     assert!(code.contains("linalg.conv_2d"));
     assert!(code.contains("gpu.kernel"));
 }
@@ -147,7 +147,7 @@ fn test_vulkan_matmul() {
 
 #[test]
 fn test_vulkan_conv2d() {
-    let code = VulkanBackend::lower_conv2d(1, 3, 64, 224, 224, 3, "f32").unwrap();
+    let code = VulkanBackend::lower_conv2d(1, 3, 64, 224, 224, 3, 1, 0, "f32").unwrap();
     assert!(code.contains("linalg.conv_2d"));
 }
 
@@ -175,7 +175,7 @@ fn test_metal_matmul() {
 
 #[test]
 fn test_metal_conv2d() {
-    let code = MetalBackend::lower_conv2d(1, 3, 64, 224, 224, 3, "f16").unwrap();
+    let code = MetalBackend::lower_conv2d(1, 3, 64, 224, 224, 3, 1, 0, "f16").unwrap();
     assert!(code.contains("linalg.conv_2d"));
 }
 
@@ -205,7 +205,7 @@ fn test_rocm_matmul() {
 
 #[test]
 fn test_rocm_conv2d() {
-    let code = RocmBackend::lower_conv2d(1, 3, 64, 224, 224, 3, "bf16").unwrap();
+    let code = RocmBackend::lower_conv2d(1, 3, 64, 224, 224, 3, 1, 0, "bf16").unwrap();
     assert!(code.contains("linalg.conv_2d"));
 }
 
@@ -282,7 +282,7 @@ fn test_mlir_linalg_syntax() {
 #[test]
 fn test_conv2d_output_shape() {
     // Test that conv2d output shape is calculated correctly
-    let code = CpuBackend::lower_conv2d(1, 3, 64, 224, 224, 7, "f32").unwrap();
+    let code = CpuBackend::lower_conv2d(1, 3, 64, 224, 224, 7, 1, 0, "f32").unwrap();
     // Output should be 218x218 (224 - 7 + 1)
     assert!(code.contains("tensor<1x218x218x64xf32>"));
 }

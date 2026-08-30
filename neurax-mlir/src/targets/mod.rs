@@ -104,6 +104,7 @@ pub trait TargetLowering {
     ) -> Result<String, String>;
 
     /// Lower a convolution operation
+    #[allow(clippy::too_many_arguments)]
     fn lower_conv2d(
         batch: usize,
         in_channels: usize,
@@ -111,6 +112,8 @@ pub trait TargetLowering {
         height: usize,
         width: usize,
         kernel_size: usize,
+        stride: usize,
+        padding: usize,
         dtype: &str,
     ) -> Result<String, String>;
 
@@ -131,6 +134,57 @@ pub trait TargetLowering {
     fn function_attributes() -> String {
         String::new()
     }
+}
+
+/// Shared Conv2D lowering body for every backend: pads the input with
+/// `tensor.pad` when `padding > 0` (untested until now — no backend modeled
+/// padding at all — verified against `mlir-opt` directly before landing here),
+/// then a `linalg.conv_2d_nhwc_hwcf` with explicit `strides`/`dilations`. Only
+/// each backend's own function attributes (`gpu.kernel`, `llvm.readonly`...)
+/// differ between callers.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn conv2d_body(
+    batch: usize,
+    in_channels: usize,
+    out_channels: usize,
+    height: usize,
+    width: usize,
+    kernel_size: usize,
+    stride: usize,
+    padding: usize,
+    dtype: &str,
+    func_attrs: &str,
+) -> String {
+    let padded_h = height + 2 * padding;
+    let padded_w = width + 2 * padding;
+    let stride = stride.max(1);
+    let out_h = padded_h.saturating_sub(kernel_size) / stride + 1;
+    let out_w = padded_w.saturating_sub(kernel_size) / stride + 1;
+    let zero = if dtype.starts_with('f') { "0.0" } else { "0" };
+
+    let (input_operand, pad_block) = if padding > 0 {
+        (
+            "%padded",
+            format!(
+                "    %cst = arith.constant {zero} : {dtype}\n\
+                 \x20   %padded = tensor.pad %input low[0, {padding}, {padding}, 0] high[0, {padding}, {padding}, 0] {{\n\
+                 \x20   ^bb0(%i0: index, %i1: index, %i2: index, %i3: index):\n\
+                 \x20     tensor.yield %cst : {dtype}\n\
+                 \x20   }} : tensor<{batch}x{height}x{width}x{in_channels}x{dtype}> to tensor<{batch}x{padded_h}x{padded_w}x{in_channels}x{dtype}>\n"
+            ),
+        )
+    } else {
+        ("%input", String::new())
+    };
+
+    format!(
+        "  func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{kernel_size}x{kernel_size}x{in_channels}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}> {func_attrs} {{\n\
+         {pad_block}\
+         \x20   %output_init = tensor.empty() : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>\n\
+         \x20   %output = linalg.conv_2d_nhwc_hwcf {{dilations = dense<1> : tensor<2xi64>, strides = dense<{stride}> : tensor<2xi64>}} ins({input_operand}, %filter : tensor<{batch}x{padded_h}x{padded_w}x{in_channels}x{dtype}>, tensor<{kernel_size}x{kernel_size}x{in_channels}x{out_channels}x{dtype}>) outs(%output_init : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>\n\
+         \x20   return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>\n\
+         \x20 }}\n"
+    )
 }
 
 impl std::fmt::Display for TargetBackend {
