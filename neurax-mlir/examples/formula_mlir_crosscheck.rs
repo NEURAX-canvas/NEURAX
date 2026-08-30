@@ -268,34 +268,76 @@ fn assess_layer(
             }
         }
 
-        // Diffusion block types: neurax-ir costs *every one* of these — a U-Net
-        // ResNet block, a cross-attention block, a time embedding MLP — with the
-        // exact same placeholder shape (batch*seq*hidden^2*4), regardless of which
-        // real operation it is. There is no real per-operation formula here to
-        // check a lowering against.
-        LayerType::UnetBlock
-        | LayerType::CrossAttention
-        | LayerType::TimeEmbedding
-        | LayerType::DownBlock
-        | LayerType::UpBlock
-        | LayerType::MidBlock
-        | LayerType::ResnetBlock
-        | LayerType::TimestepBlock
-        | LayerType::ConditionBlock
-        | LayerType::NoisePredictor
-        | LayerType::VaeEncoder
-        | LayerType::VaeDecoder => Verdict::Uncoverable(
-            "production FLOPs formula is a generic batch*seq*hidden^2*4 placeholder shared \
-             across unrelated block types — not a real formula for this specific operation",
-        ),
+        // Diffusion — as of the operator/pass.rs fix, TimeEmbedding/ConditionBlock
+        // now have a real MLP formula (Linear+SiLU+Linear / Linear+GELU+Linear),
+        // checked here the same way as a transformer's Mlp up-projection.
+        LayerType::TimeEmbedding | LayerType::TimestepBlock | LayerType::ConditionBlock => {
+            let channels = params.hidden_size.unwrap_or(320);
+            let m = batch * seq;
+            let formula_flops = 2.0 * m as f64 * channels as f64 * (channels * 4) as f64;
+            let mlir = CudaBackend::lower_matmul(1, m, channels, channels * 4, dtype).unwrap();
+            let verified = verify_with_mlir_opt(&mlir);
+            Verdict::Checked {
+                formula_flops,
+                mlir_flops: reparsed_matmul_flops(&mlir),
+                verified,
+            }
+        }
 
-        // GAN block types: same situation as diffusion, with its own shared
-        // placeholder (batch*seq*hidden^2), labeled OpType::Conv2D despite not
-        // using any convolution formula at all.
-        LayerType::GeneratorBlock | LayerType::DiscriminatorBlock => Verdict::Uncoverable(
-            "production FLOPs formula is a generic batch*seq*hidden^2 placeholder labeled \
-             Conv2D but not computed from conv2d_flops — no real conv shape to lower",
-        ),
+        // CrossAttention now has a real attention_flops() formula, but
+        // lower_attention() is still the hollow stub — same situation as plain
+        // Attention above.
+        LayerType::CrossAttention => Verdict::StubOnly,
+
+        // UnetBlock and friends now use cnn_blocks::resnet_basic_block_flops() —
+        // a real formula, but a composite one (2 convs + skip), same situation as
+        // ResnetBottleneck below: no single conv2d call to check it against.
+        LayerType::UnetBlock | LayerType::ResnetBlock | LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
+            Verdict::Uncoverable("composite block (2 convs + skip); no single-op lowering to check against")
+        }
+
+        // NoisePredictor/VAE now use conv::conv2d_flops() with padding=1 — a real
+        // formula, but lower_conv2d() still has no padding parameter at all, so
+        // this specific (real, correct) shape still can't be represented.
+        LayerType::NoisePredictor | LayerType::VaeEncoder | LayerType::VaeDecoder => {
+            Verdict::Uncoverable("real conv2d formula now used (padding=1), but lower_conv2d has no padding parameter")
+        }
+
+        // GAN — GeneratorBlock/DiscriminatorBlock/ProgressiveBlock now use a real
+        // conv2d formula too. Checkable in principle, but every real GAN
+        // architecture's transposed/strided convs use stride != 1 or padding != 0
+        // (this fixture's DCGAN layers included), which lower_conv2d cannot
+        // represent — the same API gap VGG-16's padding=1 convs hit.
+        LayerType::GeneratorBlock | LayerType::DiscriminatorBlock | LayerType::ProgressiveBlock => {
+            let in_ch = params.in_channels.unwrap_or(64);
+            let out_ch = params.out_channels.unwrap_or(64);
+            let kernel = params.kernel_size.unwrap_or(3);
+            let stride = params.stride.unwrap_or(1);
+            let padding = params.padding.unwrap_or(0);
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            if stride != 1 || padding != 0 {
+                Verdict::Uncoverable("lower_conv2d has no stride/padding parameter (hardcodes stride=1, padding=0)")
+            } else {
+                let formula_flops = neurax_formulas::conv::conv2d_flops(
+                    batch, in_ch, out_ch, side, side, kernel, kernel, 1, 0, 1,
+                );
+                let mlir = CudaBackend::lower_conv2d(batch, in_ch, out_ch, side, side, kernel, dtype).unwrap();
+                let verified = verify_with_mlir_opt(&mlir);
+                Verdict::Checked { formula_flops, mlir_flops: None, verified }
+            }
+        }
+
+        // SelfAttention now has a real attention_flops() formula; same stub
+        // limitation as every other attention variant.
+        LayerType::SelfAttention => Verdict::StubOnly,
+
+        // StyleMod/AdaIN/PixelNorm/MinibatchStd/SpectralNorm now have real,
+        // small elementwise formulas (matching their own param formulas) instead
+        // of the old full-layer placeholder — but elementwise ops aren't matmul
+        // or conv shapes, so there is nothing to lower them to yet.
+        LayerType::StyleMod | LayerType::AdaIN | LayerType::PixelNorm | LayerType::MinibatchStd | LayerType::SpectralNorm => {
+            Verdict::Uncoverable("real elementwise formula now used; no matmul/conv shape to lower an elementwise op to")
+        }
 
         LayerType::ResnetBottleneck => Verdict::Uncoverable(
             "composite block (3 convs + skip); no single-op lowering to check against",

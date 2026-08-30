@@ -29,9 +29,12 @@ pub fn conv2d_flops(
     padding: usize,
     groups: usize,
 ) -> f64 {
-    // Output dimensions
-    let out_h = (height + 2 * padding - kernel_h) / stride + 1;
-    let out_w = (width + 2 * padding - kernel_w) / stride + 1;
+    // Output dimensions. `saturating_sub`, not `-`: a kernel larger than the
+    // padded input (e.g. a GAN generator's first 1x1 -> 4x4 projection, fed
+    // through this *downsampling* conv formula) underflowed `usize` here and
+    // panicked instead of describing a degenerate — but still real — shape.
+    let out_h = (height + 2 * padding).saturating_sub(kernel_h) / stride + 1;
+    let out_w = (width + 2 * padding).saturating_sub(kernel_w) / stride + 1;
 
     // FLOPs per output position
     let flops_per_pos = 2.0 * (in_channels / groups) as f64 * kernel_h as f64 * kernel_w as f64;

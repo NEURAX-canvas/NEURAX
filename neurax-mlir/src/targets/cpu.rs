@@ -48,8 +48,8 @@ impl TargetLowering for CpuBackend {
         kernel_size: usize,
         dtype: &str,
     ) -> Result<String, String> {
-        let out_h = height - kernel_size + 1;
-        let out_w = width - kernel_size + 1;
+        let out_h = height.saturating_sub(kernel_size) + 1;
+        let out_w = width.saturating_sub(kernel_size) + 1;
 
         Ok(format!(
             r#"  // CPU conv2d using linalg

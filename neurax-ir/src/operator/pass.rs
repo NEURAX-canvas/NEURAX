@@ -7,7 +7,7 @@ use crate::tensor::Shape;
 use crate::tensor::TensorIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
-use neurax_formulas::{attention, cnn_blocks, embedding, gnn, mlp, moe, normalization};
+use neurax_formulas::{attention, cnn_blocks, conv, embedding, gnn, mlp, moe, normalization};
 use neurax_parser::LayerType;
 
 /// Reads a `usize` out of a `global_params.extra` map, falling back when the
@@ -690,24 +690,81 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
-        // GAN layer types
-        LayerType::GeneratorBlock
-        | LayerType::DiscriminatorBlock
-        | LayerType::StyleMod
-        | LayerType::AdaIN
-        | LayerType::MinibatchStd
-        | LayerType::PixelNorm
-        | LayerType::SelfAttention
-        | LayerType::SpectralNorm
-        | LayerType::ProgressiveBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let flops = (batch * seq * hidden * hidden) as f64;
+        // GAN layer types — real formulas per block, matching the shape each
+        // already uses on the params side (`architecture/mod.rs`). These used to
+        // share one placeholder (`batch*seq*hidden^2`) across all seven kinds —
+        // costing a per-channel affine (StyleMod) the same as a full convolution,
+        // and a self-attention block by a formula with no relation to attention
+        // at all.
+        LayerType::GeneratorBlock | LayerType::DiscriminatorBlock | LayerType::ProgressiveBlock => {
+            let in_ch = layer.params.in_channels.unwrap_or(64);
+            let out_ch = layer.params.out_channels.unwrap_or(64);
+            let kh = layer.params.kernel_size.unwrap_or(3);
+            let stride = layer.params.stride.unwrap_or(1);
+            let padding = layer.params.padding.unwrap_or(0);
+            // No per-layer spatial (H, W) tracking exists for GAN blocks — same
+            // sqrt(seq) stand-in for a square feature-map side that
+            // ResidualBlock/ResnetBottleneck already use for the same reason.
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let flops = conv::conv2d_flops(batch, in_ch, out_ch, side, side, kh, kh, stride, padding, 1);
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Conv2D,
                 layer_id: layer.id.clone(),
                 input_shapes: vec![],
                 output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::SelfAttention => {
+            let channels = layer.params.out_channels.unwrap_or(512);
+            // Same head count `SelfAttention`'s own param formula assumes.
+            let heads = (channels / 64).max(1);
+            let flops = attention::attention_flops(batch, seq, channels, heads, false);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Attention,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
+                output_shape: Shape::known(vec![batch, seq, channels]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::StyleMod => {
+            // A per-channel scale and bias — exactly the two elementwise ops its
+            // own param formula (`channels * 2`) counts, not a convolution's cost.
+            let channels = layer.params.out_channels.unwrap_or(512);
+            let flops = 2.0 * batch as f64 * seq as f64 * channels as f64;
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
+                output_shape: Shape::known(vec![batch, seq, channels]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::AdaIN | LayerType::PixelNorm | LayerType::MinibatchStd | LayerType::SpectralNorm => {
+            // Normalization-weight cost (~RMSNorm's own 3-ops-per-element), not a
+            // full layer's worth of compute — none of these four carry a weight
+            // matrix of their own.
+            let channels = layer.params.out_channels.unwrap_or(512);
+            let flops = 3.0 * batch as f64 * seq as f64 * channels as f64;
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
+                output_shape: Shape::known(vec![batch, seq, channels]),
                 flops,
                 param_count: layer.param_count,
                 activation_memory: 0,
@@ -741,27 +798,119 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
-        // Diffusion layer types
-        LayerType::UnetBlock
-        | LayerType::TimeEmbedding
-        | LayerType::CrossAttention
-        | LayerType::DownBlock
-        | LayerType::UpBlock
-        | LayerType::MidBlock
-        | LayerType::ResnetBlock
-        | LayerType::TimestepBlock
-        | LayerType::ConditionBlock
-        | LayerType::NoisePredictor
-        | LayerType::VaeEncoder
-        | LayerType::VaeDecoder => {
+        // Diffusion layer types — real formulas per block, matching the shape
+        // each already uses on the params side. These used to share one
+        // placeholder (`batch*seq*hidden^2*4`) across a U-Net ResNet block, a
+        // cross-attention block and a time-embedding MLP alike — three
+        // structurally different operations costed identically.
+        LayerType::UnetBlock | LayerType::ResnetBlock | LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
+            let in_ch = layer
+                .params
+                .in_channels_diff
+                .unwrap_or(layer.params.in_channels.unwrap_or(320));
+            let out_ch = layer
+                .params
+                .out_channels_diff
+                .unwrap_or(layer.params.out_channels.unwrap_or(320));
+            // Same sqrt(seq) spatial-side stand-in the CNN ResidualBlock arm
+            // above uses — no per-layer (H, W) tracking exists for diffusion
+            // U-Net blocks either.
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let flops = cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, 1);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::TimeEmbedding | LayerType::TimestepBlock => {
+            // Linear + SiLU + Linear — exactly what this type's own param
+            // formula (`mlp_params(channels, channels*4, true)`) already assumes.
+            let channels = layer.params.hidden_size.unwrap_or(320);
+            let flops = mlp::mlp_flops(batch, seq, channels, channels * 4, "silu");
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
+                output_shape: Shape::known(vec![batch, seq, channels]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::ConditionBlock => {
             let hidden = layer.params.hidden_size.unwrap_or(320);
-            let flops = (batch * seq * hidden * hidden * 4) as f64;
+            let flops = mlp::mlp_flops(batch, seq, hidden, hidden * 4, "gelu");
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Linear,
                 layer_id: layer.id.clone(),
                 input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
                 output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::CrossAttention => {
+            let hidden = layer.params.hidden_size.unwrap_or(320);
+            let heads = layer.params.num_heads.unwrap_or(8);
+            // Q from the image features, K/V from the conditioning sequence —
+            // approximated here as self-attention over the image sequence
+            // (K/V's real, usually much shorter, conditioning length isn't
+            // tracked as a separate dimension anywhere in this pass yet).
+            let flops = attention::attention_flops(batch, seq, hidden, heads, false);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Attention,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::NoisePredictor => {
+            // Final conv to predict noise — same kernel=3, groups=1 shape as
+            // this type's own param formula (`conv2d_params(channels, channels,
+            // 3, 3, 1, false)`), with padding=1 to preserve spatial size.
+            let channels = layer.params.out_channels_diff.unwrap_or(4);
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let flops = conv::conv2d_flops(batch, channels, channels, side, side, 3, 3, 1, 1, 1);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::VaeEncoder | LayerType::VaeDecoder => {
+            let in_ch = layer.params.in_channels.unwrap_or(3);
+            let out_ch = layer.params.out_channels_diff.unwrap_or(4);
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let flops = conv::conv2d_flops(batch, in_ch, out_ch, side, side, 3, 3, 1, 1, 1);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
                 flops,
                 param_count: layer.param_count,
                 activation_memory: 0,
