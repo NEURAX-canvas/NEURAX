@@ -55,7 +55,7 @@ fn test_iree_targets() {
 #[test]
 fn test_cpu_matmul() {
     let code = CpuBackend::lower_matmul(1, 1024, 1024, 1024, "f32").unwrap();
-    assert!(code.contains("linalg.matmul"));
+    assert!(code.contains("linalg.batch_matmul"));
     assert!(code.contains("tensor<1x1024x1024xf32>"));
     assert!(code.contains("llvm.readonly"));
 }
@@ -101,7 +101,7 @@ fn test_cpu_function_attributes() {
 #[test]
 fn test_cuda_matmul() {
     let code = CudaBackend::lower_matmul(1, 1024, 1024, 1024, "f16").unwrap();
-    assert!(code.contains("linalg.matmul"));
+    assert!(code.contains("linalg.batch_matmul"));
     assert!(code.contains("gpu.kernel"));
     assert!(code.contains("tensor<1x1024x1024xf16>"));
 }
@@ -142,7 +142,7 @@ fn test_cuda_module_attributes() {
 #[test]
 fn test_vulkan_matmul() {
     let code = VulkanBackend::lower_matmul(1, 1024, 1024, 1024, "f32").unwrap();
-    assert!(code.contains("linalg.matmul"));
+    assert!(code.contains("linalg.batch_matmul"));
 }
 
 #[test]
@@ -170,7 +170,7 @@ fn test_vulkan_module_attributes() {
 #[test]
 fn test_metal_matmul() {
     let code = MetalBackend::lower_matmul(1, 1024, 1024, 1024, "f16").unwrap();
-    assert!(code.contains("linalg.matmul"));
+    assert!(code.contains("linalg.batch_matmul"));
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn test_metal_supported_dtypes() {
 #[test]
 fn test_rocm_matmul() {
     let code = RocmBackend::lower_matmul(1, 1024, 1024, 1024, "bf16").unwrap();
-    assert!(code.contains("linalg.matmul"));
+    assert!(code.contains("linalg.batch_matmul"));
     assert!(code.contains("gpu.kernel"));
 }
 
@@ -275,7 +275,7 @@ fn test_mlir_function_syntax() {
 #[test]
 fn test_mlir_linalg_syntax() {
     let code = CpuBackend::lower_matmul(1, 64, 64, 64, "f32").unwrap();
-    assert!(code.contains("linalg.matmul ins("));
+    assert!(code.contains("linalg.batch_matmul ins("));
     assert!(code.contains("outs("));
 }
 

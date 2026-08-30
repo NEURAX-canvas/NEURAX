@@ -27,7 +27,7 @@ impl TargetLowering for CpuBackend {
             r#"  // CPU matmul using linalg
   func.func @matmul(%a: tensor<{batch}x{m}x{k}x{dtype}>, %b: tensor<{batch}x{k}x{n}x{dtype}>) -> tensor<{batch}x{m}x{n}x{dtype}> attributes {{llvm.readonly}} {{
     %c_init = tensor.empty() : tensor<{batch}x{m}x{n}x{dtype}>
-    %c = linalg.matmul ins(%a, %b : tensor<{batch}x{m}x{k}x{dtype}>, tensor<{batch}x{k}x{n}x{dtype}>) outs(%c_init : tensor<{batch}x{m}x{n}x{dtype}>) -> tensor<{batch}x{m}x{n}x{dtype}>
+    %c = linalg.batch_matmul ins(%a, %b : tensor<{batch}x{m}x{k}x{dtype}>, tensor<{batch}x{k}x{n}x{dtype}>) outs(%c_init : tensor<{batch}x{m}x{n}x{dtype}>) -> tensor<{batch}x{m}x{n}x{dtype}>
     return %c : tensor<{batch}x{m}x{n}x{dtype}>
   }}
 "#,
@@ -53,9 +53,9 @@ impl TargetLowering for CpuBackend {
 
         Ok(format!(
             r#"  // CPU conv2d using linalg
-  func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{out_channels}x{in_channels}x{kernel_size}x{kernel_size}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}> attributes {{llvm.readonly}} {{
+  func.func @conv2d(%input: tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, %filter: tensor<{kernel_size}x{kernel_size}x{in_channels}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}> attributes {{llvm.readonly}} {{
     %output_init = tensor.empty() : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
-    %output = linalg.conv_2d_nhwc_hwcf ins(%input, %filter : tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, tensor<{out_channels}x{in_channels}x{kernel_size}x{kernel_size}x{dtype}>) outs(%output_init : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
+    %output = linalg.conv_2d_nhwc_hwcf ins(%input, %filter : tensor<{batch}x{height}x{width}x{in_channels}x{dtype}>, tensor<{kernel_size}x{kernel_size}x{in_channels}x{out_channels}x{dtype}>) outs(%output_init : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>) -> tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
     return %output : tensor<{batch}x{out_h}x{out_w}x{out_channels}x{dtype}>
   }}
 "#,
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn test_cpu_matmul() {
         let code = CpuBackend::lower_matmul(1, 1024, 1024, 1024, "f32").unwrap();
-        assert!(code.contains("linalg.matmul"));
+        assert!(code.contains("linalg.batch_matmul"));
     }
 
     #[test]
