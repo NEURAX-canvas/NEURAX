@@ -1,6 +1,6 @@
 # NEURAX API Reference
 
-`neurax-service` is a production **actix‑web** HTTP server (default `0.0.0.0:9098`) exposing **38 REST routes** with CORS, gzip compression, and authentication via Supabase JWT or API keys.
+`neurax-service` is a production **actix‑web** HTTP server (default `0.0.0.0:9098`) exposing **42+ REST routes** with CORS, gzip compression, and authentication via Supabase JWT or API keys.
 
 ## Base URL
 
@@ -68,12 +68,13 @@ X-API-Key: nrx_<64-hex-chars>
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/analyze` | JWT/API Key | Run full 10‑pass analytical pipeline synchronously |
+| `POST` | `/analyze` | JWT/API Key | Run full 11-phase analytical pipeline synchronously |
 | `POST` | `/analyze/stream` | JWT/API Key | Start streaming analysis (SSE) |
 | `GET` | `/analyze/stream/{job_id}` | JWT/API Key | Stream SSE events for a running job |
 | `GET` | `/analyze/result/{job_id}` | JWT/API Key | Retrieve completed analysis result |
 | `GET` | `/analyze/status/{job_id}` | JWT/API Key | Check job status |
 | `POST` | `/analyze/compare` | JWT/API Key | Compare up to 8 hardware configurations |
+| `POST` | `/sweep` | JWT/API Key | Grid-search batch_size x zero_stage x gpu_count x precision for the best feasible training config |
 
 ### Inference
 
@@ -105,7 +106,7 @@ X-API-Key: nrx_<64-hex-chars>
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `GET` | `/hardware` | None | List all hardware specifications (20 GPUs, CPUs, interconnects) |
+| `GET` | `/hardware` | None | List all hardware specifications (21 GPUs, CPUs, interconnects) |
 
 ### Projects
 
@@ -180,7 +181,7 @@ Health check endpoint. No authentication required.
 
 ### `POST /analyze`
 
-Run the full 10‑pass analytical pipeline on a model configuration.
+Run the full 11-phase analytical pipeline on a model configuration.
 
 **Request Body**:
 
@@ -248,6 +249,62 @@ Run the full 10‑pass analytical pipeline on a model configuration.
 | `400` | `Analysis error: <details>` — Invalid model config |
 | `504` | `Analysis timed out after 60 seconds` |
 | `500` | `Analysis task failed unexpectedly` |
+
+---
+
+### `POST /sweep`
+
+Grid-search over `batch_size x zero_stage x gpu_count x precision` for a model configuration. Each point in the grid is a full, real call to the same analytical pipeline `/analyze` uses — nothing here is approximated or cached from a smaller run. Points whose `peak_vram_bytes` would not fit the configured GPU are marked infeasible and never selected as `best`. Capped at 512 combinations per request; a larger requested grid is rejected with `400` rather than silently truncated.
+
+**Request Body**:
+
+```json
+{
+  "topology": { "...": "same shape as /analyze's topology" },
+  "candidates": {
+    "batch_sizes": [1, 8, 32, 64],
+    "zero_stages": [0, 1, 2, 3],
+    "gpu_counts": [1, 4, 8],
+    "precisions": ["fp16", "bf16", "fp8"]
+  },
+  "objective": "max_throughput"
+}
+```
+
+`candidates` is optional — any field left out is filled in with the compiler's own defaults for that model (`SweepCandidates::defaults_for`). `objective` is one of `max_throughput`, `min_cost`, `min_latency`, `max_batch_size` (default: `max_throughput`).
+
+**Response** `200 OK`:
+
+```json
+{
+  "result": {
+    "points": [
+      {
+        "batch_size": 32,
+        "zero_stage": 2,
+        "gpu_count": 8,
+        "precision": "bf16",
+        "feasible": true,
+        "peak_vram_gb": 62.4,
+        "throughput_tokens_per_s": 184320.0,
+        "latency_ms": 173.9,
+        "training_cost_usd": 0.0421
+      }
+    ],
+    "best": { "...": "the single SweepPoint that wins the requested objective, or null if none were feasible" }
+  }
+}
+```
+
+`points` includes every evaluated combination, feasible or not — so a caller can see the whole feasibility frontier, not just the winner. `best` is `null` when no candidate fit the GPU's VRAM at all.
+
+**Error Responses**:
+
+| Code | Message |
+|---|---|
+| `400` | `Analysis error: <details>` — Invalid model config |
+| `400` | `Sweep grid too large (<n> combinations, max 512) — narrow the candidate lists` |
+| `504` | Sweep timed out after 60 seconds |
 
 ---
 

@@ -7,3 +7,9 @@ language = "en"
 [output.html]
 git-repository-url = "https://github.com/rustnew/NEURAX"
 edit-url-template = "https://github.com/rustnew/NEURAX/edit/main/book/src/{path}"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

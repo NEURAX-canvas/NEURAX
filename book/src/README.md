@@ -1,3 +1,5 @@
+<p align="center"><img src="images/neurax-logo.svg" alt="NEURAX logo" width="96" height="96"></p>
+
 # NEURAX
 
 **The Analytical Compiler for Neural Architectures**
@@ -26,8 +28,11 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
   metric, not just parameter count. Families without dedicated compiler formulas (RL, SNN, an
   "Experimental" catch-all) were removed rather than left partially supported.
 - **64 reference templates**, counted against the real catalogue by a test, not stated from memory.
-- **10-pass analytical IR pipeline** producing 66 metrics.
-- **MLIR / LLVM 18** compiler backend with 14 custom dialects.
+- **11-phase analytical IR pipeline** producing 76 metrics (verified by neurax-core/tests/metrics_count.rs) — three of the eleven phases run
+  concurrently on a shared thread pool since none of them reads another's output.
+- **MLIR** dialect emission (14 custom dialects, real per-layer formulas) as a standalone,
+  independently-testable crate — not part of the request path a user's analysis takes; see
+  [Architecture & Design](DESIGN.md#neurax-mlir) for exactly what is and isn't wired up.
 - **Visual design canvas**, **AI copilot agent**, **Inference Intelligence** and **Time Machine**.
 - **Export** to JSON, NEURAX IR, and GitHub — a canvas used to offer four more
   targets (PyTorch, ONNX, Triton, Rust/Burn); their generated code didn't run,

@@ -1,6 +1,8 @@
+<p align="center"><img src="images/neurax-logo.svg" alt="NEURAX logo" width="72" height="72"></p>
+
 # NEURAX Architecture Design
 
-This document describes the architecture, design principles, and data flow of the NEURAX compiler system.
+This document describes the architecture, design principles, and data flow of the NEURAX compiler system — every crate, every pass, and how they actually communicate at runtime, verified against the real code rather than written from memory.
 
 ---
 
@@ -9,9 +11,15 @@ This document describes the architecture, design principles, and data flow of th
 1. [Overview](#overview)
 2. [System Architecture](#system-architecture)
 3. [Data Flow](#data-flow)
-4. [Component Deep Dive](#component-deep-dive)
-5. [Design Principles](#design-principles)
-6. [Adding a New Model Family](#adding-a-new-model-family)
+   - [The 11-Phase IR Pipeline](#the-11-phase-ir-pipeline)
+   - [Phases 7, 8 and 11 run concurrently](#phases-7-8-and-11-run-concurrently-not-in-numeric-order)
+   - [Dynamic Analysis](#dynamic-analysis--the-three-concurrent-sub-passes)
+4. [Cross-Pass Communication: `NeuraxContext`](#cross-pass-communication-neuraxcontext)
+5. [Component Deep Dive](#component-deep-dive)
+6. [Diagnostics](#diagnostics)
+7. [Hyperparameter Sweep](#hyperparameter-sweep)
+8. [Design Principles](#design-principles)
+9. [Adding a New Model Family](#adding-a-new-model-family)
 
 ---
 
@@ -43,7 +51,7 @@ graph TB
     end
 
     subgraph "Service Layer"
-        HTTP_API[neurax-service<br/>actix-web HTTP API<br/>38 REST routes]
+        HTTP_API[neurax-service<br/>actix-web HTTP API<br/>42+ REST routes incl. /analyze, /sweep]
         AI_AGENT[neurax-agent<br/>FastAPI + LangChain<br/>Natural language → architecture]
         MCP[neurax-mcp<br/>MCP server]
     end
@@ -51,9 +59,9 @@ graph TB
     subgraph "Core Engine"
         CORE[neurax-core<br/>Pipeline orchestrator<br/>+ ONNX export + streaming]
         PARSER[neurax-parser<br/>JSON → ModelConfig]
-        IR[neurax-ir<br/>10 IR dialects<br/>+ inference + dynamic passes]
+        IR[neurax-ir<br/>11 IR dialects<br/>+ inference + dynamic passes]
         FORMULAS[neurax-formulas<br/>FLOPs / params / memory]
-        HWDB[neurax-hardware-db<br/>20 GPUs • CPUs • interconnects]
+        HWDB[neurax-hardware-db<br/>21 GPUs • CPUs • interconnects]
     end
 
     subgraph "External Services"
@@ -87,6 +95,8 @@ graph TB
     style AI_AGENT fill:#f39c12,color:#fff
 ```
 
+*Figure 1 — the full studio, not just the compiler. Every arrow is a real, verified call path: the AI agent and the MCP server both reach the same `neurax-service` HTTP API the web UI uses, so none of the three entry points can see a different answer for the same design. `neurax-desktop` embeds this same API as a local process rather than talking to it over the network — no account, no upload, matching the desktop bundle's own stated promise.*
+
 ---
 
 ## Data Flow
@@ -97,7 +107,7 @@ The primary data flow for architecture analysis:
 flowchart LR
     INPUT["User Request<br/>(JSON model config)"] --> PARSER["Parser<br/>neurax-parser"]
     PARSER --> AST["ModelConfig<br/>Typed AST"]
-    AST --> PIPELINE["Analytical IR Pipeline<br/>10 passes"]
+    AST --> PIPELINE["Analytical IR Pipeline<br/>11 phases"]
 
     subgraph PIPELINE_CONTENT [" "]
         direction LR
@@ -105,38 +115,85 @@ flowchart LR
         C --> M["Memory<br/>IR"] --> P["Parall.<br/>IR"] --> H["Hardware<br/>IR"] --> CO["Cost<br/>IR"] --> R["Report<br/>IR"]
     end
 
-    PIPELINE --> REPORT["Report<br/>40+ metrics<br/>JSON / Markdown"]
+    PIPELINE --> REPORT["Report<br/>76 metrics<br/>JSON / Markdown"]
 
     style INPUT fill:#4a90d9,color:#fff
     style REPORT fill:#2ecc71,color:#fff
 ```
 
-### The 10-Pass IR Pipeline
+*Figure 2 — one JSON model description flows through eleven analytical phases and comes out the other side as a full engineering report. No phase here runs a tensor operation; every arrow is a pure function over the previous phase's output.*
 
-Each pass transforms the representation and computes metrics:
+### The 11-Phase IR Pipeline
 
-| Pass | IR Dialect | Input | Output | Key Metrics |
+Each phase transforms the representation and computes metrics. Phases 1-6 run strictly in sequence because each one's input is the previous one's output; phases 7, 8 and 11 do not depend on each other and run concurrently (see Figure 3 below); phases 9 and 10 need phase 7/8's output and so run after the join.
+
+| Phase | IR Dialect | Input | Output | Key Metrics |
 |---|---|---|---|---|
 | 1 | ArchitectureIR | ModelConfig | ArchitectureIR | Layer count, model type, global params |
 | 2 | GraphIR | ArchitectureIR | GraphIR | Graph topology, DAG validation, fan-in/fan-out |
 | 3 | TensorIR | GraphIR | TensorIR | Tensor shapes, dimension resolution, memory layout |
 | 4 | OperatorIR | TensorIR | OperatorIR | Operator types, FLOPs per operator, param count |
 | 5 | ComputeIR | OperatorIR | ComputeIR | Total FLOPs, FLOPs breakdown, backward/optimizer overhead |
-| 6 | MemoryIR | ComputeIR | MemoryIR | Peak VRAM, activation memory, gradient memory, fragmentation |
-| 7 | ParallelismIR | MemoryIR | ParallelismIR | Tensor/pipeline/expert parallelism, efficiency |
-| 8 | HardwareIR | ComputeIR+MemoryIR+ParallelismIR | HardwareIR | GPU utilization, bandwidth, ridge point, latency |
-| 9 | CostIR | HardwareIR+ParallelismIR | CostIR | Training cost USD, time hours, energy kWh, CO2 kg |
-| 10 | ReportIR | All above | ReportIR | Consolidated report with 40+ metrics, diagnostics, recommendations |
+| 6 | MemoryIR | ComputeIR | MemoryIR | Peak VRAM, real (unsharded) and ZeRO-sharded parameter/gradient/optimizer bytes, fragmentation |
+| 7 | ParallelismIR | MemoryIR + GraphIR | ParallelismIR | Tensor/pipeline/expert parallelism, ZeRO communication overhead, per-GPU compute time |
+| 8 | HardwareIR | ComputeIR + MemoryIR | HardwareIR | GPU utilization, effective TFLOPS by precision, bandwidth, ridge point, latency |
+| 11 | Dynamic (3 sub-passes) | GraphIR + MemoryIR + ModelConfig | DynamicResults | Memory-virtualization savings, Lyapunov-based stability + recommended max LR, behavioral synthesis |
+| 9 | CostIR | HardwareIR + ParallelismIR | CostIR | Training cost USD, time hours, energy kWh, CO2 kg |
+| 10 | ReportIR | All above + Dynamic's stability output | ReportIR | Consolidated report with 76 metrics, diagnostics, recommendations |
 
-### Dynamic Analysis (Parallel, Post-Pipeline)
+### Phases 7, 8 and 11 run concurrently, not in numeric order
 
-Three dynamic passes run in parallel after the static pipeline:
+The phase numbers above describe *what each one computes*, not the order they run in. Phase 8 (`HardwarePass`) declares `ParallelismIR` as part of its input tuple for pipeline-shape symmetry but never reads it — so it does not actually need to wait for phase 7. Phase 11 (Dynamic) only needs `GraphIR` and `MemoryIR`, neither of which comes from Cost or Report. `neurax-core` exploits exactly this to run all three concurrently on a `rayon` thread pool, with Dynamic's own three sub-passes further split into their own nested join:
+
+```mermaid
+flowchart TB
+    MEM["MemoryIR<br/>(phase 6)"] --> JOIN{{"rayon::join"}}
+    GRAPH["GraphIR<br/>(phase 2)"] --> JOIN
+
+    JOIN --> P7["Phase 7<br/>ParallelismPass"]
+    JOIN --> P8["Phase 8<br/>HardwarePass"]
+    JOIN --> DJOIN{{"rayon::join<br/>(nested)"}}
+
+    DJOIN --> VM["VirtualMemoryPass"]
+    DJOIN --> SJOIN{{"rayon::join<br/>(nested again)"}}
+    SJOIN --> STA["StabilityAnalysisPass<br/>Lyapunov exponents"]
+    SJOIN --> BPS["BehavioralSynthesisPass"]
+
+    P7 --> P9["Phase 9<br/>CostPass"]
+    P8 --> P9
+    P9 --> P10["Phase 10<br/>ReportPass"]
+    STA -. "recommended_max_learning_rate<br/>feeds hint H007" .-> MERGE["Diagnostics merged<br/>after both finish"]
+    P10 --> MERGE
+
+    style JOIN fill:#e67e22,color:#fff
+    style DJOIN fill:#e67e22,color:#fff
+    style SJOIN fill:#e67e22,color:#fff
+    style MERGE fill:#2ecc71,color:#fff
+```
+
+*Figure 3 — before this session's pipeline audit, Dynamic analysis waited for Cost and Report to finish even though it reads neither, and `HardwarePass` ran a second time in full with an unread `ParallelismIR` swapped in. Both were removed: three independent branches now share one thread-pool join, and Report and Dynamic's stability output are merged only at the very end, since the H007 hint (learning rate vs. the Lipschitz-based stability bound) needs both.*
+
+### Dynamic Analysis — the three concurrent sub-passes
 
 | Pass | Focus | Output |
 |---|---|---|
 | VirtualMemoryPass | Memory fragmentation, virtualization savings | Allocation strategy, savings estimate |
-| StabilityAnalysisPass | Training stability via Lyapunov exponents | Stability index, risk level |
+| StabilityAnalysisPass | Training stability via per-layer Lyapunov exponents (real per-model sequence length, expert count, state dimension — not fixed per-type constants) | `network_lipschitz_estimate`, `recommended_max_learning_rate` (`2 / lipschitz`), stability index, risk level |
 | BehavioralSynthesisPass | Runtime behavior inference (MoE imbalance, cache locality) | Behavioral metrics |
+
+---
+
+## Cross-Pass Communication: `NeuraxContext`
+
+The pipeline above looks like a straight line of typed inputs and outputs, but a few metrics genuinely need to cross from one phase to a much later one without threading a new field through every struct in between — the clearest example is `total_flops`, computed in phase 5 (Compute) and needed again in phase 7 (Parallelism) to derive per-GPU compute time. `NeuraxContext` is a `Mutex<HashMap<String, f64>>` passed by reference to every pass for exactly this:
+
+```rust
+ctx.set_metric("total_flops", forward_flops);      // written by ComputePass
+// ... several phases later ...
+let total_flops = ctx.get_metric("total_flops");   // read by ParallelismPass
+```
+
+*Figure 4 — the shape of this channel is intentionally simple (string key, `f64` value, no schema), which is also its main risk: a producer that is never wired up fails silently rather than at compile time. This was a real, found-and-fixed bug this session — `ParallelismPass` read `total_flops` from a channel nothing had ever written to, computing every downstream compute-time and communication-overhead figure from zero. The fix was adding the one missing `ctx.set_metric()` call in `ComputePass`, not changing the channel's design — but it is the reason this document calls the mechanism out explicitly rather than leaving it implicit: any future producer/consumer pair added to it needs to be verified against a real model, the same way `neurax-core/examples/validate_hints.rs` and `formula_mlir_crosscheck.rs` verify the rest of the pipeline.*
 
 ---
 
@@ -156,7 +213,7 @@ The parser ingests JSON model configurations conforming to the NEURAX universal 
 
 ### neurax-ir
 
-The IR crate implements 10 dialect-like modules, each with its own `Pass` struct implementing the `IrPass` trait:
+The IR crate implements 11 dialect-like modules, each with its own `Pass` struct implementing the `IrPass` trait:
 
 ```rust
 pub trait IrPass {
@@ -170,11 +227,11 @@ pub trait IrPass {
 }
 ```
 
-**Diagnostic system**: Standardized diagnostic codes (E001-E005 errors, W001-W006 warnings, I001-I003 info, H001-H005 hints) with severity levels and precision impact scoring.
+**Diagnostic system**: standardized codes with severity levels — see the [Diagnostics](#diagnostics) section below for the full, current list rather than a count duplicated here to drift out of sync with it.
 
 ### neurax-core
 
-The orchestrator that wires together the 10-pass pipeline, dynamic analysis, and export. Also provides:
+The orchestrator that wires together the 11-phase pipeline, dynamic analysis, and export. Also provides:
 - `run_analysis()` — full pipeline entry point
 - `analyze_json()` — JSON string → AnalysisResult
 - `validate_json()` — JSON validation
@@ -191,7 +248,7 @@ MLIR compiler backend with 14 custom dialects, callable as a library
 show it wired into the live pipeline, feeding LLVM 18/IREE for CPU, CUDA,
 Vulkan, Metal and ROCm targets, which described a lowering pipeline that
 doesn't run. What actually produces every metric a user sees is the
-10-pass analytical IR pipeline above (`neurax-ir` + `neurax-formulas`).
+11-phase analytical IR pipeline above (`neurax-ir` + `neurax-formulas`).
 `neurax-mlir` is real, working code — reachable by depending on the crate
 directly, see `examples/compile_to_mlir.rs` — that emits textual MLIR from
 the same parsed `ModelConfig`, using the same real per-layer formulas as
@@ -229,16 +286,39 @@ Pure analytical formulas for ML operations. Hot path — maximum optimization.
 
 ### neurax-hardware-db
 
-Built-in database with 20 GPUs, 2 CPUs, and 5 interconnect specifications.
+Built-in database with 21 GPUs, 2 CPUs, and 5 interconnect specifications.
 
-**GPU specs include**: H200, GH200, H100-SXM, H100-PCIe, A100-SXM, A100-PCIe, L40S, L40, V100, RTX 4090, RTX 4080, RTX 3090, RTX 6000 Ada, RTX A5000, A10G, A30, T4, K80.
+**GPU specs include**: H200, GH200, H100-SXM, H100-PCIe, A100-SXM, A100-PCIe, L40S, L40, V100, RTX 4090, RTX 4080, RTX 3090, RTX 6000 Ada, RTX A5000, A10G, A30, T4, K80, **P100** — added specifically because it is one of only two accelerator choices on Kaggle Notebooks' free tier, alongside T4; without it, a Kaggle-P100 config silently fell back to a generic 20-TFLOPS profile.
 
 **Key metrics per GPU**: TFLOPS (FP64/FP32/FP16/BF16/INT8/FP8), memory bandwidth, NVLink, TDP, L2 cache, SM count.
+
+#### Precision handling — where it actually branches
+
+The GPU a user selects, and the training precision they choose, both flow into the same two places, and both had a real gap fixed this session:
+
+```mermaid
+flowchart LR
+    JSON["hardware.gpus[].name<br/>+ training.precision"] --> LOOKUP["HardwareDatabase::get_gpu()"]
+    LOOKUP --> SPEC["GpuSpec"]
+    SPEC --> TFLOPS["tflops_for_precision()<br/>fp32/fp16/bf16/int8/fp8"]
+    TFLOPS --> COMPUTE["compute_time_ms()<br/>= flops / (tflops x efficiency)"]
+
+    JSON --> SHAPE["Shape::size_bytes()<br/>bytes/element by dtype"]
+    SHAPE --> MEM["MemoryIR<br/>peak VRAM"]
+
+    COMPUTE --> LATENCY["latency, cost, communication overhead"]
+    MEM --> LATENCY
+
+    style TFLOPS fill:#e74c3c,color:#fff
+    style SHAPE fill:#e74c3c,color:#fff
+```
+
+*Figure 5 — both `tflops_for_precision()` (compute speed) and `Shape::size_bytes()` (memory footprint) had a missing `"fp8"` match arm this session, silently falling back to the FP32 default: a model configured for fp8 computed `compute_time_ms` as if it ran at FP32 speed and sized every tensor as if it were 4 bytes/element instead of 1. None of the 16 reference models use fp8, so nothing had ever exercised the path. Fixed in both places; verified with a real before/after run (`compute_time_ms` dropped ~29.5x, consistent with real FP8-vs-FP32 throughput ratios).*
 
 ### neurax-service
 
 Production actix-web HTTP server with:
-- 38 REST routes (analysis, inference, export, projects, billing, credits, compliance, API keys, agent control, presets, hardware, plugin)
+- 42+ REST routes (analysis, sweep, inference, export, projects, billing, credits, compliance, API keys, agent control, presets, hardware, plugin)
 - Supabase JWT authentication + API key authentication with scope-based authorization
 - Stripe billing integration
 - SSE streaming for real-time analysis
@@ -252,14 +332,14 @@ Python/FastAPI/LangChain AI copilot with a 3-phase declarative pipeline:
 2. **Validation** — Pure Python topology validator checks DAG, fan-in, connectivity
 3. **Materialization** — Stream tool calls to the canvas with auto-correction (up to 3 retries)
 
-Supports 11 model families with catalogues containing 400+ blocks.
+Supports 11 model families (verified: `FAMILY_TEMPLATES` in `arch_planner.py` has exactly 11 keys), with a catalogue (`catalogue.json`) of 170 blocks plus 23 macro-blocks — counted directly from the JSON rather than restated from an earlier, since-drifted figure.
 
 ### neurax-ui
 
 React 18 + TypeScript + Vite single-page application with:
 - Visual canvas (React Flow) with drag-and-drop, parameter editing, minimap
 - 64 reference templates across the 8 architecture families the compiler fully supports
-- Metrics dashboard with 40+ metrics and charts
+- Metrics dashboard with 76 metrics and charts
 - AI Chat Drawer with SSE streaming
 - Hyperparameter Optimization panel
 - Time Machine cost/carbon projection
@@ -271,7 +351,61 @@ React 18 + TypeScript + Vite single-page application with:
 
 ### neurax-mcp
 
-Model Context Protocol server that exposes NEURAX capabilities to MCP-compatible clients (e.g., Claude Desktop). Provides 9 tools: analyze_architecture, list_templates, get_template, list_hardware, estimate_training_cost, get_compliance_config, get_credits, get_user_info, health_check.
+Model Context Protocol server that exposes NEURAX capabilities to MCP-compatible clients (e.g., Claude Desktop). It is a thin proxy — every tool call ends in an HTTP request to `neurax-service`, the same backend the web UI talks to, so an MCP client can never see a different answer than the UI would for the same design.
+
+| Tool | Purpose |
+|---|---|
+| `analyze_architecture` | Full NEURAX analysis: FLOPs, memory, latency, cost estimates |
+| `check_budget` | Analyze against a stated hard constraint ("must fit in 1 MB", "under 20 ms") — pass/fail per constraint with headroom |
+| `find_optimal_hyperparameters` | The hyperparameter sweep (see below), exposed as a tool |
+| `get_hardware_list` | List all GPU configurations in `neurax-hardware-db` |
+| `get_presets` / `get_preset` | List / fetch a specific architecture template from the catalogue |
+| `estimate_training_cost` | Training cost for a given configuration |
+| `get_compliance_config` | Regulatory metadata (EU AI Act, CSRD, etc.) |
+| `get_credits` / `get_user_info` | Account state for the current user |
+| `health_check` | Is the NEURAX backend reachable |
+
+---
+
+## Diagnostics
+
+Every analysis can attach diagnostics to the report — not a separate linter bolted on afterward, but codes emitted by the same passes that compute the metrics they describe. Each has a severity and a stable code, so a caller (the UI, the agent, an API consumer) can filter or react to a specific one without parsing prose.
+
+| Severity | Codes | Examples |
+|---|---|---|
+| **Error** (`E`) | E001–E005 | OOM risk, shape-inference gate blocked, custom formula failed, unsupported layer, cycle in graph |
+| **Warning** (`W`) | W001–W007 | Custom layer with no formula, unresolved symbolic dimensions, ZeRO stage not recommended, Flash Attention not enabled, memory close to the GPU limit, inefficient parallelism split, cross-layer shape mismatch |
+| **Info** (`I`) | I001–I003 | GQA detected, MoE detected, Flash Attention detected — architectural facts about the design, not problems |
+| **Hint** (`H`) | H001–H008 | Enable gradient checkpointing / Flash Attention, consider INT8, increase pipeline-parallel micro-batches, ZeRO-3 recommended, no LR warmup configured, learning rate exceeds the Lipschitz-based stability bound, tokens-per-parameter ratio far from Chinchilla-optimal |
+
+H006, H007 and H008 are the most recent additions and are the ones that reach across phases: H007 needs phase 11's `recommended_max_learning_rate` (see Figure 3), and H008 needs both the real parameter count (phase 1) and a user-declared dataset size. All three, plus I001 (GQA) and I002 (MoE), were validated against all 16 reference models by independently recomputing each one's firing condition from the raw input JSON rather than trusting the compiler's own report — `neurax-core/examples/validate_hints.rs` — with the result checked into the repository (80 checks, 0 false positives, 0 false negatives) rather than asserted in this document from memory.
+
+---
+
+## Hyperparameter Sweep
+
+Given a base configuration, `sweep_hyperparameters` (in `neurax-core`) runs a grid search over `batch_size x zero_stage x gpu_count x precision` — each point a full, real call to `run_analysis()`, not an approximation of one:
+
+```mermaid
+flowchart TB
+    BASE["Base ModelConfig"] --> GRID["SweepCandidates<br/>batch_size x zero_stage x gpu_count x precision"]
+    GRID --> C1["Candidate 1<br/>run_analysis()"]
+    GRID --> C2["Candidate 2<br/>run_analysis()"]
+    GRID --> C3["Candidate N<br/>run_analysis()"]
+    C1 --> FILTER{"peak_vram_bytes<br/>&lt;= gpu_vram_bytes ?"}
+    C2 --> FILTER
+    C3 --> FILTER
+    FILTER -- "no" --> DROP["Marked infeasible<br/>never selected"]
+    FILTER -- "yes" --> RANK["Ranked by objective:<br/>MaxThroughput / MinCost /<br/>MinLatency / MaxBatchSize"]
+    RANK --> BEST["SweepResult.best"]
+
+    style FILTER fill:#e67e22,color:#fff
+    style BEST fill:#2ecc71,color:#fff
+```
+
+*Figure 6 — nothing here is simulated: every candidate is the exact same 11-phase pipeline described above, run once per point in the grid. This is also why it stays cheap: the pipeline itself runs in low single-digit milliseconds, so even a few dozen candidates finish well under the time a single real OOM-and-retry cycle on actual hardware would cost.*
+
+Exposed as `POST /sweep` on `neurax-service`, and as the `find_optimal_hyperparameters` MCP tool above — both call the same function, so the AI agent, the MCP client, and a direct API caller are all bounded by the same feasibility check.
 
 ---
 
