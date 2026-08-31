@@ -117,6 +117,46 @@ function denseParams(inF: number, outF: number, bias: boolean): number {
   return inF * outF + (bias ? outF : 0);
 }
 
+/** Mirrors `neurax-formulas::gnn::gcn_params()` exactly: one shared
+ * `in x out` weight matrix, same shape as a plain `nn.Linear` — which is
+ * also PyTorch Geometric's `GCNConv`'s own parameter shape, so the two
+ * stay comparable without approximation. */
+function gcnConvParams(inFeatures: number, outFeatures: number, bias: boolean): number {
+  return inFeatures * outFeatures + (bias ? outFeatures : 0);
+}
+
+/** Mirrors `neurax-formulas::gnn::gat_params()`: per-head projection
+ * weights plus a source and a destination attention vector per head —
+ * exactly PyTorch Geometric's `GATConv`'s own `lin`/`att_src`/`att_dst`
+ * parameter shapes when `out_channels_per_head = out_features / heads`. */
+function gatConvParams(inFeatures: number, outFeatures: number, numHeads: number, bias: boolean): number {
+  const heads = Math.max(numHeads, 1);
+  const headDim = Math.floor(outFeatures / heads);
+  const weight = inFeatures * heads * headDim;
+  const attnSrc = heads * headDim;
+  const attnDst = heads * headDim;
+  return weight + attnSrc + attnDst + (bias ? outFeatures : 0);
+}
+
+/** Mirrors `neurax-formulas::gnn::rgcn_params()`: one `in x out` weight
+ * per relation (or a shared basis decomposition when `num_bases` is
+ * given), plus a separate self-loop/root weight every RGCN layer keeps —
+ * the same shape PyTorch Geometric's `RGCNConv` uses for its own
+ * `weight`/`root`/`bias`. */
+function rgcnConvParams(
+  inFeatures: number,
+  outFeatures: number,
+  numRelations: number,
+  numBases: number | undefined,
+  bias: boolean,
+): number {
+  const relationWeights = numBases !== undefined && numBases > 0 && numBases < numRelations
+    ? numBases * inFeatures * outFeatures + numRelations * numBases
+    : numRelations * inFeatures * outFeatures;
+  const selfLoop = inFeatures * outFeatures;
+  return relationWeights + selfLoop + (bias ? outFeatures : 0);
+}
+
 // ─── Node parameter resolution ────────────────────────────────────────────
 
 /** Reads a numeric value from a node's own params first — each node on the
@@ -183,7 +223,17 @@ const SUPPORTED_TYPES = new Set<LayerType>([
   'relu', 'gelu', 'dropout', 'avg_pool', 'global_pool', 'max_pool', 'flatten',
   'residual_add', 'skip_connection',
   'dcgan_generator_block', 'dcgan_discriminator_block',
+  'gcn_conv', 'gat_conv', 'gat_v2_conv', 'gat_attention', 'message_passing', 'rgcn_conv',
 ]);
+
+/** GNN layers need `torch_geometric` and an `edge_index` (plus `edge_type`
+ * for RGCN) that no other layer this module generates takes — the only
+ * family here pulling in a dependency beyond bare `torch`. Checked once per
+ * generated file to decide the import line and `forward()`'s signature. */
+const GNN_TYPES = new Set<LayerType>([
+  'gcn_conv', 'gat_conv', 'gat_v2_conv', 'gat_attention', 'message_passing', 'rgcn_conv',
+]);
+const RGCN_TYPES = new Set<LayerType>(['rgcn_conv']);
 
 export function isCodegenSupported(type: LayerType): boolean {
   return SUPPORTED_TYPES.has(type);
@@ -374,6 +424,59 @@ function genNode(node: CanvasNode, ctx: GenContext): GeneratedLayer {
           ? `nn.ConvTranspose2d(${inCh}, ${outCh}, kernel_size=${kernel}, stride=${stride}, padding=${padding}, bias=${ganBias ? 'True' : 'False'})`
           : `nn.Conv2d(${inCh}, ${outCh}, kernel_size=${kernel}, stride=${stride}, padding=${padding}, bias=${ganBias ? 'True' : 'False'})`,
         forwardLines: [`x = self.${varName}(x)`],
+      };
+    }
+    case 'gcn_conv':
+    case 'message_passing': {
+      // The backend costs both identically — MessagePassing (GraphSAGE/GIN
+      // -style nodes) reuses GCN's plain linear-transform formula as a
+      // documented approximation for aggregators it has no dedicated
+      // formula for yet (see architecture/mod.rs). Generating a fancier
+      // GIN-style MLP aggregator here would make this file's parameter
+      // count diverge from the analysis it's supposed to match.
+      const inFeatures = readNum(p, ['in_features', 'inFeatures'], ctx.channels || hw.hiddenDim) ?? 64;
+      const outFeatures = readNum(p, ['out_features', 'outFeatures'], hw.hiddenDim) ?? 64;
+      // Like the DCGAN blocks above: `LayerParams::bias` is a plain `bool`,
+      // defaulting to `false` — not the shared `bias` local's `true`
+      // default — for every GNN layer type too.
+      const gnnBias = readBool(p, ['bias', 'use_bias', 'useBias'], false);
+      ctx.channels = outFeatures;
+      return {
+        nodeId: node.id, layerType: node.type, supported: true,
+        paramCount: gcnConvParams(inFeatures, outFeatures, gnnBias), varName,
+        initCode: `GCNConv(${inFeatures}, ${outFeatures}, bias=${gnnBias ? 'True' : 'False'})`,
+        forwardLines: [`x = self.${varName}(x, edge_index)`],
+      };
+    }
+    case 'gat_conv':
+    case 'gat_v2_conv':
+    case 'gat_attention': {
+      const inFeatures = readNum(p, ['in_features', 'inFeatures'], ctx.channels || hw.hiddenDim) ?? 64;
+      const outFeatures = readNum(p, ['out_features', 'outFeatures'], hw.hiddenDim) ?? 64;
+      const numHeads = readNum(p, ['num_heads', 'numHeads'], hw.numHeads) ?? 8;
+      const gnnBias = readBool(p, ['bias', 'use_bias', 'useBias'], false);
+      const headDim = Math.floor(outFeatures / Math.max(numHeads, 1));
+      ctx.channels = outFeatures;
+      return {
+        nodeId: node.id, layerType: node.type, supported: true,
+        paramCount: gatConvParams(inFeatures, outFeatures, numHeads, gnnBias), varName,
+        initCode: `GATConv(${inFeatures}, ${headDim}, heads=${Math.max(numHeads, 1)}, concat=True, bias=${gnnBias ? 'True' : 'False'})`,
+        forwardLines: [`x = self.${varName}(x, edge_index)`],
+      };
+    }
+    case 'rgcn_conv': {
+      const inFeatures = readNum(p, ['in_features', 'inFeatures'], ctx.channels || hw.hiddenDim) ?? 64;
+      const outFeatures = readNum(p, ['out_features', 'outFeatures'], hw.hiddenDim) ?? 64;
+      const numRelations = readNum(p, ['num_relations', 'numRelations'], 1) ?? 1;
+      const numBases = readNum(p, ['num_bases', 'numBases'], undefined);
+      const gnnBias = readBool(p, ['bias', 'use_bias', 'useBias'], false);
+      ctx.channels = outFeatures;
+      const basesArg = numBases !== undefined ? `, num_bases=${numBases}` : '';
+      return {
+        nodeId: node.id, layerType: node.type, supported: true,
+        paramCount: rgcnConvParams(inFeatures, outFeatures, numRelations, numBases, gnnBias), varName,
+        initCode: `RGCNConv(${inFeatures}, ${outFeatures}, num_relations=${numRelations}${basesArg}, bias=${gnnBias ? 'True' : 'False'})`,
+        forwardLines: [`x = self.${varName}(x, edge_index, edge_type)`],
       };
     }
     case 'batchnorm': {
@@ -723,22 +826,32 @@ export function generateModelCode(
   const initLines = layers.map((l) => `        self.${l.varName} = ${l.initCode}`);
   const forwardLines = layers.flatMap((l) => l.forwardLines.map((line) => `        ${line}`));
 
+  // GNN layers are the one family here that don't take a bare `x` — PyTorch
+  // Geometric's conv layers need the graph's `edge_index` too, and RGCN
+  // additionally needs `edge_type` to pick each edge's relation-specific
+  // weight. Every other generated file keeps the plain `forward(self, x)`
+  // signature unchanged.
+  const hasGnn = layers.some((l) => GNN_TYPES.has(l.layerType));
+  const hasRgcn = layers.some((l) => RGCN_TYPES.has(l.layerType));
+  const forwardArgs = `x${hasGnn ? ', edge_index' : ''}${hasRgcn ? ', edge_type' : ''}`;
+  const gnnImport = hasGnn ? 'from torch_geometric.nn import GCNConv, GATConv, RGCNConv\n' : '';
+
   const code = `"""
 ${modelName} — generated by NEURAX from the architecture compiled on the canvas.
 
 ${layers.length} layer(s), ${unsupportedTypes.length === 0
-    ? `all translated from NEURAX's verified formula set (transformer / MoE / SSM / CNN-ResNet).`
+    ? `all translated from NEURAX's verified formula set (transformer / MoE / SSM / CNN-ResNet / GAN / GNN).`
     : `${unsupportedTypes.length} type(s) NOT translated — see NotImplementedError below: ${unsupportedTypes.join(', ')}.`}
 
 Parameter count implied by this file: ${totalParams.toLocaleString('en-US')}
 This is computed by the exact same formulas NEURAX used to report the
 figure already shown in the app — regenerate after any change on the
 canvas and the two stay identical by construction, not by promise.
-"""
+${hasGnn ? '\nRequires torch_geometric (pip install torch_geometric) in addition to torch —\nthe only family this generator produces that needs a dependency beyond it.\n' : ''}"""
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+${gnnImport}
 
 ${RUNTIME_PRELUDE}
 
@@ -747,7 +860,7 @@ class ${className}(nn.Module):
         super().__init__()
 ${initLines.join('\n')}
 
-    def forward(self, x):
+    def forward(self, ${forwardArgs}):
 ${forwardLines.join('\n')}
         return x
 

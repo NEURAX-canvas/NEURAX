@@ -239,6 +239,54 @@ describe('generateModelCode — parameter counts match neurax-formulas', () => {
     expect(result.totalParams).toBe(genConvWeights + discConvWeights);
     expect(result.fullySupported).toBe(true);
   });
+
+  it('gcn_conv: in*out + bias, matches gcn_params (bias defaults to False like the GAN blocks)', () => {
+    const n = [node('n1', 'gcn_conv', { in_features: 128, out_features: 256, bias: true })];
+    const result = generateModelCode(n, [], BASE_HW, 'GCN');
+    expect(result.totalParams).toBe(128 * 256 + 256);
+    expect(result.layers[0].initCode).toContain('GCNConv(128, 256, bias=True)');
+    expect(result.layers[0].forwardLines[0]).toContain('edge_index');
+  });
+
+  it('a 3-layer GCN (the ogbn-arxiv shape verified against the OGB leaderboard in published_model_accuracy.rs) matches its conv-only total', () => {
+    // Same layer widths and bias=True as examples/models/gcn_ogbn_arxiv.json
+    // (128->256->256->256->40); that file's full total (110,120, including
+    // two BatchNorm1d layers) is checked against the real OGB leaderboard
+    // figure on the Rust side. This test isolates just the three GCNConv
+    // layers' contribution: 33,024 + 65,792 + 10,280 = 109,096 — the
+    // remaining 1,024 comes from the two 256-wide normalization layers.
+    const nodes = [
+      node('conv1', 'gcn_conv', { in_features: 128, out_features: 256, bias: true }),
+      node('conv2', 'gcn_conv', { in_features: 256, out_features: 256, bias: true }),
+      node('conv3', 'gcn_conv', { in_features: 256, out_features: 40, bias: true }),
+    ];
+    const result = generateModelCode(nodes, chain(nodes), BASE_HW, 'GCN');
+    expect(result.totalParams).toBe(33_024 + 65_792 + 10_280);
+    expect(result.totalParams).toBe(109_096);
+    expect(result.fullySupported).toBe(true);
+    expect(result.code).toContain('from torch_geometric.nn import GCNConv, GATConv, RGCNConv');
+    expect(result.code).toContain('def forward(self, x, edge_index):');
+  });
+
+  it('gat_conv: per-head weight + attention vectors, matches gat_params', () => {
+    const inFeatures = 4096, outFeatures = 4096, heads = 8;
+    const headDim = outFeatures / heads;
+    const expected = inFeatures * heads * headDim + heads * headDim * 2;
+    const n = [node('n1', 'gat_conv', { in_features: inFeatures, out_features: outFeatures, num_heads: heads })];
+    const result = generateModelCode(n, [], BASE_HW, 'GAT');
+    expect(result.totalParams).toBe(expected);
+    expect(result.layers[0].initCode).toContain(`GATConv(${inFeatures}, ${headDim}, heads=${heads}`);
+  });
+
+  it('rgcn_conv: per-relation weights + self-loop, matches rgcn_params, forward takes edge_type too', () => {
+    const inFeatures = 64, outFeatures = 64, numRelations = 5;
+    const expected = numRelations * inFeatures * outFeatures + inFeatures * outFeatures;
+    const n = [node('n1', 'rgcn_conv', { in_features: inFeatures, out_features: outFeatures, num_relations: numRelations })];
+    const result = generateModelCode(n, [], BASE_HW, 'RGCN');
+    expect(result.totalParams).toBe(expected);
+    expect(result.code).toContain('def forward(self, x, edge_index, edge_type):');
+    expect(result.layers[0].forwardLines[0]).toContain('edge_type');
+  });
 });
 
 describe('a full small transformer — end-to-end total', () => {
