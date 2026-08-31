@@ -13,7 +13,7 @@ from suggestions import _rehydrate_catalogue
 from arch_planner import plan_architecture, plan_strategy
 from topology_validator import validate_arch_spec, auto_repair_fanin_violations, ArchSpec
 from requirements import extract_budget
-from budget_check import measure_and_check, narrow_precision_to_fit
+from budget_check import measure_and_check, narrow_precision_to_fit, optimize_hyperparameters
 from layout_engine import assign_positions
 from materializer import materialize
 
@@ -41,6 +41,7 @@ async def _run_agent(
     snapshot: dict[str, Any],
     creativity: float = 0.0,
     credentials: dict[str, Any] | None = None,
+    conversation_history: Optional[list[dict[str, Any]]] = None,
 ) -> None:
     """
     Main agent orchestration using the 3-phase declarative pipeline:
@@ -149,7 +150,8 @@ async def _run_agent(
                     # guessing a whole architecture from a short edit request.
                     existing_nodes=snapshot.get("nodes"),
                     existing_connections=snapshot.get("connections"),
-                    previous_errors=previous_errors if previous_errors else None
+                    previous_errors=previous_errors if previous_errors else None,
+                    conversation_history=conversation_history,
                 )
 
                 # ── 2. Phase 2: Structural validation ──
@@ -224,6 +226,15 @@ async def _run_agent(
                 if stated_budget:
                     logger.info("📏 Budget check:\n%s", budget_report.summary())
                     await q.put(_event("assistant", {"content": budget_report.summary()}))
+                else:
+                    # No budget was stated, so summary()'s own "No budget
+                    # stated" line would be noise — but real, already-computed
+                    # signals (GQA/MoE detected, LR past the stability
+                    # estimate, tokens-per-parameter off Chinchilla-optimal)
+                    # are worth surfacing on their own regardless.
+                    notes = budget_report.notes_text()
+                    if notes:
+                        await q.put(_event("assistant", {"content": notes}))
 
                 if budget_report.fits and not blocking:
                     logger.info(f"✅ Design holds up on attempt {attempt}")
@@ -295,6 +306,17 @@ async def _run_agent(
 
         if spec is not None and spec.rationale:
             await q.put(_event("assistant", {"content": spec.rationale}))
+
+        # Same "measure, don't guess" discipline as the budget check: the
+        # design has already been compiled once above, so finding its
+        # fastest/cheapest feasible training setup costs one more real
+        # analysis call (the sweep), not a repeat of the whole planning loop.
+        if spec is not None and budget_report is not None and not budget_report.error:
+            logger.info("🔍 Searching for the best training configuration...")
+            sweep_report = await optimize_hyperparameters(spec, hw_config)
+            logger.info("⚡ Sweep result:\n%s", sweep_report.summary())
+            await q.put(_event("assistant", {"content": sweep_report.summary()}))
+
         await q.put(_update_plan(0, "done"))
 
         # ── 3. Phase 2e: Layout ──

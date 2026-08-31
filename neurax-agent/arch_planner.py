@@ -19,6 +19,40 @@ from langchain_runner import make_chat_model
 
 logger = logging.getLogger(__name__)
 
+def _format_conversation_history(
+    conversation_history: Optional[list[dict[str, Any]]],
+    max_turns: int = 8,
+    max_chars: int = 400,
+) -> str:
+    """Render prior chat turns into a prompt section, or "" when there is
+    none. Capped the same way the catalogue is capped elsewhere in this
+    module (40 blocks, 5 params each) — to stay well under the model's
+    context window, not to represent the whole conversation verbatim.
+
+    `existing_nodes`/`existing_connections` (built separately, in
+    plan_architecture) say what the canvas looks like now; this says what was
+    actually discussed and why — a follow-up like "actually, make it use GQA
+    instead" or "you said this might not fit, try int8" resolves against the
+    conversation, not the resulting graph.
+    """
+    if not conversation_history:
+        return ""
+
+    def _fmt_turn(t: dict[str, Any]) -> str:
+        role = str(t.get("role") or "user").strip()
+        content = str(t.get("content") or "").strip()
+        if len(content) > max_chars:
+            content = content[:max_chars] + "..."
+        return f"{role}: {content}"
+
+    recent = [
+        t for t in conversation_history[-max_turns:] if str(t.get("content") or "").strip()
+    ]
+    if not recent:
+        return ""
+    return "\n\n## Conversation So Far\n" + "\n".join(_fmt_turn(t) for t in recent)
+
+
 class StrategyItem(BaseModel):
     id: str = Field(description="Unique step ID, e.g. '1', 'setup'")
     text: str = Field(description="High-level description of the design step")
@@ -323,6 +357,7 @@ async def plan_architecture(
     previous_errors: Optional[list[str]] = None,
     existing_nodes: Optional[list[dict[str, Any]]] = None,
     existing_connections: Optional[list[dict[str, Any]]] = None,
+    conversation_history: Optional[list[dict[str, Any]]] = None,
 ) -> ArchSpec:
     """
     Generate a complete architecture specification from a user request.
@@ -347,6 +382,11 @@ async def plan_architecture(
             "modify" request — the LLM was designing a transformer from a
             two-sentence request with no anchor, not editing GPT-2.
         existing_connections:  Edges already on the canvas, if any.
+        conversation_history:  Prior chat turns ({"role", "content"}), oldest
+            first. `existing_nodes`/`existing_connections` say what the canvas
+            looks like now; this says what was actually discussed and why —
+            "actually, make it use GQA instead" or "you said this might not
+            fit, try int8" resolve against the conversation, not the graph.
 
     Returns:
         ArchSpec with nodes, edges, and rationale
@@ -478,6 +518,8 @@ MODIFICATION RULES:
   above — do not add a partial layer (e.g. normalization alone) that the
   existing layers don't have."""
 
+    history_section = _format_conversation_history(conversation_history)
+
     modification_hint = (
         " This is a MODIFICATION of the existing design above — follow the "
         "MODIFICATION RULES."
@@ -496,7 +538,7 @@ You translate non-technical business needs (e.g., "classify documents", "detect 
 
 ## Family: {family.upper()}
 ## Design Principles
-{template}{creativity_hint}{strategy_section}{existing_section}
+{template}{creativity_hint}{strategy_section}{existing_section}{history_section}
 
 ## Block Catalogue (ONLY use types from this list)
 {catalogue_desc}

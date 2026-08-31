@@ -83,10 +83,24 @@ class LlmCredentials(BaseModel):
     base_url: str | None = None
 
 
+class ConversationTurn(BaseModel):
+    #: "user" or "assistant" — mirrors the SSE `assistant` events this same
+    #: agent already emits, which the frontend renders as chat and is
+    #: therefore the natural source for this on the next request.
+    role: str
+    content: str
+
+
 class RunRequest(BaseModel):
     user_message: str
     snapshot: CanvasSnapshot
     creativity: float = Field(default=0.0, ge=0.0, le=1.0)
+    #: Prior turns in this conversation, oldest first. Without this, a
+    #: follow-up like "actually make it use GQA instead" or "you said this
+    #: might not fit — try int8" has nothing to resolve "actually"/"you
+    #: said" against beyond the current canvas structure, which captures
+    #: what was built, not what was discussed or why.
+    conversation_history: list[ConversationTurn] = Field(default_factory=list)
     #: Omit to fall back to the server's own credentials, where configured.
     credentials: LlmCredentials | None = None
 
@@ -102,6 +116,7 @@ async def create_run(req: RunRequest) -> dict[str, Any]:
     q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     snapshot = req.snapshot.model_dump()
+    history = [turn.model_dump() for turn in req.conversation_history]
     task = asyncio.create_task(
         _run_agent(
             run_id,
@@ -110,6 +125,7 @@ async def create_run(req: RunRequest) -> dict[str, Any]:
             snapshot,
             creativity=req.creativity,
             credentials=req.credentials.model_dump() if req.credentials else None,
+            conversation_history=history,
         )
     )
     _runs[run_id] = RunEntry(task=task, queue=q, created_at=time.monotonic())

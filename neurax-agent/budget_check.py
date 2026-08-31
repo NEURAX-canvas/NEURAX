@@ -205,17 +205,61 @@ class BudgetReport:
             or str(d.get("code", "")).upper() == "W007"
         ]
 
+    def notable_diagnostics(self) -> list[dict[str, Any]]:
+        """Non-blocking observations worth surfacing to the client.
+
+        `blocking_diagnostics()` feeds the *planner* — only things that stop a
+        design from working. This is for the *client*: real, already-computed
+        signals (GQA/MoE detected, no LR warmup, learning_rate past the
+        Lipschitz-based stability estimate, tokens-per-parameter far from
+        Chinchilla-optimal) that were reaching `self.diagnostics` but nothing
+        ever read past `blocking_diagnostics()`'s filter, so a design could
+        clear every budget check and still never mention e.g. "your
+        learning_rate is above the estimated stability bound" even though the
+        compiler had already said so.
+        """
+        return [
+            d
+            for d in self.diagnostics
+            if str(d.get("severity", "")).lower() in {"hint", "info"}
+        ]
+
+    def notes_text(self) -> str:
+        """Just the formatted hint/info block, or "" when there is none —
+        shared by `summary()` and by a caller that wants to mention these
+        even when no budget was stated at all (in which case `summary()`'s
+        own "No budget stated" line would be noise).
+        """
+        notes = self.notable_diagnostics()
+        if not notes:
+            return ""
+        lines = ["Notes:"]
+        for d in notes:
+            message = str(d.get("message", "")).strip()
+            if not message:
+                continue
+            suggestion = str(d.get("suggestion") or "").strip()
+            lines.append(f"  - {message}" + (f" {suggestion}" if suggestion else ""))
+        return "\n".join(lines)
+
     def summary(self) -> str:
         if self.error:
             return f"Could not measure the design: {self.error}"
         if not self.checks:
-            return "No budget stated; the design was measured but not constrained."
-        lines = [check.describe() for check in self.checks]
-        lines.append(
-            "The design fits every stated budget."
-            if self.fits
-            else "The design exceeds at least one budget."
-        )
+            lines = ["No budget stated; the design was measured but not constrained."]
+        else:
+            lines = [check.describe() for check in self.checks]
+            lines.append(
+                "The design fits every stated budget."
+                if self.fits
+                else "The design exceeds at least one budget."
+            )
+
+        notes = self.notes_text()
+        if notes:
+            lines.append("")
+            lines.append(notes)
+
         return "\n".join(lines)
 
     def planner_feedback(self) -> list[str]:
@@ -498,3 +542,74 @@ async def narrow_precision_to_fit(
     # Nothing worked; leave the design as the planner wrote it.
     spec.hw_config = original
     return None, None
+
+
+@dataclass
+class SweepReport:
+    """Outcome of asking NEURAX for the fastest/cheapest feasible training
+    configuration for a design, via the /sweep endpoint (see
+    neurax_core::sweep). Mirrors BudgetReport's shape deliberately — same
+    module, same "measure, don't guess" discipline, same failure handling.
+    """
+
+    best: Optional[dict[str, Any]] = None
+    points_evaluated: int = 0
+    feasible_count: int = 0
+    error: Optional[str] = None
+
+    def summary(self) -> str:
+        if self.error:
+            return f"Could not search hyperparameters: {self.error}"
+        if self.best is None:
+            return (
+                f"No feasible training configuration found among "
+                f"{self.points_evaluated} candidates evaluated — this design "
+                "doesn't fit the configured GPU's VRAM at any swept batch size."
+            )
+        b = self.best
+        return (
+            f"Searched {self.points_evaluated} configurations "
+            f"({self.feasible_count} feasible). Best: batch_size={b.get('batch_size')}, "
+            f"zero_stage={b.get('zero_stage')}, precision={b.get('precision')} — "
+            f"{b.get('throughput_tokens_per_s', 0):,.0f} tok/s, "
+            f"${b.get('training_cost_usd', 0):,.2f}, "
+            f"{b.get('peak_vram_gb', 0):.2f} GB peak VRAM."
+        )
+
+
+async def optimize_hyperparameters(
+    spec: Any,
+    hw_config: dict[str, Any] | None = None,
+    objective: str = "max_throughput",
+    timeout_s: float = 30.0,
+) -> SweepReport:
+    """Search batch_size x zero_stage x precision for the design's best
+    feasible training configuration. Reuses spec_to_topology exactly like
+    measure_and_check — the sweep endpoint takes the same wire topology, it
+    just evaluates many hyperparameter combinations against it instead of one.
+    """
+    topology = spec_to_topology(spec, hw_config)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            response = await client.post(
+                f"{NEURAX_SERVICE_URL}/sweep",
+                json={"topology": topology, "objective": objective},
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        detail = exc.response.text.strip() or str(exc)
+        logger.warning("sweep rejected the design: %s", detail)
+        return SweepReport(error=detail)
+    except Exception as exc:  # network, timeout, ...
+        logger.warning("hyperparameter sweep could not reach the compiler: %s", exc)
+        return SweepReport(error=str(exc))
+
+    result = payload.get("result", payload)
+    points = result.get("points", []) or []
+    return SweepReport(
+        best=result.get("best"),
+        points_evaluated=len(points),
+        feasible_count=sum(1 for p in points if p.get("feasible")),
+    )

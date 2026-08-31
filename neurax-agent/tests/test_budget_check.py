@@ -4,7 +4,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 from requirements import extract_budget
-from budget_check import BudgetReport, measure_and_check, spec_to_topology
+from budget_check import (
+    BudgetReport,
+    SweepReport,
+    measure_and_check,
+    optimize_hyperparameters,
+    spec_to_topology,
+)
 from topology_validator import ArchSpec
 
 MB = 1024 ** 2
@@ -219,3 +225,91 @@ def test_diagnostics_survive_a_report_with_no_metrics():
         diagnostics=[_diag("Critical", "Attention head count divides into zero")],
     )
     assert len(report.planner_feedback()) == 1
+
+
+# ─── Hint/info diagnostics reach the client, not just the planner ───────
+#
+# blocking_diagnostics() feeds the planner (only things that stop a design
+# from working); notable_diagnostics()/notes_text() feed the human — real,
+# already-computed signals (GQA/MoE detected, no LR warmup, learning_rate
+# past the Lipschitz-based stability estimate, tokens-per-parameter off
+# Chinchilla-optimal) that used to reach `diagnostics` and then go nowhere,
+# since nothing read past blocking_diagnostics()'s severity filter.
+
+def test_notable_diagnostics_keeps_only_hint_and_info_severity():
+    report = BudgetReport(
+        fits=True,
+        diagnostics=[
+            _diag("Critical", "This model needs 954.5 GB but the GPU has 17.2 GB"),
+            _diag("Warning", "Head count is unusual for this width"),
+            _diag("Hint", "learning_rate exceeds the estimated stability bound", code="H007"),
+            _diag("Info", "Grouped Query Attention detected", code="I001"),
+        ],
+    )
+    notable = report.notable_diagnostics()
+    codes = {d["code"] for d in notable}
+    assert codes == {"H007", "I001"}
+
+
+def test_notes_text_is_empty_when_there_is_nothing_notable():
+    report = BudgetReport(fits=True, diagnostics=[_diag("Critical", "Won't start")])
+    assert report.notes_text() == ""
+
+
+def test_summary_includes_notes_alongside_budget_checks():
+    report = BudgetReport(
+        fits=True,
+        checks=[],
+        diagnostics=[_diag("Hint", "No learning-rate warmup configured", code="H006")],
+    )
+    summary = report.summary()
+    assert "No budget stated" in summary
+    assert "H006" not in summary  # the code is planner-facing, the message is client-facing
+    assert "No learning-rate warmup configured" in summary
+
+
+# ─── Hyperparameter sweep (optimize_hyperparameters / SweepReport) ──────
+
+def test_sweep_report_summary_with_a_best_point():
+    report = SweepReport(
+        best={
+            "batch_size": 8,
+            "zero_stage": 2,
+            "precision": "bf16",
+            "throughput_tokens_per_s": 7453.8,
+            "training_cost_usd": 1788808.39,
+            "peak_vram_gb": 50.9,
+        },
+        points_evaluated=36,
+        feasible_count=20,
+    )
+    summary = report.summary()
+    assert "batch_size=8" in summary
+    assert "zero_stage=2" in summary
+    assert "36" in summary and "20" in summary
+
+
+def test_sweep_report_summary_with_no_feasible_point():
+    report = SweepReport(best=None, points_evaluated=9, feasible_count=0)
+    summary = report.summary()
+    assert "No feasible" in summary
+    assert "9" in summary
+
+
+def test_sweep_report_summary_on_error():
+    report = SweepReport(error="All connection attempts failed")
+    assert "Could not search" in report.summary()
+
+
+def test_optimize_hyperparameters_against_the_real_compiler():
+    """Same style as measure_and_check's own tests: hit the real service,
+    skip if it isn't up rather than mocking the one thing worth checking —
+    that the sweep endpoint actually understands what spec_to_topology sends.
+    """
+    result = asyncio.run(optimize_hyperparameters(TINY, HW))
+    if result.error:
+        pytest.skip(f"compiler unavailable: {result.error}")
+    assert result.points_evaluated > 0
+    if result.best is not None:
+        assert result.best["peak_vram_gb"] >= 0
+        assert "batch_size" in result.best
