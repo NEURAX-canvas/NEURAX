@@ -227,7 +227,7 @@ fn test_f02_spiking_resnet_flops() {
 /// Test: toutes les opérations ont backward_flops >= forward_flops
 #[test]
 fn test_f02_backward_gte_forward_all_ops() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // Backward pass: gradients pour tous les params
@@ -253,7 +253,7 @@ fn test_f02_backward_gte_forward_all_ops() {
 /// Test: MACs = FLOPs / 2 (approximately)
 #[test]
 fn test_f02_macs_equals_flops_half() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // MACs (Multiply-Accumulate) = FLOPs / 2

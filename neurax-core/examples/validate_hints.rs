@@ -172,7 +172,6 @@ fn check_model(name: &str, raw: &Value, output: &Value) -> Vec<CheckResult> {
 fn main() {
     let mut paths: Vec<String> = fs::read_dir("examples/models")
         .unwrap()
-        .chain(fs::read_dir("models").unwrap())
         .filter_map(|e| e.ok())
         .map(|e| e.path().to_string_lossy().to_string())
         .filter(|p| p.ends_with(".json"))

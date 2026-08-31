@@ -11,7 +11,7 @@ use neurax_core::analyze_json;
 /// A01: total_parameters > 0
 #[test]
 fn test_a01_total_parameters_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.arch.metrics.total_parameters > 0,
@@ -26,7 +26,7 @@ fn test_a01_total_parameters_positive() {
 /// A02: num_layers > 0
 #[test]
 fn test_a02_num_layers_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.arch.metrics.num_layers > 0,
@@ -38,7 +38,7 @@ fn test_a02_num_layers_positive() {
 /// A03: layer_count == len(layers)
 #[test]
 fn test_a03_layer_count_consistency() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.arch.metrics.num_layers as usize == result.arch.layers.len(),
@@ -55,7 +55,7 @@ fn test_a03_layer_count_consistency() {
 /// A04: sum(flops_by_layer) <= forward_flops (±0.1%)
 #[test]
 fn test_a04_flops_by_layer_sum() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let sum_flops_by_layer: f64 = result.compute.metrics.flops_per_layer.values().sum();
@@ -76,7 +76,7 @@ fn test_a04_flops_by_layer_sum() {
 /// A05: sum(top10_flops) <= forward_flops
 #[test]
 fn test_a05_top10_flops_sum() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let mut flops_values: Vec<f64> = result
@@ -109,7 +109,7 @@ fn test_a05_top10_flops_sum() {
 /// A06: forward_flops > 0
 #[test]
 fn test_a06_forward_flops_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.compute.metrics.forward_flops > 0.0,
@@ -124,7 +124,7 @@ fn test_a06_forward_flops_positive() {
 /// A07: backward_flops >= forward_flops
 #[test]
 fn test_a07_backward_gte_forward() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.compute.metrics.backward_flops >= result.compute.metrics.forward_flops,
@@ -141,7 +141,7 @@ fn test_a07_backward_gte_forward() {
 /// A08: backward_flops <= 5 × forward_flops
 #[test]
 fn test_a08_backward_ratio_reasonable() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.compute.metrics.backward_flops <= result.compute.metrics.forward_flops * 5.0,
@@ -156,7 +156,7 @@ fn test_a08_backward_ratio_reasonable() {
 /// A09: flops_per_token × seq_len ≈ forward_flops (±2%)
 #[test]
 fn test_a09_flops_per_token_coherence() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let seq_len = 1024u64; // GPT-2 Medium default
@@ -181,7 +181,7 @@ fn test_a09_flops_per_token_coherence() {
 /// A10: macs = forward_flops / 2 (±1%)
 #[test]
 fn test_a10_macs_coherence() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let expected_macs = result.compute.metrics.forward_flops / 2.0;
@@ -202,7 +202,7 @@ fn test_a10_macs_coherence() {
 /// A11: arithmetic_intensity > 0
 #[test]
 fn test_a11_arithmetic_intensity_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.compute.metrics.arithmetic_intensity > 0.0,
@@ -221,7 +221,7 @@ fn test_a11_arithmetic_intensity_positive() {
 /// A12: vram_training >= vram_inference
 #[test]
 fn test_a12_vram_training_gte_inference() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // Pour ce test, on compare peak_vram avec lui-même (pas de distinction train/infer)
@@ -233,7 +233,7 @@ fn test_a12_vram_training_gte_inference() {
 /// A13: vram_inference >= vram_params
 #[test]
 fn test_a13_vram_inference_gte_params() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     assert!(
@@ -248,7 +248,7 @@ fn test_a13_vram_inference_gte_params() {
 /// A14: vram_optimizer ≈ params × 8 bytes (Adam: momentum + variance)
 #[test]
 fn test_a14_vram_optimizer_adam() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let expected_optimizer = result.memory.metrics.parameter_memory_bytes * 2; // AdamW: 2× params
@@ -272,7 +272,7 @@ fn test_a14_vram_optimizer_adam() {
 /// A15: vram_gradients ≈ vram_params
 #[test]
 fn test_a15_vram_gradients_equals_params() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let relative_error = (result.memory.metrics.gradient_memory_bytes as f64
@@ -293,7 +293,7 @@ fn test_a15_vram_gradients_equals_params() {
 /// A16: vram_training ≈ sum(components) (±30%)
 #[test]
 fn test_a16_vram_training_sum_components() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let sum_components = result.memory.metrics.parameter_memory_bytes
@@ -321,7 +321,7 @@ fn test_a16_vram_training_sum_components() {
 /// A17: fragmentation between 5% and 20%
 #[test]
 fn test_a17_fragmentation_reasonable() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let frag = result.memory.metrics.fragmentation_estimate;
@@ -336,7 +336,7 @@ fn test_a17_fragmentation_reasonable() {
 /// A18: vram_inference is finite and positive
 #[test]
 fn test_a18_vram_inference_finite() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     assert!(
@@ -352,7 +352,7 @@ fn test_a18_vram_inference_finite() {
 /// A19: max_batch_size_fit > 0 if model fits in GPU
 #[test]
 fn test_a19_max_batch_size_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let gpu_memory_gb = result.report.metrics.gpu_memory_gb;
@@ -378,7 +378,7 @@ fn test_a19_max_batch_size_positive() {
 /// A20: latency_ms > 0
 #[test]
 fn test_a20_latency_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.hardware.metrics.latency_ms > 0.0,
@@ -393,7 +393,7 @@ fn test_a20_latency_positive() {
 /// A21: throughput_tokens_per_s > 0
 #[test]
 fn test_a21_throughput_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.hardware.metrics.throughput_tokens_per_s > 0.0,
@@ -408,7 +408,7 @@ fn test_a21_throughput_positive() {
 /// A22: gpu_utilization in [0, 1]
 #[test]
 fn test_a22_gpu_utilization_range() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.hardware.metrics.gpu_utilization >= 0.0
@@ -424,7 +424,7 @@ fn test_a22_gpu_utilization_range() {
 /// A23: effective_tflops >= 0 (peut être 0 si non calculé)
 #[test]
 fn test_a23_effective_tflops_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.hardware.metrics.effective_tflops >= 0.0,
@@ -439,7 +439,7 @@ fn test_a23_effective_tflops_nonnegative() {
 /// A24: roofline_position in [0, 1]
 #[test]
 fn test_a24_roofline_position_range() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.hardware.metrics.roofline_position >= 0.0
@@ -455,7 +455,7 @@ fn test_a24_roofline_position_range() {
 /// A25: bottleneck is valid
 #[test]
 fn test_a25_bottleneck_valid() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // Le bottleneck doit être l'un des trois types
@@ -476,7 +476,7 @@ fn test_a25_bottleneck_valid() {
 /// A26: training_cost_usd >= 0
 #[test]
 fn test_a26_training_cost_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.cost.metrics.training_cost_usd >= 0.0,
@@ -491,7 +491,7 @@ fn test_a26_training_cost_nonnegative() {
 /// A27: training_time_hours >= 0 (peut être 0 si non calculé)
 #[test]
 fn test_a27_training_time_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.cost.metrics.training_time_hours >= 0.0,
@@ -506,7 +506,7 @@ fn test_a27_training_time_nonnegative() {
 /// A28: energy_kwh >= 0 (peut être 0 si non calculé)
 #[test]
 fn test_a28_energy_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.cost.metrics.energy_kwh >= 0.0,
@@ -518,7 +518,7 @@ fn test_a28_energy_nonnegative() {
 /// A29: co2_kg >= 0
 #[test]
 fn test_a29_co2_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(result.cost.metrics.co2_kg >= 0.0, "A29: co2 should be >= 0");
     println!("✓ A29: co2 = {:.2} kg", result.cost.metrics.co2_kg);
@@ -527,7 +527,7 @@ fn test_a29_co2_nonnegative() {
 /// A30: cost_per_million_tokens >= 0
 #[test]
 fn test_a30_cost_per_tokens_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.cost.metrics.cost_per_million_tokens_usd >= 0.0,
@@ -547,7 +547,7 @@ fn test_a30_cost_per_tokens_nonnegative() {
 /// NOTE: Le ratio peut varier selon la configuration du modèle
 #[test]
 fn test_a31_latency_throughput_consistency() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let seq_len = 1024u64;
@@ -577,7 +577,7 @@ fn test_a31_latency_throughput_consistency() {
 /// NOTE: Ces métriques peuvent être 0 si non calculées
 #[test]
 fn test_a32_energy_consistency() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // Vérifie juste que les valeurs sont >= 0
@@ -594,7 +594,7 @@ fn test_a32_energy_consistency() {
 /// A33: energy × co2_per_kwh ≈ co2_kg
 #[test]
 fn test_a33_co2_consistency() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // CO2 = energy × emission_factor
@@ -615,7 +615,7 @@ fn test_a33_co2_consistency() {
 /// NOTE: Tolérance très large car les métriques sont approximatives
 #[test]
 fn test_a34_flops_latency_consistency() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let latency_seconds = result.hardware.metrics.latency_ms / 1000.0;
@@ -650,7 +650,7 @@ fn test_a34_flops_latency_consistency() {
 /// A35: total_step_flops = forward + backward + optimizer
 #[test]
 fn test_a35_total_step_flops_sum() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     let expected_total = result.compute.metrics.forward_flops
@@ -672,7 +672,7 @@ fn test_a35_total_step_flops_sum() {
 /// A36: operator_count > 0
 #[test]
 fn test_a36_operator_count_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.operator.metrics.total_op_count > 0,
@@ -687,7 +687,7 @@ fn test_a36_operator_count_positive() {
 /// A37: tensor_count > 0
 #[test]
 fn test_a37_tensor_count_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.tensor.metrics.total_tensor_count > 0,
@@ -702,7 +702,7 @@ fn test_a37_tensor_count_positive() {
 /// A38: graph_edge_count > 0
 #[test]
 fn test_a38_graph_edge_count_positive() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     assert!(
         result.graph.metrics.edge_count > 0,
@@ -717,7 +717,7 @@ fn test_a38_graph_edge_count_positive() {
 /// A39: total_operations >= 0
 #[test]
 fn test_a39_graph_total_operations_nonnegative() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
     // `total_operations` is unsigned, so `>= 0` would assert nothing. A parsed
     // model must decompose into at least one operation.
@@ -734,7 +734,7 @@ fn test_a39_graph_total_operations_nonnegative() {
 /// A40: complexity_class is valid
 #[test]
 fn test_a40_complexity_class_valid() {
-    let json = include_str!("../../models/gpt2_medium.json");
+    let json = include_str!("../../examples/models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
     // Pour un transformer, la complexité devrait être Quadratic (attention O(n²))
