@@ -14,7 +14,12 @@ members = [
 # `cargo build --workspace` — and so CI, and anyone working on the compiler —
 # required those system libraries. It is its own workspace and reaches the
 # crates it needs by path, so there is still one copy of the compiler.
-exclude = ["neurax-desktop"]
+#
+# `neurax-ir-poc` is a one-off architectural comparison experiment (see its
+# README) — deliberately excluded so it never becomes a silent dependency of
+# the product or a thing CI has to keep green. Build/run it explicitly with
+# `--manifest-path neurax-ir-poc/Cargo.toml`.
+exclude = ["neurax-desktop", "neurax-ir-poc"]
 resolver = "2"
 
 [workspace.dependencies]

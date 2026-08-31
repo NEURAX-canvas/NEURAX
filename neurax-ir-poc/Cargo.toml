@@ -1,0 +1,19 @@
+[package]
+name = "neurax-ir-poc"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = """
+Experimental, comparison-only proof of concept: the same NEURAX passes
+(reused unchanged, not reimplemented) driven through a memoized, typed
+query graph instead of neurax-core::run_analysis()'s hand-threaded tuples
+and the ctx.set_metric()/get_metric() string-keyed side channel. Not part
+of the product; exists to test one specific architectural claim against
+the real compiler on real models. See README.md.
+"""
+
+[dependencies]
+neurax-parser = { version = "0.13.0", path = "../neurax-parser" }
+neurax-ir = { version = "0.13.0", path = "../neurax-ir" }
+neurax-core = { version = "0.13.0", path = "../neurax-core" }
+once_cell = "1"

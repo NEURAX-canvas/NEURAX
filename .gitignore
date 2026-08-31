@@ -1,6 +1,7 @@
 # Build artifacts
 /target/
 neurax-service/target/
+neurax-ir-poc/target/
 Cargo.lock
 
 # Python
