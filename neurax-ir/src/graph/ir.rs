@@ -62,8 +62,6 @@ pub struct GraphMetrics {
     pub total_intermediate_tensors: usize,
     /// Chemins parallèles détectés
     pub parallel_paths: Vec<Vec<String>>,
-    /// Longueur du chemin critique
-    pub critical_path_length: usize,
     /// Nombre d'arêtes
     pub edge_count: usize,
 }

@@ -59,10 +59,6 @@ fn test_metrics_count() {
     );
     println!(
         "║ {:<20} │ {:<50} │ {:>15} │",
-        "Graph", "critical_path_length", result.graph.metrics.critical_path_length
-    );
-    println!(
-        "║ {:<20} │ {:<50} │ {:>15} │",
         "Graph", "edge_count", result.graph.metrics.edge_count
     );
     println!(
@@ -71,7 +67,7 @@ fn test_metrics_count() {
         "parallel_paths",
         format!("{} paths", result.graph.metrics.parallel_paths.len())
     );
-    total_metrics += 6;
+    total_metrics += 5;
 
     // Tensor: 9 fields
     println!(

@@ -62,7 +62,6 @@ pub mod dialects;
 pub mod integration;
 pub mod iree;
 pub mod module;
-pub mod passes;
 pub mod targets;
 
 // Re-export key types for convenience

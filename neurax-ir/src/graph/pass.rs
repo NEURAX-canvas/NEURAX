@@ -112,7 +112,6 @@ impl IrPass for GraphPass {
             total_intermediate_tensors: output.dag.edge_count(),
             edge_count: output.dag.edge_count(),
             parallel_paths: vec![], // Computed later for non-sequential models
-            critical_path_length: output.topo_order.len(),
         };
 
         output.metrics = metrics.clone();
