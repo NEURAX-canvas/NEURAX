@@ -10,8 +10,6 @@ use tokio::sync::broadcast;
 
 use crate::AnalysisResult;
 use crate::IrPassExt;
-use neurax_ir::hardware::HardwareMetrics;
-use neurax_ir::parallelism::ParallelismMetrics;
 use neurax_ir::report::{PhaseTimingEntry, ReportInput};
 use neurax_ir::traits::{IrPass, ReportPass as ReportPassTrait};
 use neurax_ir::NeuraxError;
@@ -20,8 +18,8 @@ use neurax_ir::{
         BehavioralSynthesisPass, DynamicConfig, DynamicResults, StabilityAnalysisPass,
         VirtualMemoryPass,
     },
-    ArchitecturePass, ComputePass, CostPass, GraphPass, HardwareIR, HardwarePass, MemoryPass,
-    OperatorPass, ParallelismIR, ParallelismPass, ReportPass, TensorPass,
+    ArchitecturePass, ComputePass, CostPass, GraphPass, HardwarePass, MemoryPass, OperatorPass,
+    ParallelismIR, ParallelismPass, ReportPass, TensorPass,
 };
 use neurax_parser::ModelConfig;
 
@@ -303,37 +301,16 @@ pub fn run_analysis_streaming(
         (m, metrics)
     });
 
-    // Phase 7 & 8: Parallelism and Hardware in parallel
-    let ((parallelism, _parallelism_metrics), (_hardware_initial, _hardware_metrics_initial)) =
-        rayon::join(
-            || {
-                let parallelism_pass = ParallelismPass;
-                let mut parallelism = parallelism_pass
-                    .build(&(memory.clone(), graph.clone()), &ctx)
-                    .unwrap_or_else(|_| ParallelismIR::default());
-                let parallelism_metrics = parallelism_pass
-                    .compute_metrics(&mut parallelism, &ctx)
-                    .unwrap_or_else(|_| ParallelismMetrics::default());
-                let _ = parallelism_pass.validate(&parallelism, &parallelism_metrics);
-                (parallelism, parallelism_metrics)
-            },
-            || {
-                let hardware_pass = HardwarePass;
-                let mut hardware = hardware_pass
-                    .build(
-                        &(compute.clone(), memory.clone(), ParallelismIR::default()),
-                        &ctx,
-                    )
-                    .unwrap_or_else(|_| HardwareIR::default());
-                let hardware_metrics = hardware_pass
-                    .compute_metrics(&mut hardware, &ctx)
-                    .unwrap_or_else(|_| HardwareMetrics::default());
-                let _ = hardware_pass.validate(&hardware, &hardware_metrics);
-                (hardware, hardware_metrics)
-            },
-        );
-
-    // Emit progress for parallel phases
+    // Phase 7 & 8: Parallelism and Hardware in parallel.
+    //
+    // HardwarePass::build() takes a ParallelismIR in its Input tuple but
+    // never reads it (`let (compute_ir, memory_ir, _parallel_ir) = input;`,
+    // same in CostPass::build()) — that slot exists for pipeline-shape
+    // symmetry, not a real data dependency, so a placeholder here costs
+    // nothing and Hardware never needed to wait on Parallelism. This used to
+    // run HardwarePass here as a throwaway, then a second time, in full,
+    // with the real ParallelismIR swapped in — byte-for-byte the same
+    // result, since the value swapped in was never read either time.
     emitter.emit(AnalysisEvent::PhaseStarted {
         job_id: job_id.to_string(),
         phase: "Parallelism+Hardware".to_string(),
@@ -342,14 +319,21 @@ pub fn run_analysis_streaming(
     });
     let t0 = Instant::now();
 
-    // Re-run hardware with actual parallelism data
-    let hardware_pass = HardwarePass;
-    let (mut hardware, _) = hardware_pass.run(
-        &(compute.clone(), memory.clone(), parallelism.clone()),
-        &ctx,
-    )?;
-    let _hardware_metrics = hardware_pass.compute_metrics(&mut hardware, &ctx)?;
-    hardware_pass.validate(&hardware, &_hardware_metrics)?;
+    let (parallelism_result, hardware_result) = rayon::join(
+        || {
+            let parallelism_pass = ParallelismPass;
+            parallelism_pass.run(&(memory.clone(), graph.clone()), &ctx)
+        },
+        || {
+            let hardware_pass = HardwarePass;
+            hardware_pass.run(
+                &(compute.clone(), memory.clone(), ParallelismIR::default()),
+                &ctx,
+            )
+        },
+    );
+    let (parallelism, _parallelism_metrics) = parallelism_result?;
+    let (hardware, _hardware_metrics) = hardware_result?;
 
     let parallelism_duration = t0.elapsed().as_millis() as u64;
     phase_timeline.push(PhaseTimingEntry {

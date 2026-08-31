@@ -63,8 +63,6 @@ pub use engine::*;
 pub use runner::*;
 pub use units::{Bytes, FLOPs, LatencyMs, ParamCount, TokensPerSec};
 
-use neurax_ir::hardware::HardwareMetrics;
-use neurax_ir::parallelism::ParallelismMetrics;
 use neurax_ir::report::{PhaseTimingEntry, ReportInput};
 use neurax_ir::traits::{IrPass, ReportPass as ReportPassTrait};
 use neurax_ir::{
@@ -212,44 +210,67 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     });
     let _ = memory_metrics;
 
-    // Phase 7 & 8: Parallelism and Hardware in parallel (rayon::join per impl_2.md)
-    // These passes are independent and can run concurrently
-    let ((parallelism, _parallelism_metrics), (_hardware, _hardware_metrics)) = rayon::join(
+    // Phases 7, 8 and 11 are all independent of each other and of Cost/Report:
+    // Parallelism and Hardware only need Memory+Graph+Compute, and so does
+    // Dynamic (VirtualMemory/Stability/BehavioralSynthesis — none of the
+    // three reads hardware, cost, or report). Running all three concurrently
+    // removes dead serialization: Dynamic used to wait for Cost+Report to
+    // finish even though it never touched their output.
+    //
+    // HardwarePass::build() takes a ParallelismIR in its Input tuple but
+    // never reads it (`let (compute_ir, memory_ir, _parallel_ir) = input;`,
+    // same in CostPass::build()) — that slot exists for pipeline-shape
+    // symmetry, not a real data dependency. So Hardware doesn't need to wait
+    // on Parallelism either, and a placeholder here is not an approximation:
+    // it is what build() would have ignored anyway. (This used to run
+    // HardwarePass a second time, in full, with the real ParallelismIR
+    // swapped in — byte-for-byte the same result, since the value swapped in
+    // was never read either time.)
+    let ((parallelism_result, hardware_result), dynamic) = rayon::join(
         || {
-            let parallelism_pass = ParallelismPass;
-            let mut parallelism = parallelism_pass
-                .build(&(memory.clone(), graph.clone()), &ctx)
-                .unwrap_or_else(|_| ParallelismIR::default());
-            let parallelism_metrics = parallelism_pass
-                .compute_metrics(&mut parallelism, &ctx)
-                .unwrap_or_else(|_| ParallelismMetrics::default());
-            let _ = parallelism_pass.validate(&parallelism, &parallelism_metrics);
-            (parallelism, parallelism_metrics)
+            rayon::join(
+                || {
+                    let parallelism_pass = ParallelismPass;
+                    parallelism_pass.run(&(memory.clone(), graph.clone()), &ctx)
+                },
+                || {
+                    let hardware_pass = HardwarePass;
+                    hardware_pass.run(
+                        &(compute.clone(), memory.clone(), ParallelismIR::default()),
+                        &ctx,
+                    )
+                },
+            )
         },
         || {
-            let hardware_pass = HardwarePass;
-            let mut hardware = hardware_pass
-                .build(
-                    &(compute.clone(), memory.clone(), ParallelismIR::default()),
-                    &ctx,
-                )
-                .unwrap_or_else(|_| HardwareIR::default());
-            let hardware_metrics = hardware_pass
-                .compute_metrics(&mut hardware, &ctx)
-                .unwrap_or_else(|_| HardwareMetrics::default());
-            let _ = hardware_pass.validate(&hardware, &hardware_metrics);
-            (hardware, hardware_metrics)
+            let dynamic_config = DynamicConfig::default();
+            let (vm_metrics, (sta_metrics, bps_metrics)) = rayon::join(
+                || {
+                    let vm_pass = VirtualMemoryPass::new();
+                    Some(vm_pass.run(&memory.metrics))
+                },
+                || {
+                    rayon::join(
+                        || {
+                            let sta_pass = StabilityAnalysisPass::new();
+                            Some(sta_pass.run(&graph, &memory.metrics))
+                        },
+                        || {
+                            let bps_pass = BehavioralSynthesisPass::new();
+                            Some(bps_pass.run(&compute, &dynamic_config))
+                        },
+                    )
+                },
+            );
+            DynamicResults {
+                virtual_memory: vm_metrics,
+                stability: sta_metrics,
+                behavioral: bps_metrics,
+            }
         },
     );
-
-    // Re-run hardware with actual parallelism data (quick update)
-    let hardware_pass = HardwarePass;
-    let (mut hardware, _) = hardware_pass.run(
-        &(compute.clone(), memory.clone(), parallelism.clone()),
-        &ctx,
-    )?;
-    let hardware_metrics = hardware_pass.compute_metrics(&mut hardware, &ctx)?;
-    hardware_pass.validate(&hardware, &hardware_metrics)?;
+    let (parallelism, _parallelism_metrics) = parallelism_result?;
+    let (hardware, _hardware_metrics) = hardware_result?;
 
     // Phase 9: Cost
     let cost_pass = CostPass;
@@ -281,34 +302,8 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     });
     report.phase_timeline = phase_timeline;
 
-    // Phase 11: Dynamic Analysis (M36-M55)
-    let dynamic_config = DynamicConfig::default();
-
-    // Run dynamic passes in parallel
-    let (vm_metrics, (sta_metrics, bps_metrics)) = rayon::join(
-        || {
-            let vm_pass = VirtualMemoryPass::new();
-            Some(vm_pass.run(&memory.metrics))
-        },
-        || {
-            rayon::join(
-                || {
-                    let sta_pass = StabilityAnalysisPass::new();
-                    Some(sta_pass.run(&graph, &memory.metrics))
-                },
-                || {
-                    let bps_pass = BehavioralSynthesisPass::new();
-                    Some(bps_pass.run(&compute, &dynamic_config))
-                },
-            )
-        },
-    );
-
-    let dynamic = DynamicResults {
-        virtual_memory: vm_metrics,
-        stability: sta_metrics,
-        behavioral: bps_metrics,
-    };
+    // Phase 11 (Dynamic Analysis, M36-M55) was computed above, concurrently
+    // with Parallelism/Hardware — it depends on neither Cost nor Report.
 
     let analysis_time_ms = start.elapsed().as_millis() as u64;
 
