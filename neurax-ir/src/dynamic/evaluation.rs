@@ -9,6 +9,28 @@ use crate::dynamic::{
 };
 use crate::graph::GraphIR;
 use crate::memory::MemoryMetrics;
+use neurax_parser::ModelConfig;
+
+const MINIMAL_TEST_JSON: &str = r#"
+{
+    "schema_version": "1.0",
+    "model": {
+        "name": "eval-harness-stub",
+        "type": "transformer",
+        "layers": [
+            {"id": "attn_0", "layer_type": "attention", "input_shape": [8, 64], "output_shape": [8, 64], "params": {}}
+        ],
+        "global_params": {"hidden_size": 64, "num_layers": 1}
+    },
+    "training": {"batch_size": 1, "optimizer": "adamw", "precision": "fp32"},
+    "hardware": {"gpus": [{"name": "Generic-GPU", "count": 1, "memory_gb": 40}]}
+}
+"#;
+
+fn create_test_model_config() -> ModelConfig {
+    neurax_parser::parse_model_config(MINIMAL_TEST_JSON)
+        .expect("MINIMAL_TEST_JSON must stay valid for the evaluation harness")
+}
 
 /// Test result
 #[derive(Debug, Clone)]
@@ -182,7 +204,7 @@ fn eval_stability() -> Vec<EvalResult> {
             let pass = StabilityAnalysisPass::new();
             let graph = create_test_graph();
             let mem = create_test_memory_metrics();
-            let metrics = pass.run(&graph, &mem);
+            let metrics = pass.run(&graph, &mem, &create_test_model_config());
             metrics
                 .stability_margin_by_layer
                 .values()
@@ -193,7 +215,7 @@ fn eval_stability() -> Vec<EvalResult> {
             let pass = StabilityAnalysisPass::new();
             let graph = create_test_graph();
             let mem = create_test_memory_metrics();
-            let metrics = pass.run(&graph, &mem);
+            let metrics = pass.run(&graph, &mem, &create_test_model_config());
             (0.0..=1.0).contains(&metrics.chaos_index)
         }),
         // OBJ-STA-03: Confidence in valid range
@@ -201,7 +223,7 @@ fn eval_stability() -> Vec<EvalResult> {
             let pass = StabilityAnalysisPass::new();
             let graph = create_test_graph();
             let mem = create_test_memory_metrics();
-            let metrics = pass.run(&graph, &mem);
+            let metrics = pass.run(&graph, &mem, &create_test_model_config());
             metrics.confidence >= 0.5 && metrics.confidence <= 1.0
         }),
         // OBJ-STA-04: Robustness in valid range
@@ -209,7 +231,7 @@ fn eval_stability() -> Vec<EvalResult> {
             let pass = StabilityAnalysisPass::new();
             let graph = create_test_graph();
             let mem = create_test_memory_metrics();
-            let metrics = pass.run(&graph, &mem);
+            let metrics = pass.run(&graph, &mem, &create_test_model_config());
             (0.0..=1.0).contains(&metrics.global_robustness_score)
         }),
     ]
@@ -278,7 +300,7 @@ fn eval_coherence() -> Vec<EvalResult> {
             let config = DynamicConfig::default();
 
             let vm = vm_pass.run(&mem);
-            let sta = sta_pass.run(&graph, &mem);
+            let sta = sta_pass.run(&graph, &mem, &create_test_model_config());
             let bps = bps_pass.run(&compute, &config);
 
             vm.fragmentation_pct.is_finite()

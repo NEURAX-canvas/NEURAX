@@ -253,7 +253,7 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
                     rayon::join(
                         || {
                             let sta_pass = StabilityAnalysisPass::new();
-                            Some(sta_pass.run(&graph, &memory.metrics))
+                            Some(sta_pass.run(&graph, &memory.metrics, &ctx.config))
                         },
                         || {
                             let bps_pass = BehavioralSynthesisPass::new();

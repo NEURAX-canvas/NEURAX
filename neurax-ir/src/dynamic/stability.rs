@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use crate::graph::{GraphIR, GraphNode};
 use crate::memory::MemoryMetrics;
-use neurax_parser::LayerType;
+use neurax_parser::{LayerParams, LayerType, ModelConfig};
 
 /// Stability Analysis Pass
 #[derive(Debug, Clone, Default)]
@@ -39,6 +39,15 @@ pub struct StabilityMetrics {
     pub global_robustness_score: f64,
     /// M49 : Mémoire supplémentaire si fp32 forcé
     pub fp32_fallback_memory_overhead_gb: f64,
+    /// Estimation de la constante de Lipschitz du réseau entier (composition
+    /// des estimations par couche). Pas un des M36-M55 catalogués — ajoutée
+    /// pour donner un sens concret à `recommended_max_learning_rate`.
+    pub network_lipschitz_estimate: f64,
+    /// Borne de stabilité classique pour la descente de gradient,
+    /// `learning_rate < 2 / L` (L = network_lipschitz_estimate). Une
+    /// heuristique dérivée d'une vraie borne d'optimisation, pas une mesure
+    /// exacte — L lui-même n'est qu'une estimation par couche.
+    pub recommended_max_learning_rate: f64,
     /// Confiance de l'analyse
     pub confidence: f64,
 }
@@ -48,18 +57,41 @@ impl StabilityAnalysisPass {
         Self::default()
     }
 
-    pub fn run(&self, graph: &GraphIR, mem: &MemoryMetrics) -> StabilityMetrics {
+    pub fn run(
+        &self,
+        graph: &GraphIR,
+        mem: &MemoryMetrics,
+        config: &ModelConfig,
+    ) -> StabilityMetrics {
         let mut margins: HashMap<String, f64> = HashMap::new();
         let mut lyapunovs: Vec<f64> = Vec::new();
         let mut high_risk: Vec<String> = Vec::new();
         let mut fp32_count: u32 = 0;
+        let mut lipschitz_values: Vec<f64> = Vec::new();
         let depth = graph.metrics.graph_depth;
+        let seq_len = config
+            .training
+            .sequence_length
+            .or(config.model.global_params.sequence_length)
+            .unwrap_or(512);
+        let params_by_id: HashMap<&str, &LayerParams> = config
+            .model
+            .layers
+            .iter()
+            .map(|l| (l.id.as_str(), &l.params))
+            .collect();
+        let default_params = LayerParams::default();
 
         for node_idx in &graph.topo_order {
             let node = &graph.dag[*node_idx];
             let layer_id = node.layer_id.clone();
+            let params = params_by_id
+                .get(node.layer_id.as_str())
+                .copied()
+                .unwrap_or(&default_params);
 
-            let lipschitz = self.estimate_lipschitz(node, depth);
+            let lipschitz = self.estimate_lipschitz(node, depth, seq_len, params);
+            lipschitz_values.push(lipschitz);
             let epsilon_init = 1e-5f64;
             let epsilon_after = epsilon_init * lipschitz;
 
@@ -105,11 +137,27 @@ impl StabilityAnalysisPass {
             0.0
         };
 
+        // `lyap_mean` is already `mean(ln(lipschitz_i))`, i.e. `ln` of the
+        // geometric mean of the per-layer Lipschitz estimates — the correct
+        // way to collapse a chain of composed Lipschitz constants into one
+        // network-level figure without the raw product exploding across
+        // depth. `exp()` undoes that log to get the figure itself.
+        let network_lipschitz_estimate = if n > 0.0 { lyap_mean.exp() } else { 1.0 };
+        // Classical gradient-descent stability bound: lr < 2/L for an
+        // L-smooth objective. L here is a per-layer heuristic, not a
+        // measured operator norm, so this is a directional estimate, not an
+        // exact bound. `network_lipschitz_estimate` is always > 0 (it's
+        // either `exp(...)` or the 1.0 fallback above), so this never
+        // divides by zero.
+        let recommended_max_learning_rate = 2.0 / network_lipschitz_estimate;
+
         StabilityMetrics {
             stability_margin_by_layer: margins,
             lyapunov_exponent_mean: lyap_mean,
             chaos_index,
             high_risk_layers: high_risk,
+            network_lipschitz_estimate,
+            recommended_max_learning_rate,
             fp32_required_pct: fp32_pct,
             global_robustness_score: robustness,
             fp32_fallback_memory_overhead_gb: fp32_overhead,
@@ -117,23 +165,26 @@ impl StabilityAnalysisPass {
         }
     }
 
-    fn estimate_lipschitz(&self, node: &GraphNode, graph_depth: usize) -> f64 {
+    fn estimate_lipschitz(
+        &self,
+        node: &GraphNode,
+        graph_depth: usize,
+        seq_len: usize,
+        params: &LayerParams,
+    ) -> f64 {
         let base = match &node.layer_type {
-            LayerType::Attention => {
-                let seq = 2048.0; // default seq_len
-                (seq / 512.0_f64).sqrt() * 2.0
-            }
+            LayerType::Attention => (seq_len as f64 / 512.0_f64).sqrt() * 2.0,
             LayerType::Mlp => 1.5,
             LayerType::Normalization => 0.8,
             LayerType::Conv => 1.8,
             LayerType::MoE => {
-                let experts = 8.0;
-                let top_k = 2.0;
+                let experts = params.num_experts.unwrap_or(8) as f64;
+                let top_k = params.top_k.unwrap_or(2) as f64;
                 1.5 + (1.0 - top_k / experts) * 1.5
             }
             LayerType::Embedding => 0.3,
             LayerType::MambaBlock => {
-                let d_state = 16.0;
+                let d_state = params.state_dim.unwrap_or(16) as f64;
                 1.0 + (d_state / 64.0_f64).sqrt() * 0.5
             }
             _ => 1.0,

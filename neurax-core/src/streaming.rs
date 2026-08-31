@@ -406,7 +406,7 @@ pub fn run_analysis_streaming(
             rayon::join(
                 || {
                     let sta_pass = StabilityAnalysisPass::new();
-                    Some(sta_pass.run(&graph, &memory.metrics))
+                    Some(sta_pass.run(&graph, &memory.metrics, &ctx.config))
                 },
                 || {
                     let bps_pass = BehavioralSynthesisPass::new();

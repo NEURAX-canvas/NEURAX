@@ -253,6 +253,10 @@ pub struct StabilityMetricsOutput {
     pub global_robustness_score: f64,
     /// M49: FP32 fallback memory overhead (GB)
     pub fp32_fallback_memory_overhead_gb: f64,
+    /// Network-level Lipschitz estimate (not part of M36-M55)
+    pub network_lipschitz_estimate: f64,
+    /// Recommended max learning rate from `lr < 2/L` (not part of M36-M55)
+    pub recommended_max_learning_rate: f64,
     /// Confidence score
     pub confidence: f64,
 }
@@ -423,6 +427,16 @@ impl JsonOutput {
                     .stability
                     .as_ref()
                     .map(|s| s.fp32_fallback_memory_overhead_gb)
+                    .unwrap_or(0.0),
+                network_lipschitz_estimate: dynamic
+                    .stability
+                    .as_ref()
+                    .map(|s| s.network_lipschitz_estimate)
+                    .unwrap_or(1.0),
+                recommended_max_learning_rate: dynamic
+                    .stability
+                    .as_ref()
+                    .map(|s| s.recommended_max_learning_rate)
                     .unwrap_or(0.0),
                 confidence: dynamic
                     .stability
