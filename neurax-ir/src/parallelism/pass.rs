@@ -27,6 +27,9 @@ impl IrPass for ParallelismPass {
     ) -> Result<Self::Output, Self::PassError> {
         let (memory_ir, graph_ir) = input;
         let mut parallel_ir = ParallelismIR::default();
+        parallel_ir.parameter_bytes = memory_ir.metrics.parameter_memory_bytes;
+        parallel_ir.gradient_bytes = memory_ir.metrics.gradient_memory_bytes;
+        parallel_ir.optimizer_bytes = memory_ir.metrics.optimizer_state_bytes;
 
         // Analyze available strategies
         let num_gpus = ctx.config.hardware.total_gpu_count();
@@ -102,10 +105,10 @@ impl IrPass for ParallelismPass {
         let num_gpus = ctx.config.hardware.total_gpu_count();
         let _gpu_vram = ctx.primary_gpu_vram_bytes();
 
-        // Get memory metrics from context (stored during build)
-        let param_bytes = ctx.get_metric("parameter_memory_bytes").unwrap_or(0.0) as u64;
-        let gradient_bytes = ctx.get_metric("gradient_memory_bytes").unwrap_or(0.0) as u64;
-        let optimizer_bytes = ctx.get_metric("optimizer_state_bytes").unwrap_or(0.0) as u64;
+        // Memory-pass figures carried over on the IR from `build()`.
+        let param_bytes = output.parameter_bytes;
+        let gradient_bytes = output.gradient_bytes;
+        let optimizer_bytes = output.optimizer_bytes;
 
         // Calculate communication overhead
         let interconnect_bw = ctx.config.hardware.interconnect_bandwidth_gbs * 1e9;
@@ -118,8 +121,25 @@ impl IrPass for ParallelismPass {
             0.0
         };
 
-        // Compute time (from hardware IR, estimated here)
-        let compute_time_ms = 100.0; // Placeholder
+        // Compute time for one step. This pass runs concurrently with
+        // HardwarePass (rayon::join) and its typed `Input` is only
+        // `(MemoryIR, GraphIR)`, so it can't reach ComputeIR's FLOPs
+        // directly — `ctx.get_metric` is the one channel available for data
+        // a pass needs but doesn't own, and `ComputePass` (which runs
+        // earlier, before the join) publishes it there.
+        let total_flops = ctx.get_metric("total_flops").unwrap_or(0.0);
+        let gpu_name = ctx
+            .config
+            .hardware
+            .gpus
+            .first()
+            .map(|g| g.name.as_str())
+            .unwrap_or("Generic-GPU");
+        let compute_time_ms = ctx
+            .gpu_db
+            .get_gpu(gpu_name)
+            .map(|spec| spec.compute_time_ms(total_flops, &ctx.config.training.precision))
+            .unwrap_or(0.0);
 
         let communication_overhead = if compute_time_ms > 0.0 {
             allreduce_time_ms / (compute_time_ms + allreduce_time_ms)

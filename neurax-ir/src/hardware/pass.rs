@@ -39,6 +39,7 @@ impl IrPass for HardwarePass {
         let (compute_ir, memory_ir, _parallel_ir) = input;
         let mut hw_ir = HardwareIR::default();
         hw_ir.parameter_bytes = memory_ir.metrics.parameter_memory_bytes;
+        hw_ir.total_flops = compute_ir.metrics.total_flops;
 
         // Get GPU profile from JSON config or fallback to database
         let gpu_config = ctx.config.hardware.gpus.first();
@@ -204,9 +205,34 @@ impl IrPass for HardwarePass {
             1.0
         };
 
-        // FlashAttention reduces memory by ~4x
-        let flash_attention_enabled = true; // Could be a config option
-        let attention_memory_factor = if flash_attention_enabled { 0.25 } else { 1.0 };
+        // Attention layer ids — scopes FlashAttention's memory reduction to
+        // the layers it actually touches (see below).
+        let attention_layer_ids: std::collections::HashSet<&str> = ctx
+            .config
+            .model
+            .layers
+            .iter()
+            .filter(|l| {
+                matches!(
+                    l.layer_type,
+                    neurax_parser::LayerType::Attention
+                        | neurax_parser::LayerType::SelfAttention
+                        | neurax_parser::LayerType::CrossAttention
+                        | neurax_parser::LayerType::GraphAttentionNet
+                )
+            })
+            .map(|l| l.id.as_str())
+            .collect();
+
+        // FlashAttention-family kernels are the standard attention
+        // implementation in reduced precision — they exist to feed tensor
+        // cores, which is exactly the condition `attention_efficiency` above
+        // already credits ("FlashAttention helps"). There's no per-model
+        // signal for which attention kernel a config actually used, so this
+        // ties the estimate to that same precision fact instead of assuming
+        // every model everywhere runs an IO-optimized kernel.
+        let flash_attention_enabled =
+            is_half_precision(precision) || matches!(precision.as_str(), "fp8" | "float8");
 
         // Compute time with efficiency factor
         let compute_time_ms: f64 = output
@@ -215,11 +241,23 @@ impl IrPass for HardwarePass {
             .map(|t| t.compute_time_ms / gpu_efficiency)
             .sum();
 
-        // Memory time with FlashAttention optimization
+        // Memory time — FlashAttention's ~4x reduction applies only to the
+        // attention layers it optimizes, not to every layer in the model (a
+        // Conv/MLP layer's HBM traffic is unaffected by attention elsewhere
+        // using a memory-efficient kernel).
         let memory_time_ms: f64 = output
             .per_layer_timings
             .iter()
-            .map(|t| t.memory_time_ms * attention_memory_factor)
+            .map(|t| {
+                let factor = if flash_attention_enabled
+                    && attention_layer_ids.contains(t.layer_id.as_str())
+                {
+                    0.25
+                } else {
+                    1.0
+                };
+                t.memory_time_ms * factor
+            })
             .sum();
 
         // Total FLOPs from compute IR with efficiency factor
@@ -298,10 +336,14 @@ impl IrPass for HardwarePass {
         // Kernel launches (estimate)
         let kernel_launch_count = ctx.config.model.layers.len() * 2;
 
-        // Effective TFLOPS
+        // Effective TFLOPS = total_flops / latency_seconds / 1e12.
+        // latency_ms is milliseconds, so that's `total_flops * 1000.0 /
+        // latency_ms / 1e12`, i.e. `total_flops / latency_ms / 1e9` — this
+        // used to carry an extra `/ 1000.0` (never caught because
+        // `total_flops` was hardcoded to 0.0 until now, which made the whole
+        // branch return 0 regardless of the formula underneath it).
         let effective_tflops = if latency_ms > 0.0 && batch > 0 && seq > 0 {
-            let flops_per_step = compute_ir_metrics(ctx).total_flops;
-            flops_per_step / latency_ms / 1000.0 / 1e9
+            output.total_flops / latency_ms / 1e9
         } else {
             0.0
         };
@@ -407,11 +449,6 @@ fn calculate_tensor_core_utilization(ctx: &NeuraxContext) -> f64 {
         .count();
 
     tc_layers as f64 / total_layers as f64
-}
-
-fn compute_ir_metrics(_ctx: &NeuraxContext) -> crate::compute::ComputeMetrics {
-    // Simplified - would normally come from actual ComputeIR
-    crate::compute::ComputeMetrics::default()
 }
 
 /// Calculate roofline position (0.0 = memory-bound, 1.0 = compute-bound)

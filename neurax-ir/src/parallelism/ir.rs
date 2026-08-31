@@ -7,6 +7,12 @@ pub struct ParallelismIR {
     pub optimal_strategy: ParallelStrategy,
     pub metrics: ParallelismMetrics,
     pub metrics_done: bool,
+    /// Memory-pass figures carried over for `compute_metrics`, which only
+    /// receives `&mut Self::Output` and `ctx` — not the pass's own typed
+    /// `Input` — so this is where `build()` has to park them.
+    pub parameter_bytes: u64,
+    pub gradient_bytes: u64,
+    pub optimizer_bytes: u64,
 }
 
 impl Default for ParallelismIR {
@@ -16,6 +22,9 @@ impl Default for ParallelismIR {
             optimal_strategy: ParallelStrategy::default(),
             metrics: ParallelismMetrics::default(),
             metrics_done: false,
+            parameter_bytes: 0,
+            gradient_bytes: 0,
+            optimizer_bytes: 0,
         }
     }
 }

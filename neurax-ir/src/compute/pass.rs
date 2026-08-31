@@ -92,6 +92,10 @@ impl IrPass for ComputePass {
         // Calculate forward FLOPs
         let forward_flops: f64 = output.op_flops.iter().map(|op| op.forward_flops).sum();
 
+        // Published for ParallelismPass, which runs concurrently with
+        // HardwarePass (rayon::join) and has no typed path to ComputeIR.
+        ctx.set_metric("total_flops", forward_flops);
+
         // Calculate backward FLOPs (approximately 2× forward)
         let backward_flops: f64 = output.op_flops.iter().map(|op| op.backward_flops).sum();
 

@@ -18,6 +18,13 @@ pub struct HardwareIR {
     /// model that is tens of terabytes rather than the ~10 GB of gradients,
     /// and it inflated the step latency by four orders of magnitude.
     pub parameter_bytes: u64,
+    /// Total FLOPs per step, carried over from the compute pass.
+    ///
+    /// `effective_tflops` needs this to turn a measured latency into an
+    /// actual throughput figure; it used to go through a stub that ignored
+    /// the real `ComputeIR` and returned `ComputeMetrics::default()`
+    /// (`total_flops: 0.0`), so `effective_tflops` was 0 for every model.
+    pub total_flops: f64,
 }
 
 impl Default for HardwareIR {
@@ -28,6 +35,7 @@ impl Default for HardwareIR {
             per_layer_timings: Vec::new(),
             metrics: HardwareMetrics::default(),
             parameter_bytes: 0,
+            total_flops: 0.0,
             metrics_done: false,
         }
     }
