@@ -563,7 +563,7 @@ fn spawn_job_retention_sweeper(state: &AppState) {
                 .as_millis() as u64;
             let reclaimed = sweep_expired_jobs(&jobs, &results, now_ms, JOB_RETENTION_MS);
             if reclaimed > 0 {
-                tracing::info!("[JOB-SWEEP] Reclaimed {} job(s) older than 24h", reclaimed);
+                tracing::info!("[JOB_SWEEP] Reclaimed {} job(s) older than 24h", reclaimed);
             }
         }
     });
@@ -1498,11 +1498,11 @@ struct ExportOnnxResponse {
 
 async fn export_onnx(http_req: HttpRequest, req: web::Json<ExportOnnxRequest>) -> impl Responder {
     let start = std::time::Instant::now();
-    tracing::info!("[EXPORT ONNX] Request received");
+    tracing::info!("[EXPORT_ONNX] Request received");
 
     if let Err(resp) = require_verified_email(&http_req).await {
         tracing::warn!(
-            "[EXPORT ONNX] Auth failed after {}ms",
+            "[EXPORT_ONNX] Auth failed after {}ms",
             start.elapsed().as_millis()
         );
         return resp;
@@ -1511,24 +1511,24 @@ async fn export_onnx(http_req: HttpRequest, req: web::Json<ExportOnnxRequest>) -
     let input = match serde_json::to_string(&req.topology) {
         Ok(v) => v,
         Err(e) => {
-            tracing::error!("[EXPORT ONNX] Failed to serialize topology: {}", e);
+            tracing::error!("[EXPORT_ONNX] Failed to serialize topology: {}", e);
             return HttpResponse::build(StatusCode::BAD_REQUEST).body(e.to_string());
         }
     };
 
     // Parse the topology JSON into ModelConfig
-    tracing::info!("[EXPORT ONNX] Parsing model config...");
+    tracing::info!("[EXPORT_ONNX] Parsing model config...");
     let config = match neurax_parser::parse_model_config(&input) {
         Ok(c) => {
             tracing::info!(
-                "[EXPORT ONNX] Parse OK: model_type={:?}, layers={}",
+                "[EXPORT_ONNX] Parse OK: model_type={:?}, layers={}",
                 c.model.model_type,
                 c.model.layers.len()
             );
             c
         }
         Err(e) => {
-            tracing::error!("[EXPORT ONNX] Parse failed: {}", e);
+            tracing::error!("[EXPORT_ONNX] Parse failed: {}", e);
             return HttpResponse::build(StatusCode::BAD_REQUEST).body(e.to_string());
         }
     };
@@ -1553,7 +1553,7 @@ async fn export_onnx(http_req: HttpRequest, req: web::Json<ExportOnnxRequest>) -
     match timeout_result {
         Ok(Ok(Ok(onnx_result))) => {
             tracing::info!(
-                "[EXPORT ONNX] Success in {}ms - {} nodes, {} initializers, {} bytes",
+                "[EXPORT_ONNX] Success in {}ms - {} nodes, {} initializers, {} bytes",
                 elapsed.as_millis(),
                 onnx_result.node_count,
                 onnx_result.initializer_count,
@@ -1573,7 +1573,7 @@ async fn export_onnx(http_req: HttpRequest, req: web::Json<ExportOnnxRequest>) -
         }
         Ok(Ok(Err(e))) => {
             tracing::error!(
-                "[EXPORT ONNX] Export error after {}ms: {}",
+                "[EXPORT_ONNX] Export error after {}ms: {}",
                 elapsed.as_millis(),
                 e
             );
@@ -1581,14 +1581,14 @@ async fn export_onnx(http_req: HttpRequest, req: web::Json<ExportOnnxRequest>) -
         }
         Ok(Err(_join_err)) => {
             tracing::error!(
-                "[EXPORT ONNX] Task join error after {}ms",
+                "[EXPORT_ONNX] Task join error after {}ms",
                 elapsed.as_millis()
             );
             HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
                 .body("Export task failed unexpectedly")
         }
         Err(_timeout) => {
-            tracing::error!("[EXPORT ONNX] Timeout after {}ms", elapsed.as_millis());
+            tracing::error!("[EXPORT_ONNX] Timeout after {}ms", elapsed.as_millis());
             HttpResponse::build(StatusCode::GATEWAY_TIMEOUT)
                 .body("Export timed out after 60 seconds")
         }
@@ -1694,7 +1694,7 @@ async fn ensure_github_repo(
     }
 
     tracing::info!(
-        "[EXPORT GITHUB] Repository {}/{} not found, creating it",
+        "[EXPORT_GITHUB] Repository {}/{} not found, creating it",
         owner,
         repo_name
     );
@@ -1787,7 +1787,7 @@ async fn ensure_github_repo(
         .unwrap_or("main")
         .to_string();
     tracing::info!(
-        "[EXPORT GITHUB] Created {}/{} (default branch: {})",
+        "[EXPORT_GITHUB] Created {}/{} (default branch: {})",
         owner,
         repo_name,
         default_branch
@@ -1848,7 +1848,7 @@ async fn ensure_branch_exists(
     }
 
     tracing::info!(
-        "[EXPORT GITHUB] {}/{}@{} has no commits yet, creating the first one",
+        "[EXPORT_GITHUB] {}/{}@{} has no commits yet, creating the first one",
         owner,
         repo_name,
         branch
@@ -1987,7 +1987,7 @@ async fn ensure_branch_exists(
     }
 
     tracing::info!(
-        "[EXPORT GITHUB] Seeded {}/{}@{} with an initial commit",
+        "[EXPORT_GITHUB] Seeded {}/{}@{} with an initial commit",
         owner,
         repo_name,
         branch
@@ -2000,11 +2000,11 @@ async fn export_github(
     req: web::Json<ExportGitHubRequest>,
 ) -> impl Responder {
     let start = std::time::Instant::now();
-    tracing::info!("[EXPORT GITHUB] Request received");
+    tracing::info!("[EXPORT_GITHUB] Request received");
 
     if let Err(resp) = require_verified_email(&http_req).await {
         tracing::warn!(
-            "[EXPORT GITHUB] Auth failed after {}ms",
+            "[EXPORT_GITHUB] Auth failed after {}ms",
             start.elapsed().as_millis()
         );
         return resp;
@@ -2077,7 +2077,7 @@ async fn export_github(
     {
         Ok(default_branch) => default_branch,
         Err((status, message)) => {
-            tracing::error!("[EXPORT GITHUB] Could not resolve repository: {}", message);
+            tracing::error!("[EXPORT_GITHUB] Could not resolve repository: {}", message);
             return HttpResponse::build(status).json(ExportGitHubResponse {
                 success: false,
                 file_urls: vec![],
@@ -2110,7 +2110,7 @@ async fn export_github(
     )
     .await
     {
-        tracing::error!("[EXPORT GITHUB] Could not prepare branch: {}", message);
+        tracing::error!("[EXPORT_GITHUB] Could not prepare branch: {}", message);
         return HttpResponse::build(status).json(ExportGitHubResponse {
             success: false,
             file_urls: vec![],
@@ -2136,7 +2136,7 @@ async fn export_github(
                 let data: serde_json::Value = match resp.json().await {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::error!("[EXPORT GITHUB] Failed to parse branch response: {}", e);
+                        tracing::error!("[EXPORT_GITHUB] Failed to parse branch response: {}", e);
                         return HttpResponse::build(StatusCode::BAD_GATEWAY).json(
                             ExportGitHubResponse {
                                 success: false,
@@ -2166,7 +2166,7 @@ async fn export_github(
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
                 tracing::error!(
-                    "[EXPORT GITHUB] Failed to get branch: {} - {}",
+                    "[EXPORT_GITHUB] Failed to get branch: {} - {}",
                     status,
                     body
                 );
@@ -2178,7 +2178,7 @@ async fn export_github(
                 });
             }
             Err(e) => {
-                tracing::error!("[EXPORT GITHUB] Request failed: {}", e);
+                tracing::error!("[EXPORT_GITHUB] Request failed: {}", e);
                 return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
                     success: false,
                     file_urls: vec![],
@@ -2208,13 +2208,13 @@ async fn export_github(
         {
             Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 422 => {
                 // 422 = already exists, which is fine
-                tracing::info!("[EXPORT GITHUB] Branch {} ready", pr_branch);
+                tracing::info!("[EXPORT_GITHUB] Branch {} ready", pr_branch);
             }
             Ok(resp) => {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
                 tracing::error!(
-                    "[EXPORT GITHUB] Failed to create branch: {} - {}",
+                    "[EXPORT_GITHUB] Failed to create branch: {} - {}",
                     status,
                     body
                 );
@@ -2226,7 +2226,7 @@ async fn export_github(
                 });
             }
             Err(e) => {
-                tracing::error!("[EXPORT GITHUB] Request failed: {}", e);
+                tracing::error!("[EXPORT_GITHUB] Request failed: {}", e);
                 return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
                     success: false,
                     file_urls: vec![],
@@ -2286,13 +2286,13 @@ async fn export_github(
                 if let Some(html_url) = data["content"]["html_url"].as_str() {
                     file_urls.push(html_url.to_string());
                 }
-                tracing::info!("[EXPORT GITHUB] Pushed {}", file.path);
+                tracing::info!("[EXPORT_GITHUB] Pushed {}", file.path);
             }
             Ok(resp) => {
                 let status = resp.status();
                 let response_body = resp.text().await.unwrap_or_default();
                 tracing::error!(
-                    "[EXPORT GITHUB] Failed to push {}: {} - {}",
+                    "[EXPORT_GITHUB] Failed to push {}: {} - {}",
                     file.path,
                     status,
                     response_body
@@ -2335,7 +2335,7 @@ async fn export_github(
                 });
             }
             Err(e) => {
-                tracing::error!("[EXPORT GITHUB] Request failed for {}: {}", file.path, e);
+                tracing::error!("[EXPORT_GITHUB] Request failed for {}: {}", file.path, e);
                 return HttpResponse::build(StatusCode::BAD_GATEWAY).json(ExportGitHubResponse {
                     success: false,
                     file_urls,
@@ -2369,17 +2369,17 @@ async fn export_github(
             Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 201 => {
                 let data: serde_json::Value = resp.json().await.unwrap_or_default();
                 let url = data["html_url"].as_str().map(|s| s.to_string());
-                tracing::info!("[EXPORT GITHUB] PR created: {:?}", url);
+                tracing::info!("[EXPORT_GITHUB] PR created: {:?}", url);
                 url
             }
             Ok(resp) => {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                tracing::warn!("[EXPORT GITHUB] Failed to create PR: {} - {}", status, body);
+                tracing::warn!("[EXPORT_GITHUB] Failed to create PR: {} - {}", status, body);
                 None
             }
             Err(e) => {
-                tracing::warn!("[EXPORT GITHUB] Failed to create PR: {}", e);
+                tracing::warn!("[EXPORT_GITHUB] Failed to create PR: {}", e);
                 None
             }
         }
@@ -2389,7 +2389,7 @@ async fn export_github(
 
     let elapsed = start.elapsed();
     tracing::info!(
-        "[EXPORT GITHUB] Success in {}ms - {} files pushed to {}/{}",
+        "[EXPORT_GITHUB] Success in {}ms - {} files pushed to {}/{}",
         elapsed.as_millis(),
         req.files.len(),
         repo,
