@@ -2408,11 +2408,17 @@ async fn analyze(http_req: HttpRequest, req: web::Json<AnalyzeRequest>) -> impl 
     let start = std::time::Instant::now();
     tracing::info!("[ANALYZE] Request received");
 
-    // Log request payload summary
-    if let Ok(payload_str) = serde_json::to_string(&req.topology) {
-        let preview: String = payload_str.chars().take(500).collect();
-        tracing::info!("[ANALYZE] Payload preview: {}...", preview);
-        tracing::info!("[ANALYZE] Payload size: {} bytes", payload_str.len());
+    // Serialized once and reused below for parsing — this used to run a
+    // second, identical serialization after the auth check purely to get
+    // the same string again. Kept at debug, not info: this is the busiest
+    // endpoint in the app (fired on every canvas auto-analysis), and a raw
+    // preview of the user's model design is exactly what the desktop build
+    // promises never leaves the machine — echoing it into the log level
+    // users see by default undercuts that promise for no operational gain.
+    let payload_str = serde_json::to_string(&req.topology);
+    if let Ok(ref s) = payload_str {
+        tracing::debug!("[ANALYZE] Payload preview: {}...", &s[..s.len().min(500)]);
+        tracing::debug!("[ANALYZE] Payload size: {} bytes", s.len());
     }
 
     if let Err(resp) = require_verified_email(&http_req).await {
@@ -2427,7 +2433,7 @@ async fn analyze(http_req: HttpRequest, req: web::Json<AnalyzeRequest>) -> impl 
         start.elapsed().as_millis()
     );
 
-    let input = match serde_json::to_string(&req.topology) {
+    let input = match payload_str {
         Ok(v) => v,
         Err(e) => {
             tracing::error!("[ANALYZE] Failed to serialize topology: {}", e);
