@@ -17,7 +17,7 @@ use crate::parallelism::ParallelismIR;
 use crate::tensor::TensorIR;
 use crate::traits::ReportPass as ReportPassTrait;
 use crate::NeuraxContext;
-use neurax_parser::ModelType;
+use neurax_parser::{LayerType, ModelType};
 
 /// Input for report generation
 pub struct ReportInput<'a> {
@@ -342,6 +342,9 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
         report
             .diagnostics
             .extend(check_shape_consistency(input.graph));
+        report
+            .diagnostics
+            .extend(detect_architecture_features(&ctx.config));
         report.metrics.diagnostic_count = report.diagnostics.len(); // Update count
 
         // Generate recommendations
@@ -453,6 +456,64 @@ fn check_shape_consistency(graph: &GraphIR) -> Vec<Diagnostic> {
                 node.layer_id, prev.layer_id
             )),
             precision_impact: 0.5,
+        });
+    }
+
+    diagnostics
+}
+
+/// I001/I002: plain observations about architecture features actually
+/// present in the config — not warnings or hints, just facts a designer
+/// reading the report benefits from having surfaced explicitly rather than
+/// inferred from raw layer params.
+fn detect_architecture_features(config: &neurax_parser::ModelConfig) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+
+    // I001: Grouped Query Attention — fewer KV heads than query heads on at
+    // least one attention layer. Only fires when both counts are actually
+    // stated; a layer that gives num_kv_heads without num_heads (or vice
+    // versa) has nothing to compare, so it's skipped rather than guessed.
+    let gqa_layer = config.model.layers.iter().find(|l| {
+        matches!(l.layer_type, LayerType::Attention)
+            && match (l.params.num_heads, l.params.num_kv_heads) {
+                (Some(heads), Some(kv_heads)) => kv_heads < heads,
+                _ => false,
+            }
+    });
+    if let Some(layer) = gqa_layer {
+        diagnostics.push(Diagnostic {
+            category: DiagnosticCategory::ArchitectureInefficiency,
+            severity: Severity::Info,
+            code: DiagnosticCode::I001,
+            message: format!(
+                "Grouped Query Attention detected on layer '{}' ({} query heads, {} KV heads).",
+                layer.id,
+                layer.params.num_heads.unwrap_or(0),
+                layer.params.num_kv_heads.unwrap_or(0)
+            ),
+            layer_id: Some(layer.id.clone()),
+            suggestion: None,
+            precision_impact: 0.0,
+        });
+    }
+
+    // I002: Mixture of Experts — at least one layer routes to experts. Kept
+    // as a layer-level check (not just `model.model_type == Moe`) since a
+    // hybrid architecture can mix MoE layers into an otherwise dense model.
+    if config
+        .model
+        .layers
+        .iter()
+        .any(|l| matches!(l.layer_type, LayerType::MoE))
+    {
+        diagnostics.push(Diagnostic {
+            category: DiagnosticCategory::ArchitectureInefficiency,
+            severity: Severity::Info,
+            code: DiagnosticCode::I002,
+            message: "Mixture of Experts (MoE) layer(s) detected.".to_string(),
+            layer_id: None,
+            suggestion: None,
+            precision_impact: 0.0,
         });
     }
 
