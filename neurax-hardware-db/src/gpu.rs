@@ -85,6 +85,7 @@ impl GpuSpec {
             "fp16" | "float16" => self.tflops_fp16,
             "bf16" | "bfloat16" => self.tflops_bf16,
             "int8" => self.tflops_int8,
+            "fp8" | "float8" => self.tflops_fp8,
             _ => self.tflops_fp32,
         }
     }

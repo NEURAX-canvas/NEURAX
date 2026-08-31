@@ -38,20 +38,6 @@ pub struct ParamDistribution {
     pub largest_layer: Option<String>,
 }
 
-/// Estimate model size in bytes
-pub fn estimate_model_size(total_params: u64, precision: &str) -> u64 {
-    let bytes_per_param = match precision {
-        "fp64" | "float64" => 8,
-        "fp32" | "float32" => 4,
-        "fp16" | "float16" => 2,
-        "bf16" | "bfloat16" => 2,
-        "int8" => 1,
-        "int4" => 1, // packed
-        _ => 4,
-    };
-    total_params * bytes_per_param
-}
-
 /// Format parameter count for display
 pub fn format_param_count(count: u64) -> String {
     if count >= 1_000_000_000 {

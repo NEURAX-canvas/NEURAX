@@ -90,6 +90,7 @@ impl Shape {
             "fp16" | "float16" => 2,
             "bf16" | "bfloat16" => 2,
             "int8" => 1,
+            "fp8" | "float8" => 1,
             _ => 4,
         };
         (elements * bytes_per_elem) as u64
