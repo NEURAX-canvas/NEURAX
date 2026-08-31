@@ -57,6 +57,7 @@ mod engine;
 pub mod export;
 mod runner;
 pub mod streaming;
+pub mod sweep;
 pub mod units;
 
 pub use engine::*;
