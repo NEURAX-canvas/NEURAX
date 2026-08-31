@@ -11,15 +11,16 @@
     },
     "layers": [
       {"id": "conv_in", "layer_type": "conv", "params": {"in_channels": 4, "out_channels": 320, "kernel_size": 3, "stride": 1, "padding": 1}},
-      {"id": "down_0", "layer_type": "unet_block", "params": {"hidden_size": 320, "num_heads": 8}},
-      {"id": "down_1", "layer_type": "unet_block", "params": {"hidden_size": 640, "num_heads": 8}},
-      {"id": "down_2", "layer_type": "unet_block", "params": {"hidden_size": 1280, "num_heads": 8}},
-      {"id": "mid", "layer_type": "unet_block", "params": {"hidden_size": 1280, "num_heads": 8}},
+      {"id": "down_0", "layer_type": "unet_block", "params": {"hidden_size": 320, "num_heads": 8, "layers_per_block": 2}},
+      {"id": "down_1", "layer_type": "unet_block", "params": {"hidden_size": 640, "num_heads": 8, "layers_per_block": 2}},
+      {"id": "down_2", "layer_type": "unet_block", "params": {"hidden_size": 1280, "num_heads": 8, "layers_per_block": 2}},
+      {"id": "mid", "layer_type": "unet_block", "params": {"hidden_size": 1280, "num_heads": 8, "layers_per_block": 2}},
       {"id": "cross_attn_0", "layer_type": "cross_attention", "params": {"hidden_size": 320, "context_dim": 768, "num_heads": 8}},
       {"id": "cross_attn_1", "layer_type": "cross_attention", "params": {"hidden_size": 640, "context_dim": 768, "num_heads": 8}},
-      {"id": "up_0", "layer_type": "unet_block", "params": {"hidden_size": 1280, "num_heads": 8}},
-      {"id": "up_1", "layer_type": "unet_block", "params": {"hidden_size": 640, "num_heads": 8}},
-      {"id": "up_2", "layer_type": "unet_block", "params": {"hidden_size": 320, "num_heads": 8}},
+      {"id": "cross_attn_2", "layer_type": "cross_attention", "params": {"hidden_size": 1280, "context_dim": 768, "num_heads": 8}},
+      {"id": "up_0", "layer_type": "unet_block", "params": {"hidden_size": 1280, "num_heads": 8, "layers_per_block": 3}},
+      {"id": "up_1", "layer_type": "unet_block", "params": {"hidden_size": 640, "num_heads": 8, "layers_per_block": 3}},
+      {"id": "up_2", "layer_type": "unet_block", "params": {"hidden_size": 320, "num_heads": 8, "layers_per_block": 3}},
       {"id": "conv_out", "layer_type": "conv", "params": {"in_channels": 320, "out_channels": 4, "kernel_size": 3, "stride": 1, "padding": 1}},
       {"id": "time_embed", "layer_type": "time_embedding", "params": {"hidden_size": 320}}
     ]

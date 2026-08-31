@@ -352,8 +352,17 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
                     .out_channels
                     .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
             );
-            // UNet ResNet block: 2 convs + 2 norms + skip
+            // UNet ResNet block: 2 convs + 2 norms + skip. A U-Net node in
+            // these templates represents one *stage* (e.g. SD1.5's 320-
+            // channel stage), not one block — real U-Nets repeat
+            // `layers_per_block` ResNet blocks per stage (2, for both SD1.5
+            // and SDXL). The field was already parsed from JSON and never
+            // read anywhere, so every stage was silently costed as if it
+            // held a single block regardless of the config's own stated
+            // depth.
+            let block_repeat = layer.params.layers_per_block.unwrap_or(1) as u64;
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
+                * block_repeat
         }
         LayerType::TimeEmbedding | LayerType::TimestepBlock => {
             let channels = layer.params.hidden_size.unwrap_or(320);
@@ -369,7 +378,14 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             // Treating K/V as `hidden_size`-wide (this arm's previous
             // behavior) made that real difference invisible.
             let context_dim = layer.params.cross_attention_dim.unwrap_or(hidden);
-            attention::cross_attention_params(hidden, context_dim, true)
+            // A cross-attention node represents one *stage*'s attention,
+            // which real U-Nets apply as `transformer_layers_per_block`
+            // stacked transformer blocks — 1 almost everywhere in SD1.5,
+            // but SDXL's deepest stage stacks 10 (its real width comes from
+            // this, not just from `cross_attention_dim`). Same
+            // parsed-but-never-read field as `layers_per_block` above.
+            let block_repeat = layer.params.transformer_layers_per_block.unwrap_or(1) as u64;
+            attention::cross_attention_params(hidden, context_dim, true) * block_repeat
         }
         LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
             let in_ch = layer.params.in_channels_diff.unwrap_or(
@@ -384,7 +400,9 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
                     .out_channels
                     .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
             );
+            let block_repeat = layer.params.layers_per_block.unwrap_or(1) as u64;
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
+                * block_repeat
         }
         LayerType::ConditionBlock => {
             let hidden = layer.params.hidden_size.unwrap_or(320);

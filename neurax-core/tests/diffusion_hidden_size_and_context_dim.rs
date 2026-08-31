@@ -12,14 +12,22 @@
 //! U-Net size — produced the exact same total parameter count,
 //! 15,811,844, to the last digit. Verified directly before fixing.
 //!
-//! This test does not assert either model matches its true published size
-//! (both example templates model a U-Net with one node per resolution stage
-//! rather than the real per-stage block count, so neither is expected to
-//! reach the true ~860M / ~2.6B figures yet — a template-completeness gap,
-//! not a formula bug, and a separate piece of work). It only asserts the
-//! bug's own symptom is gone: two differently-configured models must not
-//! collapse to an identical total, and a cross-attention block's own count
-//! must react to its own context_dim.
+//! A second, related bug in the same fix: `layers_per_block` and
+//! `transformer_layers_per_block` were already parsed from JSON into
+//! `LayerParams` but read nowhere in the compiler — each U-Net/cross-
+//! attention node represents one *stage*, and real U-Nets repeat several
+//! blocks per stage (2 ResNet blocks per down/mid stage, 3 per up stage;
+//! SDXL's deepest stage stacks 10 transformer layers, per its published
+//! diffusers config). Wiring these in, plus adding the one cross-attention
+//! stage (1280-channel) both templates were missing entirely, moved the
+//! measured totals from 15.8M (both, identical) to 261.2M (SD1.5) and
+//! 347.1M (SDXL) — real numbers, correctly ordered, but still well under
+//! the true published U-Net sizes (~860M / ~2.6B). The templates still
+//! model a coarser network than the real one (no time-embedding
+//! projection inside each ResNet block, no separate down/upsample convs),
+//! which is a template-fidelity gap, not a bug in the formulas that do
+//! exist — left as a separate, larger piece of work rather than folded
+//! into this fix.
 
 use std::path::PathBuf;
 
@@ -45,6 +53,21 @@ fn sdxl_and_sd15_no_longer_collapse_to_the_same_total() {
         sdxl, sd15,
         "SDXL and SD1.5 produced identical totals ({sdxl}) — the hidden_size/context_dim \
          fields that actually distinguish them are being ignored again"
+    );
+
+    // SDXL's real U-Net (~2.6B) is roughly 3x SD1.5's (~860M) — both
+    // templates model a coarse, single-node-per-stage abstraction of the
+    // real block count, so neither reaches its true published size (see
+    // the module doc comment), but SDXL must still come out bigger than
+    // SD1.5 once layers_per_block/transformer_layers_per_block (also
+    // parsed-but-never-read before this fix) are actually applied —
+    // SDXL's deepest stage alone stacks 10 transformer layers per the
+    // real diffusers config vs SD1.5's uniform 1.
+    assert!(
+        sdxl > sd15,
+        "SDXL ({sdxl}) should be larger than SD1.5 ({sd15}) — it has more attention \
+         heads, a wider conditioning dimension (2048 vs 768), and a much deeper final \
+         stage (transformer_layers_per_block=10 vs 1)"
     );
 }
 

@@ -812,19 +812,29 @@ fn decompose_layer_to_ops(
         | LayerType::DownBlock
         | LayerType::UpBlock
         | LayerType::MidBlock => {
-            let in_ch = layer
-                .params
-                .in_channels_diff
-                .unwrap_or(layer.params.in_channels.unwrap_or(320));
-            let out_ch = layer
-                .params
-                .out_channels_diff
-                .unwrap_or(layer.params.out_channels.unwrap_or(320));
+            // Same hidden_size fallback and layers_per_block repeat as the
+            // param formula (architecture/mod.rs) — no real template sets
+            // in_channels/in_channels_diff on these nodes, and each node
+            // represents `layers_per_block` real ResNet blocks, not one.
+            let in_ch = layer.params.in_channels_diff.unwrap_or(
+                layer
+                    .params
+                    .in_channels
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+            );
+            let out_ch = layer.params.out_channels_diff.unwrap_or(
+                layer
+                    .params
+                    .out_channels
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+            );
+            let block_repeat = layer.params.layers_per_block.unwrap_or(1) as f64;
             // Same sqrt(seq) spatial-side stand-in the CNN ResidualBlock arm
             // above uses — no per-layer (H, W) tracking exists for diffusion
             // U-Net blocks either.
             let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops = cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, 1);
+            let flops = cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, 1)
+                * block_repeat;
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Conv2D,
@@ -876,7 +886,11 @@ fn decompose_layer_to_ops(
             // approximated here as self-attention over the image sequence
             // (K/V's real, usually much shorter, conditioning length isn't
             // tracked as a separate dimension anywhere in this pass yet).
-            let flops = attention::attention_flops(batch, seq, hidden, heads, false);
+            // `transformer_layers_per_block` still applies on top of that
+            // approximation: SDXL's deepest stage stacks 10 of these per
+            // node, same repeat this type's param formula now applies.
+            let block_repeat = layer.params.transformer_layers_per_block.unwrap_or(1) as f64;
+            let flops = attention::attention_flops(batch, seq, hidden, heads, false) * block_repeat;
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Attention,
