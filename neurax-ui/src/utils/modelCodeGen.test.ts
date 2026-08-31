@@ -287,6 +287,44 @@ describe('generateModelCode — parameter counts match neurax-formulas', () => {
     expect(result.code).toContain('def forward(self, x, edge_index, edge_type):');
     expect(result.layers[0].forwardLines[0]).toContain('edge_type');
   });
+
+  it('lstm_cell: 4 gates x (hidden+input) x hidden + 4*hidden bias, matches lstm_params', () => {
+    // Input size, absent an upstream conv/attention node to derive it from,
+    // falls back to ctx.channels' own initial value (hw.inChannels, 3 on
+    // BASE_HW) — the same fallback conv2d's first layer in a design uses.
+    const hidden = 512, input = BASE_HW.inChannels ?? 3;
+    const expected = 4 * (hidden + input) * hidden + 4 * hidden;
+    const n = [node('n1', 'lstm_cell', { hidden_size: hidden, num_layers: 1, bidirectional: false })];
+    const result = generateModelCode(n, [], BASE_HW, 'LSTM');
+    expect(result.layers[0].paramCount).toBe(expected);
+    expect(result.layers[0].initCode).toContain(`nn.LSTM(${input}, ${hidden}, num_layers=1, batch_first=True, bidirectional=False)`);
+    expect(result.layers[0].forwardLines[0]).toBe('x, _ = self.l1_n1(x)');
+  });
+
+  it('bigru: doubles the single-direction gru_params total (matches architecture/mod.rs\'s bidir_mult)', () => {
+    const hidden = 256, input = BASE_HW.inChannels ?? 3;
+    const singleDirection = 2 * (hidden + input) * hidden + (hidden + input) * hidden + 3 * hidden;
+    const n = [node('n1', 'bigru', { hidden_size: hidden, num_layers: 1, bidirectional: true })];
+    const result = generateModelCode(n, [], BASE_HW, 'BiGRU');
+    expect(result.layers[0].paramCount).toBe(singleDirection * 2);
+    expect(result.layers[0].initCode).toContain('nn.GRU');
+    expect(result.layers[0].initCode).toContain('bidirectional=True');
+  });
+
+  it('a 4-layer stacked LSTM costs more than a 1-layer one at the same hidden size (matches the num_rnn_layers fix)', () => {
+    const single = [
+      node('emb', 'token_embedding', { vocab_size: 1000, hidden_size: 256 }),
+      node('n1', 'lstm_cell', { hidden_size: 512, num_layers: 1 }),
+    ];
+    const stacked = [
+      node('emb', 'token_embedding', { vocab_size: 1000, hidden_size: 256 }),
+      node('n1', 'lstm_cell', { hidden_size: 512, num_layers: 4 }),
+    ];
+    const singleResult = generateModelCode(single, chain(single), BASE_HW, 'LSTM1');
+    const stackedResult = generateModelCode(stacked, chain(stacked), BASE_HW, 'LSTM4');
+    expect(stackedResult.layers[1].paramCount).toBeGreaterThan(singleResult.layers[1].paramCount * 1.5);
+    expect(stackedResult.layers[1].initCode).toContain('num_layers=4');
+  });
 });
 
 describe('a full small transformer — end-to-end total', () => {

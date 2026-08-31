@@ -159,6 +159,40 @@ function rgcnConvParams(
 
 // ─── Node parameter resolution ────────────────────────────────────────────
 
+/** Mirrors `neurax-formulas::rnn::lstm_params()` exactly: 4 gates, each
+ * `(hidden + input) x hidden` weights, plus one shared `4 x hidden` bias
+ * term. `nn.LSTM` reports two separate bias vectors (input-hidden and
+ * hidden-hidden) rather than one, so its real parameter count is `8 x
+ * hidden` higher than this — negligible next to the weight term at any
+ * realistic hidden size (well under the 1% verification tolerance), but
+ * not literally identical. */
+function lstmCellParams(hidden: number, inputSize: number): number {
+  const combined = hidden + inputSize;
+  return 4 * combined * hidden + 4 * hidden;
+}
+
+/** Mirrors `neurax-formulas::rnn::gru_params()`. Same `nn.GRU`
+ * two-bias-vector caveat as `lstmCellParams`. */
+function gruCellParams(hidden: number, inputSize: number): number {
+  const combined = hidden + inputSize;
+  return 2 * combined * hidden + combined * hidden + 3 * hidden;
+}
+
+/** Mirrors architecture/mod.rs's stacking fix exactly: layer 1 takes the
+ * real input dimension, layers 2..N each take `hidden` as their own input
+ * (they consume the previous layer's output) — not `hidden * num_directions`
+ * for a bidirectional stack, which is what `nn.LSTM`/`nn.GRU` actually do
+ * internally for layer 2 onward. No current template combines
+ * `num_layers > 1` with `bidirectional: true`, so this simplification and
+ * PyTorch's real module don't currently diverge in practice — flagged here
+ * rather than silently assumed correct for that combination. */
+function stackedRnnParams(cellParams: (h: number, i: number) => number, hidden: number, inputSize: number, numLayers: number): number {
+  const layers = Math.max(numLayers, 1);
+  const first = cellParams(hidden, inputSize);
+  const rest = cellParams(hidden, hidden) * (layers - 1);
+  return first + rest;
+}
+
 /** Reads a numeric value from a node's own params first — each node on the
  * canvas is self-describing (see `modelTemplates.ts`) — falling back to the
  * shared hardware/hyperparameter config only when the node doesn't specify
@@ -224,6 +258,7 @@ const SUPPORTED_TYPES = new Set<LayerType>([
   'residual_add', 'skip_connection',
   'dcgan_generator_block', 'dcgan_discriminator_block',
   'gcn_conv', 'gat_conv', 'gat_v2_conv', 'gat_attention', 'message_passing', 'rgcn_conv',
+  'lstm_cell', 'gru_cell', 'bilstm', 'bigru',
 ]);
 
 /** GNN layers need `torch_geometric` and an `edge_index` (plus `edge_type`
@@ -381,6 +416,36 @@ function genNode(node: CanvasNode, ctx: GenContext): GeneratedLayer {
         paramCount: mambaParams(hiddenSize, stateDim, expand), varName,
         initCode: `NeuraxMambaBlock(${hiddenSize}, d_state=${stateDim}, expand=${expand})`,
         forwardLines: [`x = self.${varName}(x)`],
+      };
+    }
+    case 'lstm_cell':
+    case 'gru_cell':
+    case 'bilstm':
+    case 'bigru': {
+      // The node's own `hidden_size` means its recurrent state width to
+      // whoever built the canvas (see fixRnnParams() in
+      // neuraxCompiler.ts) — the input dimension is whatever the previous
+      // layer's width was, tracked the same way conv2d/attention track it.
+      const hiddenSize = readNum(p, ['hidden_size', 'hiddenSize'], hw.hiddenDim) ?? 512;
+      const inputSize = ctx.channels || hw.hiddenDim || hiddenSize;
+      const numLayers = readNum(p, ['num_layers', 'numLayers'], 1) ?? 1;
+      const bidirectional = readBool(
+        p, ['bidirectional', 'bidirectionalRnn'],
+        node.type === 'bilstm' || node.type === 'bigru',
+      );
+      const isGru = node.type === 'gru_cell' || node.type === 'bigru';
+      const cellParams = isGru ? gruCellParams : lstmCellParams;
+      const dirMult = bidirectional ? 2 : 1;
+      // architecture/mod.rs hardcodes bias=true for every LSTM/GRU/RNN
+      // arm — never read from the node's own params — so this does too.
+      const paramCount = stackedRnnParams(cellParams, hiddenSize, inputSize, numLayers) * dirMult;
+      ctx.channels = hiddenSize * dirMult;
+      const moduleName = isGru ? 'nn.GRU' : 'nn.LSTM';
+      return {
+        nodeId: node.id, layerType: node.type, supported: true,
+        paramCount, varName,
+        initCode: `${moduleName}(${inputSize}, ${hiddenSize}, num_layers=${Math.max(numLayers, 1)}, batch_first=True, bidirectional=${bidirectional ? 'True' : 'False'})`,
+        forwardLines: [`x, _ = self.${varName}(x)`],
       };
     }
     case 'conv2d': {
