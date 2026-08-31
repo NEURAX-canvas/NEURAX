@@ -144,6 +144,177 @@ def _format_budget_report(results: dict, budget: dict) -> str:
     return "\n".join(lines)
 
 
+# Map canvas/agent layer types to the compiler's LayerType vocabulary. Kept
+# in sync with neurax-agent/budget_check.py's LAYER_TYPE_MAP by hand (this
+# package installs standalone, with no dependency on neurax-agent) — this
+# one had drifted to a fraction of that table's size (no MoE/GNN/SSM/LoRA
+# entries at all), so any of those block types sent through this server
+# reached the compiler as their own unrecognized name and failed to parse
+# outright.
+LAYER_TYPE_MAP = {
+    "token_embedding": "embedding",
+    "embedding": "embedding",
+    "pos_embed": "positional_embed",
+    "positional_encoding": "positional_embed",
+    "rope": "positional_embed",
+    "alibi": "positional_embed",
+    "mha_attention": "attention",
+    "mha": "attention",
+    "attention": "attention",
+    "gqa": "attention",
+    "flash_attention": "attention",
+    "self_attention": "attention",
+    "cross_attention": "cross_attention",
+    "bahdanau_attention": "attention",
+    "ffn_standard": "mlp",
+    "ffn_gated": "mlp",
+    "ffn": "mlp",
+    "mlp": "mlp",
+    "swiglu": "mlp",
+    "lm_head": "dense",
+    "classification_head": "dense",
+    "linear": "dense",
+    "linear_projection": "dense",
+    "dense": "dense",
+    "output": "dense",
+    "input": "embedding",
+    "layer_norm": "normalization",
+    "layernorm": "normalization",
+    "rmsnorm": "normalization",
+    "batchnorm": "normalization",
+    "groupnorm": "normalization",
+    "instancenorm": "normalization",
+    "conv2d": "conv",
+    "conv1d": "conv",
+    "depthwise_conv2d": "conv",
+    "conv_transpose2d": "conv",
+    "max_pool": "pooling",
+    "avg_pool": "pooling",
+    "global_pool": "pooling",
+    "moe_block": "moe",
+    "expert": "moe",
+    "mamba_block": "mamba_block",
+    "s4_block": "s4_block",
+    "lstm": "lstm",
+    "gru": "gru",
+    "gcn_conv": "graph_conv",
+    "gat_conv": "graph_attention",
+    "message_passing": "message_passing",
+    "rgcn_conv": "rgcn_conv",
+    "lora_linear": "lora_linear",
+    "dora_linear": "dora_linear",
+}
+
+
+def _build_topology(arch: dict) -> dict:
+    """Convert an MCP `architecture` argument (nodes/connections/hardware) into
+    the wire-format topology NEURAX's /analyze and /sweep endpoints expect.
+    Shared by analyze_architecture, check_budget, and find_optimal_hyperparameters
+    so the layer-type mapping and schema quirks below live in exactly one place.
+    """
+    raw_nodes = arch.get("nodes", [])
+    raw_connections = arch.get("connections", [])
+    raw_hardware = arch.get("hardware", {})
+
+    layers = []
+    for n in raw_nodes:
+        frontend_type = n.get("type", "unknown")
+        backend_type = LAYER_TYPE_MAP.get(frontend_type, frontend_type)
+        layer = {
+            "id": n.get("id", f"layer_{len(layers)}"),
+            "layer_type": backend_type,
+            "params": n.get("params", {}),
+        }
+        if "input_shape" in n:
+            layer["input_shape"] = n["input_shape"]
+        if "output_shape" in n:
+            layer["output_shape"] = n["output_shape"]
+        layers.append(layer)
+
+    gpu_name = raw_hardware.get("gpu_name", "H100-SXM")
+    gpu_count = raw_hardware.get("gpu_count", 1)
+    precision = raw_hardware.get("precision", "bf16")
+
+    topology = {
+        "schema_version": "1.0",
+        "model": {
+            "name": arch.get("name", "MCP Model"),
+            "type": arch.get("family", "transformer"),
+            "layers": layers,
+        },
+        "training": {
+            "batch_size": raw_hardware.get("batch_size", 1),
+            # The backend reads the storage width from `training.precision`.
+            # Sending it only as `data.dtype` left every analysis on the
+            # fp32 default, overstating model size fourfold for an int8
+            # design — decisive against an on-device size budget.
+            "precision": precision,
+        },
+        "hardware": {
+            "gpus": [{"name": gpu_name, "count": gpu_count}],
+        },
+        "data": {
+            "input_shape": arch.get("input_shape", [1, 128]),
+            "dtype": precision,
+        },
+    }
+
+    # Image-shaped families (cnn/vit/gan/diffusion) need their entry
+    # shape stated here — the compiler's shape-inference engine reads
+    # it from exactly these three fields, defaulting to a 224x224x3
+    # placeholder image otherwise.
+    for key in ("image_channels", "image_height", "image_width"):
+        if key in arch:
+            topology["data"][key] = arch[key]
+
+    # `model.connections`, not `model.graph.edges` — the field the
+    # compiler's wire schema actually defines (RawModel has `layers`/
+    # `global_params`/`connections`, no `graph` key at all). Sending
+    # `graph.edges` parsed without error (unknown keys are ignored)
+    # but the edges never reached anything: the compiler fell back to
+    # its positional-chain assumption regardless of what topology the
+    # caller actually described.
+    if raw_connections:
+        topology["model"]["connections"] = [
+            {"from": c["from"], "to": c["to"]}
+            for c in raw_connections
+            if "from" in c and "to" in c
+        ]
+
+    return topology
+
+
+def _format_sweep_result(result: dict) -> str:
+    """Format a /sweep response into a readable summary."""
+    points = result.get("result", {}).get("points", [])
+    best = result.get("result", {}).get("best")
+    feasible_count = sum(1 for p in points if p.get("feasible"))
+
+    if best is None:
+        return (
+            f"No feasible configuration found among {len(points)} candidates evaluated "
+            "— this architecture doesn't fit the configured GPU's VRAM at any swept "
+            "batch_size/zero_stage combination. Try a smaller batch range, a higher "
+            "zero_stage ceiling, or more GPUs."
+        )
+
+    lines = [
+        f"Evaluated {len(points)} configurations ({feasible_count} feasible).",
+        "",
+        "Best configuration:",
+        f"  batch_size:  {best['batch_size']}",
+        f"  zero_stage:  {best['zero_stage']}",
+        f"  gpu_count:   {best['gpu_count']}",
+        f"  precision:   {best['precision']}",
+        "",
+        f"  peak VRAM:        {best['peak_vram_gb']:.2f} GB",
+        f"  throughput:       {best['throughput_tokens_per_s']:.1f} tok/s",
+        f"  latency:          {best['latency_ms']:.2f} ms",
+        f"  training cost:    ${best['training_cost_usd']:.2f}",
+    ]
+    return "\n".join(lines)
+
+
 # ─── Tool Definitions ─────────────────────────────────────────────────
 
 AVAILABLE_TOOLS = [
@@ -239,6 +410,50 @@ AVAILABLE_TOOLS = [
         },
     ),
     Tool(
+        name="find_optimal_hyperparameters",
+        description=(
+            "Search batch_size x zero_stage x gpu_count x precision for the fastest, "
+            "cheapest, or largest-feasible-batch training configuration for an "
+            "architecture, without running anything — each candidate is a full NEURAX "
+            "analysis (no training, no GPU). Use this before committing to a training "
+            "config, or as a fast pre-check before spending real compute on a change: "
+            "infeasible (out-of-memory) candidates are never selected."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "architecture": {
+                    "type": "object",
+                    "description": "Same shape as analyze_architecture.",
+                },
+                "objective": {
+                    "type": "string",
+                    "enum": ["max_throughput", "min_cost", "min_latency", "max_batch_size"],
+                    "description": "What to optimize for among feasible candidates. Defaults to max_throughput.",
+                },
+                "candidates": {
+                    "type": "object",
+                    "description": (
+                        "Candidate values to sweep. Any field left out defaults to a "
+                        "standard batch/zero_stage range, anchored to the architecture's "
+                        "own gpu_count/precision (the sweep doesn't second-guess hardware "
+                        "or precision choices unless you ask it to)."
+                    ),
+                    "properties": {
+                        "batch_sizes": {"type": "array", "items": {"type": "integer"}},
+                        "zero_stages": {
+                            "type": "array",
+                            "items": {"type": "integer", "enum": [0, 1, 2, 3]},
+                        },
+                        "gpu_counts": {"type": "array", "items": {"type": "integer"}},
+                        "precisions": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
+            "required": ["architecture"],
+        },
+    ),
+    Tool(
         name="get_hardware_list",
         description="List all available GPU hardware configurations supported by NEURAX.",
         inputSchema={"type": "object", "properties": {}}
@@ -310,137 +525,7 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
     try:
         if name in ("analyze_architecture", "check_budget"):
             arch = arguments.get("architecture", {})
-            raw_nodes = arch.get("nodes", [])
-            raw_connections = arch.get("connections", [])
-            raw_hardware = arch.get("hardware", {})
-
-            # Map canvas/agent layer types to the compiler's LayerType
-            # vocabulary. Kept in sync with neurax-agent/budget_check.py's
-            # LAYER_TYPE_MAP by hand (this package installs standalone, with
-            # no dependency on neurax-agent) — this one had drifted to a
-            # fraction of that table's size (no MoE/GNN/SSM/LoRA entries at
-            # all), so any of those block types sent through this server
-            # reached the compiler as their own unrecognized name and failed
-            # to parse outright.
-            LAYER_TYPE_MAP = {
-                "token_embedding": "embedding",
-                "embedding": "embedding",
-                "pos_embed": "positional_embed",
-                "positional_encoding": "positional_embed",
-                "rope": "positional_embed",
-                "alibi": "positional_embed",
-                "mha_attention": "attention",
-                "mha": "attention",
-                "attention": "attention",
-                "gqa": "attention",
-                "flash_attention": "attention",
-                "self_attention": "attention",
-                "cross_attention": "cross_attention",
-                "bahdanau_attention": "attention",
-                "ffn_standard": "mlp",
-                "ffn_gated": "mlp",
-                "ffn": "mlp",
-                "mlp": "mlp",
-                "swiglu": "mlp",
-                "lm_head": "dense",
-                "classification_head": "dense",
-                "linear": "dense",
-                "linear_projection": "dense",
-                "dense": "dense",
-                "output": "dense",
-                "input": "embedding",
-                "layer_norm": "normalization",
-                "layernorm": "normalization",
-                "rmsnorm": "normalization",
-                "batchnorm": "normalization",
-                "groupnorm": "normalization",
-                "instancenorm": "normalization",
-                "conv2d": "conv",
-                "conv1d": "conv",
-                "depthwise_conv2d": "conv",
-                "conv_transpose2d": "conv",
-                "max_pool": "pooling",
-                "avg_pool": "pooling",
-                "global_pool": "pooling",
-                "moe_block": "moe",
-                "expert": "moe",
-                "mamba_block": "mamba_block",
-                "s4_block": "s4_block",
-                "lstm": "lstm",
-                "gru": "gru",
-                "gcn_conv": "graph_conv",
-                "gat_conv": "graph_attention",
-                "message_passing": "message_passing",
-                "rgcn_conv": "rgcn_conv",
-                "lora_linear": "lora_linear",
-                "dora_linear": "dora_linear",
-            }
-
-            # Build proper topology format required by NEURAX backend
-            layers = []
-            for n in raw_nodes:
-                frontend_type = n.get("type", "unknown")
-                backend_type = LAYER_TYPE_MAP.get(frontend_type, frontend_type)
-                layer = {
-                    "id": n.get("id", f"layer_{len(layers)}"),
-                    "layer_type": backend_type,
-                    "params": n.get("params", {}),
-                }
-                if "input_shape" in n:
-                    layer["input_shape"] = n["input_shape"]
-                if "output_shape" in n:
-                    layer["output_shape"] = n["output_shape"]
-                layers.append(layer)
-
-            gpu_name = raw_hardware.get("gpu_name", "H100-SXM")
-            gpu_count = raw_hardware.get("gpu_count", 1)
-            precision = raw_hardware.get("precision", "bf16")
-
-            topology = {
-                "schema_version": "1.0",
-                "model": {
-                    "name": arch.get("name", "MCP Model"),
-                    "type": arch.get("family", "transformer"),
-                    "layers": layers,
-                },
-                "training": {
-                    "batch_size": raw_hardware.get("batch_size", 1),
-                    # The backend reads the storage width from `training.precision`.
-                    # Sending it only as `data.dtype` left every analysis on the
-                    # fp32 default, overstating model size fourfold for an int8
-                    # design — decisive against an on-device size budget.
-                    "precision": precision,
-                },
-                "hardware": {
-                    "gpus": [{"name": gpu_name, "count": gpu_count}],
-                },
-                "data": {
-                    "input_shape": arch.get("input_shape", [1, 128]),
-                    "dtype": precision,
-                },
-            }
-
-            # Image-shaped families (cnn/vit/gan/diffusion) need their entry
-            # shape stated here — the compiler's shape-inference engine reads
-            # it from exactly these three fields, defaulting to a 224x224x3
-            # placeholder image otherwise.
-            for key in ("image_channels", "image_height", "image_width"):
-                if key in arch:
-                    topology["data"][key] = arch[key]
-
-            # `model.connections`, not `model.graph.edges` — the field the
-            # compiler's wire schema actually defines (RawModel has `layers`/
-            # `global_params`/`connections`, no `graph` key at all). Sending
-            # `graph.edges` parsed without error (unknown keys are ignored)
-            # but the edges never reached anything: the compiler fell back to
-            # its positional-chain assumption regardless of what topology the
-            # caller actually described.
-            if raw_connections:
-                topology["model"]["connections"] = [
-                    {"from": c["from"], "to": c["to"]}
-                    for c in raw_connections
-                    if "from" in c and "to" in c
-                ]
+            topology = _build_topology(arch)
 
             result = await _call_backend("/analyze", method="POST", data={"topology": topology})
             if name == "analyze_architecture":
@@ -449,6 +534,20 @@ async def handle_call_tool(name: str, arguments: dict) -> list[TextContent]:
                 type="text",
                 text=_format_budget_report(result, arguments.get("budget", {})),
             )]
+
+        elif name == "find_optimal_hyperparameters":
+            arch = arguments.get("architecture", {})
+            topology = _build_topology(arch)
+            payload: dict[str, Any] = {
+                "topology": topology,
+                "objective": arguments.get("objective", "max_throughput"),
+            }
+            candidates = arguments.get("candidates")
+            if candidates:
+                payload["candidates"] = candidates
+
+            result = await _call_backend("/sweep", method="POST", data=payload)
+            return [TextContent(type="text", text=_format_sweep_result(result))]
 
         elif name == "get_hardware_list":
             result = await _call_backend("/hardware")
