@@ -195,6 +195,50 @@ describe('generateModelCode — parameter counts match neurax-formulas', () => {
     expect(relu.initCode).toContain('nn.ReLU');
     expect(pool.initCode).toContain('AdaptiveAvgPool2d');
   });
+
+  it('dcgan_generator_block: in*out*k*k, defaults to bias=False (matches the real DCGAN convention)', () => {
+    const n = [node('n1', 'dcgan_generator_block', { in_channels: 100, out_channels: 512, kernel_size: 4 })];
+    const result = generateModelCode(n, [], BASE_HW, 'Gen');
+    expect(result.totalParams).toBe(100 * 512 * 4 * 4);
+    expect(result.layers[0].initCode).toContain('nn.ConvTranspose2d');
+    expect(result.layers[0].initCode).toContain('bias=False');
+  });
+
+  it('dcgan_discriminator_block: in*out*k*k, defaults to bias=False', () => {
+    const n = [node('n1', 'dcgan_discriminator_block', { in_channels: 3, out_channels: 64, kernel_size: 4 })];
+    const result = generateModelCode(n, [], BASE_HW, 'Disc');
+    expect(result.totalParams).toBe(3 * 64 * 4 * 4);
+    expect(result.layers[0].initCode).toContain('nn.Conv2d');
+    expect(result.layers[0].initCode).toContain('bias=False');
+  });
+
+  it('a full DCGAN generator+discriminator (the official PyTorch tutorial shape) matches its independently re-derived conv-weight total', () => {
+    // Same channel progression as examples/models/dcgan.json after its fix:
+    // nz=100, ngf=ndf=64, nc=3 — the canonical PyTorch DCGAN tutorial
+    // config. This checks only conv weights (bias=False throughout);
+    // NEURAX's own analysis doesn't model BatchNorm's affine parameters
+    // for these two layer types either, so the two stay comparable.
+    const nodes = [
+      node('g1', 'dcgan_generator_block', { in_channels: 100, out_channels: 512, kernel_size: 4 }),
+      node('g2', 'dcgan_generator_block', { in_channels: 512, out_channels: 256, kernel_size: 4 }),
+      node('g3', 'dcgan_generator_block', { in_channels: 256, out_channels: 128, kernel_size: 4 }),
+      node('g4', 'dcgan_generator_block', { in_channels: 128, out_channels: 64, kernel_size: 4 }),
+      node('g5', 'dcgan_generator_block', { in_channels: 64, out_channels: 3, kernel_size: 4 }),
+      node('d1', 'dcgan_discriminator_block', { in_channels: 3, out_channels: 64, kernel_size: 4 }),
+      node('d2', 'dcgan_discriminator_block', { in_channels: 64, out_channels: 128, kernel_size: 4 }),
+      node('d3', 'dcgan_discriminator_block', { in_channels: 128, out_channels: 256, kernel_size: 4 }),
+      node('d4', 'dcgan_discriminator_block', { in_channels: 256, out_channels: 512, kernel_size: 4 }),
+      node('d5', 'dcgan_discriminator_block', { in_channels: 512, out_channels: 1, kernel_size: 4 }),
+    ];
+    const result = generateModelCode(nodes, chain(nodes), BASE_HW, 'DCGAN');
+
+    const genConvWeights = 100 * 512 * 16 + 512 * 256 * 16 + 256 * 128 * 16 + 128 * 64 * 16 + 64 * 3 * 16;
+    const discConvWeights = 3 * 64 * 16 + 64 * 128 * 16 + 128 * 256 * 16 + 256 * 512 * 16 + 512 * 1 * 16;
+    expect(genConvWeights).toBe(3_574_784);
+    expect(discConvWeights).toBe(2_763_776);
+    expect(result.totalParams).toBe(genConvWeights + discConvWeights);
+    expect(result.fullySupported).toBe(true);
+  });
 });
 
 describe('a full small transformer — end-to-end total', () => {

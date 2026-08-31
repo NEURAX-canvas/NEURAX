@@ -167,7 +167,10 @@ export interface GeneratedLayer {
  * HuggingFace import already commits to (transformer, MoE, Mamba/SSM), plus
  * CNN/ResNet, whose formulas were the ones most recently re-verified against
  * a real published parameter count (see `resnet50.json` / the accuracy
- * table). Every other family is refused honestly rather than guessed at. */
+ * table), plus GAN's generator/discriminator conv blocks, re-derived
+ * against the official PyTorch DCGAN tutorial (see `dcgan.json` / the
+ * accuracy table). Every other family is refused honestly rather than
+ * guessed at. */
 const SUPPORTED_TYPES = new Set<LayerType>([
   'token_embedding', 'embedding',
   'mha_attention', 'attention', 'gqa_attention', 'mqa_attention',
@@ -179,6 +182,7 @@ const SUPPORTED_TYPES = new Set<LayerType>([
   'conv2d', 'batchnorm', 'basic_block', 'bottleneck_block',
   'relu', 'gelu', 'dropout', 'avg_pool', 'global_pool', 'max_pool', 'flatten',
   'residual_add', 'skip_connection',
+  'dcgan_generator_block', 'dcgan_discriminator_block',
 ]);
 
 export function isCodegenSupported(type: LayerType): boolean {
@@ -340,6 +344,35 @@ function genNode(node: CanvasNode, ctx: GenContext): GeneratedLayer {
         nodeId: node.id, layerType: node.type, supported: true,
         paramCount: convParams(inCh, outCh, kernel, bias), varName,
         initCode: `nn.Conv2d(${inCh}, ${outCh}, kernel_size=${kernel}, stride=${stride}, padding=${padding}, bias=${bias ? 'True' : 'False'})`,
+        forwardLines: [`x = self.${varName}(x)`],
+      };
+    }
+    case 'dcgan_generator_block':
+    case 'dcgan_discriminator_block': {
+      const inCh = readNum(p, ['in_channels', 'inChannels'], ctx.channels || hw.inChannels) ?? 100;
+      const outCh = readNum(p, ['out_channels', 'outChannels'], hw.hiddenDim) ?? inCh;
+      // Mirrors architecture/mod.rs's own default exactly (`unwrap_or(3)`) —
+      // real DCGAN templates always set kernel_size explicitly (4), but the
+      // fallback still has to agree with what the analysis would compute
+      // for a node that omits it.
+      const kernel = readNum(p, ['kernel_size', 'kernelSize'], 3) ?? 3;
+      const stride = readNum(p, ['stride'], 2) ?? 2;
+      const padding = readNum(p, ['padding'], 1) ?? 1;
+      // These two layer types default to bias=False in the analysis
+      // (`LayerParams::bias` is a plain `bool`, so an unset field is
+      // `false` via `#[derive(Default)]`) — matching the real DCGAN
+      // convention of omitting bias on every conv layer a BatchNorm
+      // follows. The shared `bias` local above defaults to `true` absent
+      // other signals, which is the wrong default for this pair.
+      const ganBias = readBool(p, ['bias', 'use_bias', 'useBias'], false);
+      ctx.channels = outCh;
+      const isGenerator = node.type === 'dcgan_generator_block';
+      return {
+        nodeId: node.id, layerType: node.type, supported: true,
+        paramCount: convParams(inCh, outCh, kernel, ganBias), varName,
+        initCode: isGenerator
+          ? `nn.ConvTranspose2d(${inCh}, ${outCh}, kernel_size=${kernel}, stride=${stride}, padding=${padding}, bias=${ganBias ? 'True' : 'False'})`
+          : `nn.Conv2d(${inCh}, ${outCh}, kernel_size=${kernel}, stride=${stride}, padding=${padding}, bias=${ganBias ? 'True' : 'False'})`,
         forwardLines: [`x = self.${varName}(x)`],
       };
     }
