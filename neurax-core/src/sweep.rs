@@ -12,6 +12,7 @@
 use crate::{run_analysis, AnalysisResult};
 use neurax_ir::NeuraxError;
 use neurax_parser::ModelConfig;
+use serde::{Deserialize, Serialize};
 
 /// The hyperparameters this sweep varies. Any field left as a single-element
 /// vec keeps that hyperparameter fixed at the base config's value.
@@ -24,8 +25,28 @@ pub struct SweepCandidates {
     pub precisions: Vec<String>,
 }
 
+impl SweepCandidates {
+    /// A usable default range for a caller that doesn't know good candidates
+    /// up front — gpu_count and precision are anchored to whatever the base
+    /// config already declares, rather than guessed, since those two are
+    /// hardware/precision choices the sweep isn't meant to second-guess.
+    pub fn defaults_for(base_config: &ModelConfig) -> Self {
+        Self {
+            batch_sizes: vec![1, 2, 4, 8, 16, 32, 64, 128, 256],
+            zero_stages: vec![0, 1, 2, 3],
+            gpu_counts: vec![base_config
+                .hardware
+                .gpus
+                .first()
+                .map(|g| g.count)
+                .unwrap_or(1)],
+            precisions: vec![base_config.training.precision.clone()],
+        }
+    }
+}
+
 /// One evaluated point in the sweep.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SweepPoint {
     pub batch_size: usize,
     pub zero_stage: u8,
@@ -41,7 +62,8 @@ pub struct SweepPoint {
 
 /// What to optimize for among the feasible points. Infeasible points (OOM)
 /// are never selected regardless of objective.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SweepObjective {
     MaxThroughput,
     MinCost,
@@ -52,7 +74,7 @@ pub enum SweepObjective {
 /// Result of a sweep: every evaluated point (for transparency — the caller
 /// can see the whole feasibility frontier, not just the winner) plus the
 /// best feasible point for the requested objective, if any point was feasible.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SweepResult {
     pub points: Vec<SweepPoint>,
     pub best: Option<SweepPoint>,

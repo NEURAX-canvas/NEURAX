@@ -223,6 +223,32 @@ struct AnalyzeResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
+struct SweepCandidatesRequest {
+    batch_sizes: Option<Vec<usize>>,
+    zero_stages: Option<Vec<u8>>,
+    gpu_counts: Option<Vec<u32>>,
+    precisions: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SweepRequest {
+    topology: serde_json::Value,
+    #[serde(default)]
+    candidates: Option<SweepCandidatesRequest>,
+    #[serde(default = "default_sweep_objective")]
+    objective: neurax_core::sweep::SweepObjective,
+}
+
+fn default_sweep_objective() -> neurax_core::sweep::SweepObjective {
+    neurax_core::sweep::SweepObjective::MaxThroughput
+}
+
+#[derive(Debug, serde::Serialize)]
+struct SweepResponse {
+    result: neurax_core::sweep::SweepResult,
+}
+
+#[derive(Debug, serde::Deserialize)]
 struct TimeMachineRequest {
     topology: serde_json::Value,
     #[serde(default)]
@@ -2332,6 +2358,80 @@ async fn analyze(http_req: HttpRequest, req: web::Json<AnalyzeRequest>) -> impl 
             HttpResponse::build(StatusCode::GATEWAY_TIMEOUT)
                 .body("Analysis timed out after 60 seconds")
         }
+    }
+}
+
+/// Sweep batch_size × zero_stage × gpu_count × precision for the fastest/
+/// cheapest/largest-batch feasible configuration. Each point is a full
+/// `run_analysis` call — cheap (no execution, ~0-1ms each) but a large
+/// candidate grid still adds up, so the grid size is capped the same way
+/// `analyze_compare` caps its config count, and the whole sweep shares
+/// `analyze`'s 60s timeout.
+async fn sweep(http_req: HttpRequest, req: web::Json<SweepRequest>) -> impl Responder {
+    let start = std::time::Instant::now();
+    tracing::info!("[SWEEP] Request received");
+
+    if let Err(resp) = require_verified_email(&http_req).await {
+        return resp;
+    }
+
+    let input = match serde_json::to_string(&req.topology) {
+        Ok(v) => v,
+        Err(e) => return HttpResponse::build(StatusCode::BAD_REQUEST).body(e.to_string()),
+    };
+    let config = match neurax_parser::parse_model_config(&input) {
+        Ok(c) => c,
+        Err(e) => return HttpResponse::build(StatusCode::BAD_REQUEST).body(e.to_string()),
+    };
+
+    let defaults = neurax_core::sweep::SweepCandidates::defaults_for(&config);
+    let requested = req.candidates.as_ref();
+    let candidates = neurax_core::sweep::SweepCandidates {
+        batch_sizes: requested
+            .and_then(|c| c.batch_sizes.clone())
+            .unwrap_or(defaults.batch_sizes),
+        zero_stages: requested
+            .and_then(|c| c.zero_stages.clone())
+            .unwrap_or(defaults.zero_stages),
+        gpu_counts: requested
+            .and_then(|c| c.gpu_counts.clone())
+            .unwrap_or(defaults.gpu_counts),
+        precisions: requested
+            .and_then(|c| c.precisions.clone())
+            .unwrap_or(defaults.precisions),
+    };
+
+    let grid_size = candidates.batch_sizes.len()
+        * candidates.zero_stages.len()
+        * candidates.gpu_counts.len()
+        * candidates.precisions.len();
+    if grid_size > 512 {
+        return HttpResponse::build(StatusCode::BAD_REQUEST).body(format!(
+            "Sweep grid too large ({grid_size} combinations, max 512) — narrow the candidate lists"
+        ));
+    }
+
+    let objective = req.objective;
+    let task = actix_web::rt::task::spawn_blocking(move || {
+        neurax_core::sweep::sweep_hyperparameters(&config, &candidates, objective)
+    });
+    let timeout_result = actix_web::rt::time::timeout(Duration::from_secs(60), task).await;
+
+    let elapsed = start.elapsed();
+    match timeout_result {
+        Ok(Ok(Ok(result))) => {
+            tracing::info!(
+                "[SWEEP] Success in {}ms - {} points evaluated",
+                elapsed.as_millis(),
+                result.points.len()
+            );
+            HttpResponse::Ok().json(SweepResponse { result })
+        }
+        Ok(Ok(Err(e))) => HttpResponse::build(StatusCode::BAD_REQUEST).body(e.to_string()),
+        Ok(Err(_join_err)) => HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR)
+            .body("Sweep task failed unexpectedly"),
+        Err(_timeout) => HttpResponse::build(StatusCode::GATEWAY_TIMEOUT)
+            .body("Sweep timed out after 60 seconds"),
     }
 }
 
@@ -4601,6 +4701,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/presets", web::get().to(get_presets))
         .route("/presets/{id}", web::get().to(get_preset))
         .route("/analyze", web::post().to(analyze))
+        .route("/sweep", web::post().to(sweep))
         .route("/analyze/compare", web::post().to(analyze_compare))
         .route("/analyze/stream", web::post().to(analyze_stream_start))
         .route(
