@@ -259,6 +259,7 @@ const SUPPORTED_TYPES = new Set<LayerType>([
   'dcgan_generator_block', 'dcgan_discriminator_block',
   'gcn_conv', 'gat_conv', 'gat_v2_conv', 'gat_attention', 'message_passing', 'rgcn_conv',
   'lstm_cell', 'gru_cell', 'bilstm', 'bigru',
+  'unet_block', 'unet_mid', 'unet_latent', 'unet_eff',
 ]);
 
 /** GNN layers need `torch_geometric` and an `edge_index` (plus `edge_type`
@@ -550,6 +551,38 @@ function genNode(node: CanvasNode, ctx: GenContext): GeneratedLayer {
         nodeId: node.id, layerType: node.type, supported: true,
         paramCount: BN_TRAINABLE_PARAMS_PER_CHANNEL * channels, varName,
         initCode: `nn.BatchNorm2d(${channels})`,
+        forwardLines: [`x = self.${varName}(x)`],
+      };
+    }
+    case 'unet_block':
+    case 'unet_mid':
+    case 'unet_latent':
+    case 'unet_eff': {
+      // Mirrors architecture/mod.rs's UnetBlock/DownBlock/UpBlock/MidBlock
+      // arm exactly: a node here represents one U-Net *stage*, real ones
+      // repeat `layers_per_block` ResNet blocks per stage (2 for both
+      // SD1.5 and SDXL's down/mid stages, per their diffusers configs —
+      // see examples/models/sdxl_1.0.json / stable_diffusion_1.5.json).
+      // No real template sets in_channels/in_channels_diff on these
+      // nodes, only hidden_size, so that's the fallback here too.
+      const inCh = readNum(p, ['in_channels', 'inChannels'], ctx.channels || hidden) ?? hidden;
+      const outCh = readNum(p, ['out_channels', 'outChannels'], hidden) ?? inCh;
+      const layersPerBlock = readNum(p, ['layers_per_block', 'layersPerBlock'], 1) ?? 1;
+      // Same bias=False-by-default rule as the DCGAN/GNN blocks above —
+      // `LayerParams::bias` is a plain `bool`, not this module's shared
+      // `bias` local (which defaults to `true` absent other signals).
+      const unetBias = readBool(p, ['bias', 'use_bias', 'useBias'], false);
+      let total = 0;
+      let curIn = inCh;
+      for (let i = 0; i < Math.max(layersPerBlock, 1); i++) {
+        total += resnetBasicBlockParams(curIn, outCh, 1, unetBias);
+        curIn = outCh;
+      }
+      ctx.channels = outCh;
+      return {
+        nodeId: node.id, layerType: node.type, supported: true,
+        paramCount: total, varName,
+        initCode: `NeuraxBasicBlockStage(${inCh}, planes=${outCh}, blocks=${Math.max(layersPerBlock, 1)}, stride=1)`,
         forwardLines: [`x = self.${varName}(x)`],
       };
     }

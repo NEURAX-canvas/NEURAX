@@ -325,6 +325,22 @@ describe('generateModelCode — parameter counts match neurax-formulas', () => {
     expect(stackedResult.layers[1].paramCount).toBeGreaterThan(singleResult.layers[1].paramCount * 1.5);
     expect(stackedResult.layers[1].initCode).toContain('num_layers=4');
   });
+
+  it('unet_block: layers_per_block repeats of a ResNet block, matches the real SD1.5/SDXL down-stage shape', () => {
+    // Same conv_in -> down_0 shape as examples/models/stable_diffusion_1.5.json:
+    // conv_in produces 320 channels, down_0 is hidden_size=320,
+    // layers_per_block=2 — in==out==320, so no downsample branch.
+    const hidden = 320, layersPerBlock = 2;
+    const oneBlock = 320 * 320 * 9 + 320 * 320 * 9 + 2 * 2 * 320; // conv1 + conv2 + BN, no downsample (in==out, stride=1)
+    const n = [
+      node('conv_in', 'conv2d', { in_channels: 4, out_channels: hidden, kernel_size: 3 }),
+      node('n1', 'unet_block', { hidden_size: hidden, layers_per_block: layersPerBlock }),
+    ];
+    const result = generateModelCode(n, chain(n), BASE_HW, 'UNet');
+    expect(result.layers[1].paramCount).toBe(oneBlock * layersPerBlock);
+    expect(result.layers[1].initCode).toContain(`NeuraxBasicBlockStage(${hidden}, planes=${hidden}, blocks=${layersPerBlock}, stride=1)`);
+    expect(result.fullySupported).toBe(true);
+  });
 });
 
 describe('a full small transformer — end-to-end total', () => {
