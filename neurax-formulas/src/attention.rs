@@ -172,6 +172,37 @@ pub fn attention_params(hidden_size: usize, _num_heads: usize, bias: bool) -> u6
         .saturating_add(bias_params)
 }
 
+/// Compute parameters for a cross-attention layer (diffusion U-Nets,
+/// encoder-decoder attention): Q comes from the block's own hidden state,
+/// K and V are projected *from the conditioning sequence's own width*
+/// (`context_dim` — e.g. the text encoder's output dimension), not from
+/// `hidden_size`. Using `attention_params()` here previously conflated the
+/// two: a real cross-attention block whose conditioning width differs from
+/// its hidden size (SDXL's OpenCLIP text encoder is 2048-wide; its U-Net
+/// blocks operate at 320-1280) was silently costed as if both matched.
+#[inline(always)]
+pub fn cross_attention_params(hidden_size: usize, context_dim: usize, bias: bool) -> u64 {
+    let hidden_size = hidden_size as u64;
+    let context_dim = context_dim as u64;
+
+    // Q: hidden x hidden. K, V: context_dim x hidden each.
+    let q_params = hidden_size.saturating_mul(hidden_size);
+    let kv_params = context_dim.saturating_mul(hidden_size).saturating_mul(2);
+    // Output projection: hidden x hidden.
+    let out_params = hidden_size.saturating_mul(hidden_size);
+
+    let bias_params = if bias {
+        hidden_size.saturating_mul(4) // Q, K, V, Out biases
+    } else {
+        0
+    };
+
+    q_params
+        .saturating_add(kv_params)
+        .saturating_add(out_params)
+        .saturating_add(bias_params)
+}
+
 /// Compute parameters for GQA/MQA
 #[inline(always)]
 pub fn gqa_params(hidden_size: usize, num_heads: usize, num_kv_heads: usize, bias: bool) -> u64 {

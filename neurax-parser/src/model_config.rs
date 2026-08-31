@@ -721,7 +721,14 @@ impl LayerParams {
             up_block_types: raw.get_string_vec("up_block_types"),
             block_out_channels: raw.get_usize_vec("block_out_channels"),
             layers_per_block: raw.get_usize("layers_per_block"),
-            cross_attention_dim: raw.get_usize("cross_attention_dim"),
+            // `context_dim` is the key every real diffusion template in this
+            // repo (SDXL, SD1.5) actually writes — `cross_attention_dim` is
+            // the name diffusers/HF configs use. Both are accepted so the
+            // field this compiler already had fully wired isn't silently
+            // dropped by whichever name a caller happens to use.
+            cross_attention_dim: raw
+                .get_usize("cross_attention_dim")
+                .or_else(|| raw.get_usize("context_dim")),
             attention_head_dim: raw.get_usize("attention_head_dim"),
             norm_num_groups: raw.get_usize("norm_num_groups"),
             resnet_time_scale_shift: raw.get_string("resnet_time_scale_shift"),

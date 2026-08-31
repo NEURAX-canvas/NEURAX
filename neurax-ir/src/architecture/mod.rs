@@ -333,14 +333,25 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         }
         // Diffusion layer types - use dedicated formulas
         LayerType::UnetBlock | LayerType::ResnetBlock => {
-            let in_ch = layer
-                .params
-                .in_channels_diff
-                .unwrap_or(layer.params.in_channels.unwrap_or(320));
-            let out_ch = layer
-                .params
-                .out_channels_diff
-                .unwrap_or(layer.params.out_channels.unwrap_or(320));
+            // `in_channels_diff`/`in_channels` take priority when a config
+            // states them explicitly, but every real U-Net template (SDXL,
+            // SD1.5) only sets `hidden_size` on these blocks — falling back
+            // straight to the 320 default meant every down/mid/up stage was
+            // costed identically regardless of its real width, and SDXL and
+            // SD1.5 (whose stage widths and only-real difference here are
+            // otherwise the same JSON shape) produced the exact same total.
+            let in_ch = layer.params.in_channels_diff.unwrap_or(
+                layer
+                    .params
+                    .in_channels
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+            );
+            let out_ch = layer.params.out_channels_diff.unwrap_or(
+                layer
+                    .params
+                    .out_channels
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+            );
             // UNet ResNet block: 2 convs + 2 norms + skip
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
         }
@@ -351,19 +362,28 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         }
         LayerType::CrossAttention => {
             let hidden = layer.params.hidden_size.unwrap_or(320);
-            let heads = layer.params.num_heads.unwrap_or(8);
-            // Cross attention: Q from hidden, K,V from conditioning
-            attention::attention_params(hidden, heads, true)
+            // K/V are projected from the conditioning sequence's own width
+            // (the text encoder's output dimension) — SDXL's OpenCLIP text
+            // encoder is 2048-wide, SD1.5's CLIP is 768-wide, while both
+            // operate their U-Net blocks at the same 320-1280 hidden sizes.
+            // Treating K/V as `hidden_size`-wide (this arm's previous
+            // behavior) made that real difference invisible.
+            let context_dim = layer.params.cross_attention_dim.unwrap_or(hidden);
+            attention::cross_attention_params(hidden, context_dim, true)
         }
         LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
-            let in_ch = layer
-                .params
-                .in_channels_diff
-                .unwrap_or(layer.params.in_channels.unwrap_or(320));
-            let out_ch = layer
-                .params
-                .out_channels_diff
-                .unwrap_or(layer.params.out_channels.unwrap_or(320));
+            let in_ch = layer.params.in_channels_diff.unwrap_or(
+                layer
+                    .params
+                    .in_channels
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+            );
+            let out_ch = layer.params.out_channels_diff.unwrap_or(
+                layer
+                    .params
+                    .out_channels
+                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+            );
             cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
         }
         LayerType::ConditionBlock => {
