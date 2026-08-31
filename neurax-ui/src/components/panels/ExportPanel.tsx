@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import {
   Download,
   FileJson,
@@ -94,7 +94,11 @@ interface ExportPanelProps {
   analysisResult?: AnalysisResult | null;
 }
 
-export function ExportPanel({
+// Memoized: Index.tsx holds 40+ pieces of unrelated UI state, and without
+// this, every one of those re-renders ExportPanel too — which used to mean
+// regenerating the whole project (topology walk + codegen + verification)
+// for things like a tooltip hover, since nothing below was memoized either.
+export const ExportPanel = memo(function ExportPanel({
   isOpen,
   onClose,
   architectureName = 'architecture',
@@ -112,16 +116,35 @@ export function ExportPanel({
   // tab. Determines whether GitHubExportPanel gets the generated code.
   const [githubExportMode, setGithubExportMode] = useState<'topology' | 'project'>('topology');
   const [isZipping, setIsZipping] = useState(false);
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const { toast } = useToast();
 
   const { config: hwConfig } = useHardware();
 
-  // Regenerated on every render from the current canvas + hyperparameters —
-  // the same principle as the metrics already on screen: nothing here is
-  // cached, so there is nothing that can go stale between an edit and an
-  // export. Only computed when the panel actually needs it (nodes present).
-  const project: ProjectExportResult | null = nodes.length > 0
-    ? buildProjectFiles(nodes, connections, hwConfig, selectedArchitecture, architectureName, analysisResult)
+  // Recomputed whenever the design actually changes — never silently stale
+  // between an edit and an export, same guarantee as the metrics already on
+  // screen — but unlike a plain call in the render body, this does not
+  // redo the work for reasons that have nothing to do with the design (a
+  // tab switch, the "Copied" toast, opening the GitHub dialog all
+  // previously re-triggered it because ExportPanel re-renders on every one
+  // of Index.tsx's many unrelated state changes). Also skipped entirely
+  // while the dialog is closed, since nothing reads the result until then.
+  const project: ProjectExportResult | null = useMemo(
+    () =>
+      isOpen && nodes.length > 0
+        ? buildProjectFiles(nodes, connections, hwConfig, selectedArchitecture, architectureName, analysisResult)
+        : null,
+    [isOpen, nodes, connections, hwConfig, selectedArchitecture, architectureName, analysisResult],
+  );
+
+  // The file being previewed. Derived rather than synced via an effect: if
+  // the user's selection no longer exists in a freshly regenerated project
+  // (or nothing was picked yet), this falls back to model.py, then to
+  // whatever the project's first file is — never an empty pane.
+  const activeFile = project
+    ? (selectedFilePath && project.files.find((f) => f.path === selectedFilePath)) ||
+      project.files.find((f) => f.path.endsWith('model.py')) ||
+      project.files[0]
     : null;
 
   // Compile NEURAX IR JSON from canvas graph
@@ -529,16 +552,34 @@ export function ExportPanel({
 
                   <div className="space-y-2">
                     <Label className="text-sm font-medium">Files</Label>
-                    <div className="rounded-md border border-border bg-muted/40 p-3 text-xs space-y-1 font-mono">
+                    <div className="rounded-md border border-border bg-muted/40 p-1 font-mono text-xs flex flex-col">
                       {project.files.map((f) => (
-                        <div key={f.path}>{f.path}</div>
+                        <button
+                          key={f.path}
+                          type="button"
+                          onClick={() => setSelectedFilePath(f.path)}
+                          className={cn(
+                            'text-left px-2 py-1 rounded truncate transition-colors',
+                            activeFile?.path === f.path
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                          )}
+                        >
+                          {f.path}
+                        </button>
                       ))}
                     </div>
                   </div>
 
                   <div className="flex-1 overflow-auto bg-background rounded-lg border border-border max-h-64">
+                    <div className="sticky top-0 flex items-center justify-between border-b border-border bg-muted/60 px-3 py-1.5 text-[11px] font-mono text-muted-foreground">
+                      <span>{activeFile?.path ?? ''}</span>
+                      {activeFile && (
+                        <span>{activeFile.content.length.toLocaleString('en-US')} chars</span>
+                      )}
+                    </div>
                     <pre className="p-4 text-xs font-mono text-muted-foreground whitespace-pre overflow-x-auto">
-                      {project.codegen.code}
+                      {activeFile?.content ?? ''}
                     </pre>
                   </div>
 
@@ -546,10 +587,11 @@ export function ExportPanel({
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleCopyCode(project.codegen.code)}
+                      disabled={!activeFile}
+                      onClick={() => activeFile && handleCopyCode(activeFile.content)}
                     >
                       {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
-                      Copy model.py
+                      Copy {activeFile ? activeFile.path.split('/').pop() : 'file'}
                     </Button>
                     <Button
                       variant="outline"
@@ -591,4 +633,4 @@ export function ExportPanel({
       </Dialog>
     </>
   );
-}
+});
