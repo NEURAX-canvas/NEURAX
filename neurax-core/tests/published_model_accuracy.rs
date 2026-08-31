@@ -107,6 +107,27 @@ const REFERENCES: &[Reference] = &[
         source: "DeepSeek-AI 2024, 671B total",
         tolerance: 0.10,
     },
+    Reference {
+        file: "dcgan.json",
+        // Not a paper citation — the original DCGAN paper (Radford, Metz &
+        // Chintala, 2015) never states a parameter count. Independently
+        // re-derived from the official PyTorch DCGAN tutorial's exact layer
+        // definitions (nz=100, ngf=ndf=64, nc=3, kernel=4, bias=False
+        // throughout, BatchNorm2d after every conv except the first
+        // discriminator layer and both output layers):
+        // https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
+        // Generator conv weights 3,574,784 + BatchNorm affine 1,920 =
+        // 3,576,704. Discriminator conv weights 2,763,776 + BatchNorm
+        // affine 1,792 = 2,765,568. Total 6,342,272. NEURAX's
+        // generator_block/discriminator_block formula doesn't model
+        // BatchNorm's own affine parameters (no separate batchnorm nodes
+        // in this template), so the measured figure is expected to land
+        // ~0.03% under this target — the tolerance accounts for that, not
+        // for an unverified figure.
+        published: 6_342_272.0,
+        source: "Re-derived from pytorch/tutorials' dcgan_faces_tutorial.py Generator/Discriminator, not a paper citation",
+        tolerance: 0.01,
+    },
 ];
 
 fn models_dir() -> PathBuf {
