@@ -308,18 +308,32 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
             let input_size = layer.params.hidden_size.unwrap_or(hidden);
             let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
-            rnn::lstm_params(hidden, input_size, true) * bidir_mult
+            // `num_rnn_layers` was already parsed from JSON and read nowhere
+            // — a node stating "4-layer LSTM" was costed as a single cell,
+            // since a stacked RNN's layers 2..N each have `hidden` as their
+            // own input size (they consume the previous layer's output),
+            // not the original `input_size`.
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let first = rnn::lstm_params(hidden, input_size, true);
+            let rest = rnn::lstm_params(hidden, hidden, true) * (stack - 1);
+            (first + rest) * bidir_mult
         }
         LayerType::GruBlock => {
             let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
             let input_size = layer.params.hidden_size.unwrap_or(hidden);
             let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
-            rnn::gru_params(hidden, input_size, true) * bidir_mult
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let first = rnn::gru_params(hidden, input_size, true);
+            let rest = rnn::gru_params(hidden, hidden, true) * (stack - 1);
+            (first + rest) * bidir_mult
         }
         LayerType::RnnCell => {
             let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
             let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            rnn::rnn_params(hidden, input_size, true)
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let first = rnn::rnn_params(hidden, input_size, true);
+            let rest = rnn::rnn_params(hidden, hidden, true) * (stack - 1);
+            first + rest
         }
         LayerType::Bidirectional => {
             let hidden = layer.params.rnn_hidden_size.unwrap_or(512);

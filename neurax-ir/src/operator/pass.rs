@@ -789,7 +789,11 @@ fn decompose_layer_to_ops(
             } else {
                 4
             };
-            let flops = (batch * seq * hidden * hidden * gates) as f64;
+            // Same stacking multiplier as the param formula
+            // (architecture/mod.rs) — a stacked RNN's FLOPs scale with its
+            // real layer count, not just its width.
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as f64;
+            let flops = (batch * seq * hidden * hidden * gates) as f64 * stack;
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Linear,

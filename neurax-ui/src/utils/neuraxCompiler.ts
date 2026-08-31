@@ -749,6 +749,30 @@ function fixEmbeddingParams(params: Record<string, unknown>): Record<string, unk
   return out;
 }
 
+/** LSTM/GRU/RNN: the backend reads the recurrent state size from
+ * `rnn_hidden_size` and the layer's input dimension from bare `hidden_size`
+ * — but a template author's `hidden_size` on an RNN node means the
+ * recurrent state size (see every real template: "BiGRU Layer 2 (256)"
+ * sets `hidden_size: 256` meaning *its own* width, not the previous
+ * layer's). Nothing here ever renamed it, so `rnn_hidden_size` was always
+ * absent and the backend fell back to a hardcoded 512 regardless of what
+ * the canvas said — silently discarding the user's configured size for
+ * every LSTM/GRU/RNN block in the app. */
+function fixRnnParams(params: Record<string, unknown>, inputDim: number | null): Record<string, unknown> {
+  const out = { ...params };
+  if (!('rnn_hidden_size' in out) && 'hidden_size' in out) {
+    out.rnn_hidden_size = out.hidden_size;
+    out.hidden_size = inputDim ?? out.hidden_size;
+  }
+  if (!('bidirectional_rnn' in out) && out.bidirectional === true) {
+    out.bidirectional_rnn = true;
+  }
+  if (!('num_rnn_layers' in out) && 'num_layers' in out) {
+    out.num_rnn_layers = out.num_layers;
+  }
+  return out;
+}
+
 function deleteParamKeys(params: Record<string, unknown>, keys: string[]): void {
   for (const key of keys) {
     delete params[key];
@@ -2305,6 +2329,22 @@ export function compileToNeuraxIR(
     if (blockType === 'ScaledDotProductAttn' || blockType === 'CrossAttention' || blockType === 'FlashAttention') {
       const inputDim = incomingIds.length > 0 ? (nodeDimMap.get(incomingIds[0]) ?? null) : null;
       params = fixSdpaParams(params, inputDim);
+    }
+    // node.type, not blockType: BLOCK_TYPE_MAP only covers 'lstm_cell'/
+    // 'gru_cell' explicitly, and everything else in this family (bilstm,
+    // bigru, rnn_cell, lstm_peephole_cell, indylstm_cell, ...) falls
+    // through to 'Opaque' there — but toParserLayerType() below resolves
+    // any of them to a real backend RNN layer_type via the exact same
+    // substring rule used here, so this must match just as broadly.
+    const rnnNormalized = normalizeLayerTypeKey(node.type);
+    if (
+      rnnNormalized.includes('lstm') ||
+      rnnNormalized.includes('gru') ||
+      rnnNormalized === 'rnn' ||
+      rnnNormalized === 'rnn_cell'
+    ) {
+      const inputDim = incomingIds.length > 0 ? (nodeDimMap.get(incomingIds[0]) ?? null) : null;
+      params = fixRnnParams(params, inputDim);
     }
 
     // @ts-ignore

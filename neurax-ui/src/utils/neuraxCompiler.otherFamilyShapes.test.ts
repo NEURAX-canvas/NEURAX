@@ -130,4 +130,29 @@ describe('RNN hidden size', () => {
     // must now be the real configured 256, not 0.
     expect(byId.get('lstm').output_shape).toEqual([4, 50, 256]);
   });
+
+  it('a node\'s own configured hidden_size reaches the backend as rnn_hidden_size, not the generic hidden_size fallback', () => {
+    // Exact shape of a real template node (modelTemplates.ts's "BiGRU Layer
+    // 2 (256)"): the node's own hidden_size means its recurrent state size
+    // to whoever wrote the template, not an input dimension. Before this
+    // fix, rnn_hidden_size was never set on the compiled layer at all, so
+    // the backend fell back to a hardcoded 512 regardless of this value —
+    // any bilstm/bigru/lstm_cell/gru_cell node's configured size was
+    // silently discarded.
+    const nodes: CanvasNode[] = [
+      node('in', 'input', {}),
+      node('emb', 'embedding', { embedding_dim: 300 }),
+      node('rnn', 'bigru', { hidden_size: 256, num_layers: 1, bidirectional: true }),
+      node('out', 'output', {}),
+    ];
+    const connections: Connection[] = [link('in', 'emb'), link('emb', 'rnn'), link('rnn', 'out')];
+
+    const ir = compileToNeuraxIR(nodes, connections, { family: 'rnn', batchSize: 4, seqLen: 50 });
+    const byId = new Map(ir.model.layers.map((l: any) => [l.id, l]));
+    const rnnLayer = byId.get('rnn');
+
+    expect(rnnLayer.layer_type).toBe('gru_block');
+    expect(rnnLayer.params.rnn_hidden_size).toBe(256);
+    expect(rnnLayer.params.bidirectional_rnn).toBe(true);
+  });
 });
