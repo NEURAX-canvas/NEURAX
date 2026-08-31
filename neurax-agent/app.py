@@ -11,7 +11,9 @@ Code is split into modules:
 import asyncio
 import json
 import os
+import time
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
@@ -22,10 +24,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from config import _runs, _sse_event
+from config import RunEntry, _runs, _sse_event, _stop_run, _sweep_expired_runs
 from agent_runner import _run_agent
 
-app = FastAPI(title="neurax-agent")
+
+async def _sweep_loop() -> None:
+    while True:
+        await asyncio.sleep(60)
+        _sweep_expired_runs()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    sweeper = asyncio.create_task(_sweep_loop())
+    try:
+        yield
+    finally:
+        sweeper.cancel()
+
+
+app = FastAPI(title="neurax-agent", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -82,28 +100,28 @@ async def health() -> dict[str, str]:
 async def create_run(req: RunRequest) -> dict[str, Any]:
     run_id = str(uuid.uuid4())
     q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-    _runs[run_id] = q
 
     snapshot = req.snapshot.model_dump()
-    asyncio.create_task(
+    task = asyncio.create_task(
         _run_agent(
             run_id,
             q,
             req.user_message,
             snapshot,
-            _runs,
             creativity=req.creativity,
             credentials=req.credentials.model_dump() if req.credentials else None,
         )
     )
+    _runs[run_id] = RunEntry(task=task, queue=q, created_at=time.monotonic())
     return {"run_id": run_id}
 
 
 @app.get("/runs/{run_id}/events")
 async def run_events(run_id: str) -> StreamingResponse:
-    q = _runs.get(run_id)
-    if not q:
+    entry = _runs.get(run_id)
+    if not entry:
         raise HTTPException(status_code=404, detail="Unknown run_id")
+    q = entry.queue
 
     async def gen():
         try:
@@ -117,7 +135,12 @@ async def run_events(run_id: str) -> StreamingResponse:
                 if event == "done":
                     break
         finally:
-            _runs.pop(run_id, None)
+            # Covers both a normal finish (the task is already done, so
+            # cancel() is a harmless no-op) and a client that disconnected
+            # mid-run — in that case, there's no one left to spend further
+            # LLM calls for, so the run stops right here instead of running
+            # to completion unwatched.
+            _stop_run(run_id)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

@@ -39,7 +39,6 @@ async def _run_agent(
     q: "asyncio.Queue[dict[str, Any]]",
     user_message: str,
     snapshot: dict[str, Any],
-    _runs: dict[str, "asyncio.Queue[dict[str, Any]]"],
     creativity: float = 0.0,
     credentials: dict[str, Any] | None = None,
 ) -> None:
