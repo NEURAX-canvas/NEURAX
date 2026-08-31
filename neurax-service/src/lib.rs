@@ -509,6 +509,138 @@ impl AppState {
     }
 }
 
+/// Reclaim streaming-analysis job/result entries older than the retention
+/// window.
+///
+/// `state.channels` is cleaned up 30s after each job finishes (see
+/// `analyze_stream_start`), but `state.jobs` and `state.results` were never
+/// removed anywhere — every `/analyze/stream` call inserts a job_id-keyed
+/// entry, including the job's full JSON report in `results`, that then lived
+/// for the rest of the process's uptime. A long-running service (or a
+/// desktop app left open for days) accumulates one of these per streaming
+/// analysis ever run, unbounded.
+///
+/// This can't be as aggressive as the 30s `channels` cleanup: `/analyze/
+/// result/{job_id}` and `/analyze/status/{job_id}` are meant to be pollable
+/// well after the SSE stream itself has closed, so removing entries too
+/// early would break that legitimate "come back later for the result" use.
+/// 24h is ample time for that, while still bounding memory to roughly a
+/// day's worth of streaming jobs instead of the process's entire lifetime.
+const JOB_RETENTION_MS: u64 = 24 * 60 * 60 * 1000;
+const JOB_SWEEP_INTERVAL: Duration = Duration::from_secs(60 * 60);
+
+/// Remove `jobs`/`results` entries whose `created_at_ms` is older than
+/// `retention_ms` relative to `now_ms`. Returns how many were reclaimed.
+/// Pulled out of `spawn_job_retention_sweeper`'s loop so the sweep logic
+/// itself — not just "does a background task exist" — has a direct test.
+fn sweep_expired_jobs(
+    jobs: &DashMap<String, JobInfo>,
+    results: &DashMap<String, serde_json::Value>,
+    now_ms: u64,
+    retention_ms: u64,
+) -> usize {
+    let expired: Vec<String> = jobs
+        .iter()
+        .filter(|entry| now_ms.saturating_sub(entry.created_at_ms) > retention_ms)
+        .map(|entry| entry.key().clone())
+        .collect();
+    for job_id in &expired {
+        jobs.remove(job_id);
+        results.remove(job_id);
+    }
+    expired.len()
+}
+
+fn spawn_job_retention_sweeper(state: &AppState) {
+    let jobs = state.jobs.clone();
+    let results = state.results.clone();
+    actix_web::rt::spawn(async move {
+        loop {
+            actix_web::rt::time::sleep(JOB_SWEEP_INTERVAL).await;
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+            let reclaimed = sweep_expired_jobs(&jobs, &results, now_ms, JOB_RETENTION_MS);
+            if reclaimed > 0 {
+                tracing::info!("[JOB-SWEEP] Reclaimed {} job(s) older than 24h", reclaimed);
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod job_sweep_tests {
+    use super::*;
+
+    fn job(created_at_ms: u64) -> JobInfo {
+        JobInfo {
+            job_id: "irrelevant".to_string(),
+            user_id: "u1".to_string(),
+            view_token: "t".to_string(),
+            status: "completed".to_string(),
+            created_at_ms,
+            completed_at_ms: Some(created_at_ms),
+            error: None,
+        }
+    }
+
+    /// The bug this sweeper fixes: before it existed, nothing ever called
+    /// `jobs.remove`/`results.remove` for these two maps (unlike `channels`,
+    /// which already had a 30s cleanup) — so a job from a week ago and a job
+    /// from a second ago were indistinguishable, both kept forever. This
+    /// pins the actual boundary: strictly-older-than-retention is reclaimed,
+    /// within-retention is not.
+    #[test]
+    fn only_entries_past_the_retention_window_are_reclaimed() {
+        let jobs: DashMap<String, JobInfo> = DashMap::new();
+        let results: DashMap<String, serde_json::Value> = DashMap::new();
+        let retention_ms = 24 * 60 * 60 * 1000;
+        let now_ms = 10 * retention_ms; // arbitrary "current time" far from zero
+
+        jobs.insert("old".to_string(), job(now_ms - retention_ms - 1));
+        jobs.insert("boundary".to_string(), job(now_ms - retention_ms));
+        jobs.insert("recent".to_string(), job(now_ms - 1_000));
+        results.insert("old".to_string(), serde_json::json!({"report": "old"}));
+        results.insert(
+            "boundary".to_string(),
+            serde_json::json!({"report": "boundary"}),
+        );
+        results.insert(
+            "recent".to_string(),
+            serde_json::json!({"report": "recent"}),
+        );
+
+        let reclaimed = sweep_expired_jobs(&jobs, &results, now_ms, retention_ms);
+
+        assert_eq!(
+            reclaimed, 1,
+            "only the entry strictly past retention should go"
+        );
+        assert!(!jobs.contains_key("old"), "old job should be removed");
+        assert!(
+            !results.contains_key("old"),
+            "old job's result should be removed too"
+        );
+        assert!(
+            jobs.contains_key("boundary"),
+            "exactly-at-retention should survive"
+        );
+        assert!(jobs.contains_key("recent"), "recent job should survive");
+        assert!(
+            results.contains_key("recent"),
+            "recent job's result should survive"
+        );
+    }
+
+    #[test]
+    fn an_empty_store_sweeps_cleanly() {
+        let jobs: DashMap<String, JobInfo> = DashMap::new();
+        let results: DashMap<String, serde_json::Value> = DashMap::new();
+        assert_eq!(sweep_expired_jobs(&jobs, &results, 1_000_000, 1000), 0);
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
 struct AnalyzeStreamRequest {
     topology: serde_json::Value,
@@ -4751,6 +4883,7 @@ pub fn build_server(
     config: &ServerConfig,
     app_state: AppState,
 ) -> std::io::Result<(actix_web::dev::Server, Vec<std::net::SocketAddr>)> {
+    spawn_job_retention_sweeper(&app_state);
     let origins = config.allowed_origins.clone();
     let server =
         HttpServer::new(move || neurax_app!(origins, app_state)).bind(&config.bind_addr)?;
@@ -4768,6 +4901,7 @@ pub fn serve_on_listener(
     allowed_origins: Vec<String>,
     app_state: AppState,
 ) -> std::io::Result<actix_web::dev::Server> {
+    spawn_job_retention_sweeper(&app_state);
     let server =
         HttpServer::new(move || neurax_app!(allowed_origins, app_state)).listen(listener)?;
     Ok(server.run())
