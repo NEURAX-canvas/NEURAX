@@ -233,12 +233,15 @@ pub enum DiagnosticCode {
     I002, // MoE detected
     I003, // Flash Attention detected
 
-    // Hints (H001-H005) - Recommendations
+    // Hints (H001-H008) - Recommendations
     H001, // Enable gradient checkpointing
     H002, // Enable Flash Attention
     H003, // Consider INT8 quantization
     H004, // Increase micro-batches PP
     H005, // ZeRO-3 recommended
+    H006, // No LR warmup configured
+    H007, // Learning rate exceeds the Lipschitz-based stability bound
+    H008, // Tokens-per-parameter ratio far from compute-optimal (Chinchilla)
 }
 
 impl DiagnosticCode {
@@ -264,6 +267,9 @@ impl DiagnosticCode {
             Self::H003 => "H003",
             Self::H004 => "H004",
             Self::H005 => "H005",
+            Self::H006 => "H006",
+            Self::H007 => "H007",
+            Self::H008 => "H008",
         }
     }
 
@@ -291,6 +297,9 @@ impl DiagnosticCode {
             Self::H003 => "Consider INT8 quantization for inference",
             Self::H004 => "Consider increasing micro-batches for pipeline parallelism",
             Self::H005 => "ZeRO-3 recommended for this model size",
+            Self::H006 => "No learning-rate warmup configured",
+            Self::H007 => "Learning rate exceeds the estimated stability bound",
+            Self::H008 => "Tokens-per-parameter ratio far from compute-optimal",
         }
     }
 }

@@ -439,6 +439,14 @@ pub fn run_analysis_streaming(
 
     // Assign phase timeline to report now that all phases are complete
     report.phase_timeline = phase_timeline;
+    report
+        .diagnostics
+        .extend(neurax_ir::report::generate_hyperparameter_diagnostics(
+            &ctx,
+            report.metrics.total_parameters,
+            dynamic.stability.as_ref(),
+        ));
+    report.metrics.diagnostic_count = report.diagnostics.len();
 
     let analysis_time_ms = start.elapsed().as_millis() as u64;
 

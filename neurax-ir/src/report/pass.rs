@@ -7,6 +7,7 @@ use super::{
 use crate::architecture::ArchitectureIR;
 use crate::compute::ComputeIR;
 use crate::cost::CostIR;
+use crate::dynamic::StabilityMetrics;
 use crate::error::NeuraxError;
 use crate::graph::GraphIR;
 use crate::hardware::HardwareIR;
@@ -16,6 +17,7 @@ use crate::parallelism::ParallelismIR;
 use crate::tensor::TensorIR;
 use crate::traits::ReportPass as ReportPassTrait;
 use crate::NeuraxContext;
+use neurax_parser::ModelType;
 
 /// Input for report generation
 pub struct ReportInput<'a> {
@@ -452,6 +454,114 @@ fn check_shape_consistency(graph: &GraphIR) -> Vec<Diagnostic> {
             )),
             precision_impact: 0.5,
         });
+    }
+
+    diagnostics
+}
+
+/// Hyperparameter recommendations grounded in published, family-general or
+/// family-specific results — never a fabricated "optimal value". Computed
+/// separately from `generate_diagnostics` because it needs `ctx.config` and
+/// (for H007) the Dynamic phase's stability output, which runs concurrently
+/// with — and so isn't available inside — `build_report` itself; the caller
+/// merges this into `report.diagnostics` once both branches have finished.
+pub fn generate_hyperparameter_diagnostics(
+    ctx: &NeuraxContext,
+    total_parameters: u64,
+    stability: Option<&StabilityMetrics>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let training = &ctx.config.training;
+
+    // H006: warmup — near-universal practice across families and
+    // optimizers; not specific to any one architecture the way the other
+    // two checks below are.
+    if training.warmup_steps == 0 && training.max_steps > 0 {
+        diagnostics.push(Diagnostic {
+            category: DiagnosticCategory::Configuration,
+            severity: Severity::Hint,
+            code: DiagnosticCode::H006,
+            message: format!(
+                "No learning-rate warmup configured ({} steps planned, warmup_steps = 0). \
+                 A short LR warmup is close to universal practice at this scale — it protects \
+                 against early-training instability, particularly with Adam-family optimizers.",
+                training.max_steps
+            ),
+            layer_id: None,
+            suggestion: Some("Set warmup_steps to roughly 1-5% of max_steps.".to_string()),
+            precision_impact: 0.0,
+        });
+    }
+
+    // H007: learning rate vs. the Lipschitz-based stability bound
+    // (`lr < 2/L`, classical gradient-descent stability theory). L itself is
+    // a per-layer heuristic estimate (see StabilityAnalysisPass), so this is
+    // directional, not an exact bound — but the composition genuinely
+    // depends on this model's own architecture (depth, attention seq_len,
+    // MoE routing, SSM state size), not a family-wide constant.
+    if let Some(sta) = stability {
+        if training.learning_rate > sta.recommended_max_learning_rate {
+            diagnostics.push(Diagnostic {
+                category: DiagnosticCategory::Configuration,
+                severity: Severity::Hint,
+                code: DiagnosticCode::H007,
+                message: format!(
+                    "learning_rate ({:.2e}) exceeds the estimated stability bound (~{:.2e}, \
+                     from lr < 2/L with L ≈ {:.2} estimated from this architecture's layer \
+                     composition). Directional heuristic, not an exact bound — but a large \
+                     excess is a real risk factor for early divergence.",
+                    training.learning_rate,
+                    sta.recommended_max_learning_rate,
+                    sta.network_lipschitz_estimate
+                ),
+                layer_id: None,
+                suggestion: Some(format!(
+                    "Consider a learning_rate at or below ~{:.2e}.",
+                    sta.recommended_max_learning_rate
+                )),
+                precision_impact: 0.0,
+            });
+        }
+    }
+
+    // H008: compute-optimal tokens-per-parameter ratio (Hoffmann et al.
+    // 2022, "Chinchilla") — established for LLM pretraining (Transformer,
+    // MoE); only fires when the client actually states a dataset size, so
+    // this never guesses a training-set size that wasn't given.
+    if matches!(
+        ctx.config.model.model_type,
+        ModelType::Transformer | ModelType::Moe
+    ) {
+        if let Some(dataset_tokens) = ctx.config.data.dataset_size {
+            let params = total_parameters as f64;
+            if params > 0.0 && dataset_tokens > 0.0 {
+                const CHINCHILLA_TOKENS_PER_PARAM: f64 = 20.0;
+                let ratio = dataset_tokens / params;
+                if ratio < CHINCHILLA_TOKENS_PER_PARAM / 3.0
+                    || ratio > CHINCHILLA_TOKENS_PER_PARAM * 3.0
+                {
+                    let verdict = if ratio < CHINCHILLA_TOKENS_PER_PARAM / 3.0 {
+                        "under-trained for its size — more data would likely help more than a bigger model"
+                    } else {
+                        "large relative to its training budget — a smaller model on the same tokens would likely reach similar loss for less compute"
+                    };
+                    diagnostics.push(Diagnostic {
+                        category: DiagnosticCategory::Configuration,
+                        severity: Severity::Hint,
+                        code: DiagnosticCode::H008,
+                        message: format!(
+                            "Tokens-per-parameter ratio is {:.1} ({:.2e} tokens / {:.2e} params); \
+                             the compute-optimal ratio from Chinchilla scaling laws (Hoffmann et \
+                             al. 2022) is ~{:.0}. This model looks {}.",
+                            ratio, dataset_tokens, params, CHINCHILLA_TOKENS_PER_PARAM, verdict
+                        ),
+                        layer_id: None,
+                        suggestion: None,
+                        precision_impact: 0.0,
+                    });
+                }
+            }
+        }
     }
 
     diagnostics

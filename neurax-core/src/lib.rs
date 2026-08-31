@@ -303,7 +303,18 @@ pub fn run_analysis(config: ModelConfig) -> Result<AnalysisResult, NeuraxError> 
     report.phase_timeline = phase_timeline;
 
     // Phase 11 (Dynamic Analysis, M36-M55) was computed above, concurrently
-    // with Parallelism/Hardware — it depends on neither Cost nor Report.
+    // with Parallelism/Hardware — it depends on neither Cost nor Report. Its
+    // stability output feeds the H007 hyperparameter hint below, so that
+    // merge happens here, after both are done, rather than making Report
+    // depend on Dynamic during computation (which would undo the join).
+    report
+        .diagnostics
+        .extend(neurax_ir::report::generate_hyperparameter_diagnostics(
+            &ctx,
+            report.metrics.total_parameters,
+            dynamic.stability.as_ref(),
+        ));
+    report.metrics.diagnostic_count = report.diagnostics.len();
 
     let analysis_time_ms = start.elapsed().as_millis() as u64;
 
