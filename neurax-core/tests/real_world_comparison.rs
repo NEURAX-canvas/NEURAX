@@ -29,12 +29,10 @@ const SDXL_JSON: &str = include_str!("../../examples/models/sdxl_1.0.json");
 struct RealWorldMetrics {
     model_name: &'static str,
     family: &'static str,
-    total_params: u64,         // From papers
-    training_tokens: u64,      // Training data
-    training_cost_usd: f64,    // Published training cost
-    inference_latency_ms: f64, // Real inference time
-    peak_memory_gb: f64,       // Real memory usage
-    source: &'static str,      // Reference
+    total_params: u64,      // From papers
+    training_cost_usd: f64, // Published training cost
+    peak_memory_gb: f64,    // Real memory usage
+    source: &'static str,   // Reference
 }
 
 /// Computed metrics from Neurax IR
@@ -66,9 +64,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "GPT-3 175B",
         family: "Transformer",
         total_params: 175_000_000_000,
-        training_tokens: 300_000_000_000,
         training_cost_usd: 4_600_000.0, // ~$4.6M per OpenAI
-        inference_latency_ms: 150.0,
         peak_memory_gb: 350.0,
         source: "Brown et al. 2020, Language Models are Few-Shot Learners",
     },
@@ -76,9 +72,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "LLaMA 2 70B",
         family: "Transformer",
         total_params: 70_000_000_000,
-        training_tokens: 2_000_000_000_000,
         training_cost_usd: 2_000_000.0, // ~$2M estimated
-        inference_latency_ms: 45.0,
         peak_memory_gb: 140.0,
         source: "Touvron et al. 2023, LLaMA 2 Open Foundation Models",
     },
@@ -86,20 +80,16 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
     RealWorldMetrics {
         model_name: "Mixtral 8x7B",
         family: "MoE",
-        total_params: 47_000_000_000,     // Total params
-        training_tokens: 500_000_000_000, // Estimated
-        training_cost_usd: 500_000.0,     // Estimated
-        inference_latency_ms: 25.0,
-        peak_memory_gb: 26.0, // Active params only
+        total_params: 47_000_000_000, // Total params
+        training_cost_usd: 500_000.0, // Estimated
+        peak_memory_gb: 26.0,         // Active params only
         source: "Jiang et al. 2024, Mixtral of Experts",
     },
     RealWorldMetrics {
         model_name: "DeepSeek-V3",
         family: "MoE",
         total_params: 671_000_000_000,
-        training_tokens: 14_800_000_000_000,
         training_cost_usd: 5_576_000.0, // Published by DeepSeek
-        inference_latency_ms: 80.0,
         peak_memory_gb: 163.0,
         source: "DeepSeek AI 2024, DeepSeek-V3 Technical Report",
     },
@@ -108,9 +98,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "Mamba-2.8B",
         family: "SSM",
         total_params: 2_800_000_000,
-        training_tokens: 300_000_000_000,
         training_cost_usd: 50_000.0, // Estimated
-        inference_latency_ms: 5.0,
         peak_memory_gb: 6.0,
         source: "Gu & Dao 2023, Mamba: Linear-Time Sequence Modeling",
     },
@@ -118,9 +106,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "RWKV-7B",
         family: "SSM",
         total_params: 7_000_000_000,
-        training_tokens: 500_000_000_000,
         training_cost_usd: 150_000.0, // Estimated
-        inference_latency_ms: 12.0,
         peak_memory_gb: 14.0,
         source: "Peng et al. 2023, RWKV: Reinventing RNNs for Transformers",
     },
@@ -129,9 +115,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "ResNet-50",
         family: "CNN",
         total_params: 25_600_000,
-        training_tokens: 0,       // ImageNet = 1.2M images
         training_cost_usd: 500.0, // Estimated
-        inference_latency_ms: 2.0,
         peak_memory_gb: 4.0,
         source: "He et al. 2016, Deep Residual Learning",
     },
@@ -139,9 +123,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "VGG-16",
         family: "CNN",
         total_params: 138_000_000,
-        training_tokens: 0,
         training_cost_usd: 1_000.0, // Estimated
-        inference_latency_ms: 5.0,
         peak_memory_gb: 15.0,
         source: "Simonyan & Zisserman 2014, Very Deep Convolutional Networks",
     },
@@ -150,9 +132,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "Stable Diffusion 1.5",
         family: "Diffusion",
         total_params: 983_000_000,
-        training_tokens: 0,
         training_cost_usd: 600_000.0, // Estimated
-        inference_latency_ms: 1500.0, // 1.5s on A100
         peak_memory_gb: 10.0,
         source: "Rombach et al. 2022, High-Resolution Image Synthesis",
     },
@@ -160,9 +140,7 @@ const REAL_WORLD_DATA: &[RealWorldMetrics] = &[
         model_name: "SDXL 1.0",
         family: "Diffusion",
         total_params: 2_600_000_000,
-        training_tokens: 0,
         training_cost_usd: 2_000_000.0, // Estimated
-        inference_latency_ms: 5000.0,   // 5s on A100
         peak_memory_gb: 20.0,
         source: "Podell et al. 2023, SDXL: Improving Latent Diffusion",
     },

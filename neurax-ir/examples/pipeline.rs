@@ -12,7 +12,6 @@ use neurax_ir::hardware::HardwarePass;
 use neurax_ir::memory::MemoryPass;
 use neurax_ir::operator::OperatorPass;
 use neurax_ir::parallelism::ParallelismPass;
-use neurax_ir::report::ReportPass;
 use neurax_ir::tensor::TensorPass;
 use neurax_ir::traits::IrPass;
 use neurax_ir::NeuraxContext;

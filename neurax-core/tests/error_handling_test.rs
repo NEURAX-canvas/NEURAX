@@ -3,10 +3,7 @@
 //! Verifies that all error types are properly defined, handled, and propagated
 
 use neurax_core::analyze_json;
-use neurax_ir::{
-    ArchitectureError, ComputeError, CostError, GraphError, HardwareError, MemoryError,
-    NeuraxError, OperatorError, ParallelismError, TensorError,
-};
+use neurax_ir::{ArchitectureError, GraphError, HardwareError, MemoryError, TensorError};
 use neurax_parser::ParserError;
 
 const VALID_MODEL: &str = include_str!("../../examples/models/gpt3_175b.json");

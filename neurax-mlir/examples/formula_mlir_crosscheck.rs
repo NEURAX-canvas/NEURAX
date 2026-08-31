@@ -82,7 +82,6 @@ enum Verdict {
         mlir_flops: Option<f64>,
         verified: Result<(), String>,
     },
-    StubOnly, // lowering exists but is a hollow stub (tensor.empty → return); nothing to check
     Uncoverable(&'static str),
 }
 
@@ -448,12 +447,21 @@ fn main() {
     for r in &rows {
         let verdict_str = match &r.verdict {
             Verdict::Checked {
-                verified: Ok(()), ..
+                verified: Ok(()),
+                formula_flops,
+                mlir_flops: Some(mlir_flops),
+            } => {
+                let rel_err = (formula_flops - mlir_flops).abs() / formula_flops.max(1.0);
+                format!("✓ checked, MLIR valid (formula/mlir FLOPs match within {rel_err:.4})")
+            }
+            Verdict::Checked {
+                verified: Ok(()),
+                mlir_flops: None,
+                ..
             } => "✓ checked, MLIR valid".to_string(),
             Verdict::Checked {
                 verified: Err(e), ..
             } => format!("✗ checked, MLIR REJECTED: {e}"),
-            Verdict::StubOnly => "○ lowering is a hollow stub — nothing to verify".to_string(),
             Verdict::Uncoverable(reason) => format!("— uncoverable: {reason}"),
         };
         println!(
@@ -471,8 +479,8 @@ fn main() {
     );
     println!("{}", "=".repeat(70));
     println!(
-        "{:<14} {:>8} {:>10} {:>10} {:>14} {:>10}",
-        "famille", "couches", "vérifiées", "réussies", "stub-only", "non-couvertes"
+        "{:<14} {:>8} {:>10} {:>10} {:>10}",
+        "famille", "couches", "vérifiées", "réussies", "non-couvertes"
     );
     let families = [
         "transformer",
@@ -506,10 +514,6 @@ fn main() {
                 )
             })
             .count();
-        let stub = fam_rows
-            .iter()
-            .filter(|r| matches!(r.verdict, Verdict::StubOnly))
-            .count();
         let uncovered = fam_rows
             .iter()
             .filter(|r| matches!(r.verdict, Verdict::Uncoverable(_)))
@@ -518,8 +522,8 @@ fn main() {
         total_passed += passed;
         total_layers += total;
         println!(
-            "{:<14} {:>8} {:>10} {:>10} {:>14} {:>10}",
-            fam, total, checked, passed, stub, uncovered
+            "{:<14} {:>8} {:>10} {:>10} {:>10}",
+            fam, total, checked, passed, uncovered
         );
     }
     println!("{}", "-".repeat(70));

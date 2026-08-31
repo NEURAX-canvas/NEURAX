@@ -205,7 +205,6 @@ pub fn gqa_params(hidden_size: usize, num_heads: usize, num_kv_heads: usize, bia
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_windowed_attention_at_full_seq_matches_dense_attention_exactly() {

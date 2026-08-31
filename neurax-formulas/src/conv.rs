@@ -153,7 +153,6 @@ pub fn pooling_flops(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_conv2d_flops_resnet() {

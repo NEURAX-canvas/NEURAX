@@ -110,7 +110,6 @@ pub fn gated_mlp_params(hidden_size: usize, intermediate_size: usize, bias: bool
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_mlp_flops() {

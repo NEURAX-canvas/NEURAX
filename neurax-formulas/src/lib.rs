@@ -59,7 +59,6 @@ pub fn optimizer_flops_multiplier() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use approx::assert_relative_eq;
 
     #[test]
     fn test_dtype_bytes() {

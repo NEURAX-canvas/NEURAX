@@ -127,7 +127,7 @@ fn test_c06_batchnorm_params() {
     // Running mean/variance ne sont pas des paramètres entraînables
     // Ce test vérifie que le compilateur ne compte pas 4×C
     let json = include_str!("../../models/gpt2_medium.json");
-    let result = analyze_json(json).expect("Analysis should succeed");
+    analyze_json(json).expect("Analysis should succeed");
 
     // Vérifier que LayerNorm est compté correctement (2 params par dim: weight + bias)
     // Pour GPT-2 Medium: d_model = 1024, num_layers = 24
@@ -380,8 +380,6 @@ fn test_c25_throughput_formula() {
     let json = include_str!("../../models/gpt2_medium.json");
     let result = analyze_json(json).expect("Analysis should succeed");
 
-    let batch = 1u64;
-    let seq = 1024u64;
     let latency_s = result.hardware.metrics.latency_ms / 1000.0;
     let throughput = result.hardware.metrics.throughput_tokens_per_s;
 

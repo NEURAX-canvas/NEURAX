@@ -160,7 +160,6 @@ fn test_f02_gat_flops() {
 fn test_f02_gan_generator_flops() {
     // Generator: noise → image via transposed convolutions
     // FLOPs ≈ sum of transposed conv FLOPs
-    let latent_dim = 100u64;
     let final_resolution = 64u64;
     let final_channels = 3u64;
 
@@ -176,9 +175,6 @@ fn test_f02_gan_generator_flops() {
 fn test_f02_gan_discriminator_flops() {
     // Discriminator: image → probability via convolutions
     // Similar to CNN classification
-    let input_resolution = 64u64;
-    let input_channels = 3u64;
-
     // Approximate: similar to CNN with same input size
     let approx_flops = 2.0e7; // rough estimate for 64x64 image
 

@@ -145,7 +145,7 @@ fn test_gpt2_small_params_validation() {
 
     let neurax_params = result.arch.metrics.total_parameters;
     let paper_params = paper_params("gpt2_small");
-    let error = ((neurax_params as f64 - paper_params as f64).abs() / paper_params as f64);
+    let error = (neurax_params as f64 - paper_params as f64).abs() / paper_params as f64;
 
     // Tolérance ±60% (modèles JSON de test peuvent différer des specs officielles)
     assert!(
@@ -173,7 +173,7 @@ fn test_gpt2_medium_params_validation() {
 
     let neurax_params = result.arch.metrics.total_parameters;
     let paper_params = paper_params("gpt2_medium");
-    let error = ((neurax_params as f64 - paper_params as f64).abs() / paper_params as f64);
+    let error = (neurax_params as f64 - paper_params as f64).abs() / paper_params as f64;
 
     // Tolérance ±60% (modèles JSON de test peuvent différer des specs officielles)
     assert!(
