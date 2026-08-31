@@ -345,6 +345,13 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
         report
             .diagnostics
             .extend(detect_architecture_features(&ctx.config));
+        // Diagnostics a pass pushed directly during the pipeline (currently
+        // E003 "custom formula failed" and W001 "custom layer without a
+        // formula", both from OperatorPass) — collected here into the same
+        // Vec everything else lands in. Before this, ctx.diagnostics was
+        // written to but never read anywhere, so a model that hit either
+        // condition got no warning in its report at all.
+        report.diagnostics.extend(ctx.diagnostics.lock().drain(..));
         report.metrics.diagnostic_count = report.diagnostics.len(); // Update count
 
         // Generate recommendations
