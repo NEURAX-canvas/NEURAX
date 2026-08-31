@@ -203,13 +203,13 @@ impl InferencePass {
             })
             .unwrap_or(0.0);
 
-        let raw_risk = (temp_factor * 0.40
-            + beam_factor * 0.20
-            + diversity_factor * 0.20
-            + adversarial_factor
-            + capacity_factor
-            - rep_mitigation)
-            .clamp(0.0, 1.0);
+        // Kept as the unclamped sum the classification below has always used
+        // — a very "safe" sampling setup can still offset a large capacity
+        // penalty and vice versa, exactly as before this split existed.
+        let sampling_raw =
+            temp_factor * 0.40 + beam_factor * 0.20 + diversity_factor * 0.20 + adversarial_factor
+                - rep_mitigation;
+        let raw_risk = (sampling_raw + capacity_factor).clamp(0.0, 1.0);
 
         let confidence = ((1.0 - raw_risk) * 100.0).round();
 
@@ -221,7 +221,18 @@ impl InferencePass {
             RiskLevel::High
         };
 
-        HallucinationRisk { risk, confidence }
+        HallucinationRisk {
+            risk,
+            confidence,
+            // `None` rather than `Some(0.0)` when no model was given: 0.0
+            // would read as "a design was connected and it contributed
+            // nothing," which is a different claim from "no design at all."
+            capacity_component: model
+                .and_then(|m| m.total_parameters)
+                .filter(|p| *p > 0)
+                .map(|_| capacity_factor),
+            sampling_component: sampling_raw.clamp(0.0, 1.0),
+        }
     }
 
     // ── Widget 5 : Attention Focus ───────────────────────────────────────────

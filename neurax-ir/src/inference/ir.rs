@@ -139,6 +139,18 @@ pub struct HallucinationRisk {
     pub risk: RiskLevel,
     /// Confiance estimée [0, 100]
     pub confidence: f64,
+    /// Contribution from the connected design's real parameter count, in the
+    /// same [0, 1] units as `sampling_component` — a smaller model
+    /// confabulates more at identical sampling settings. `None` when no
+    /// design is connected, in which case it had no effect on `risk`.
+    pub capacity_component: Option<f64>,
+    /// Contribution from sampling settings alone (temperature, beam width,
+    /// top-p, repetition penalty, the adversarial-prompt stress test),
+    /// clamped to [0, 1] for display. The only thing this score is built
+    /// from when no design is connected — kept separate from
+    /// `capacity_component` so neither can be mistaken for a measurement of
+    /// the other.
+    pub sampling_component: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

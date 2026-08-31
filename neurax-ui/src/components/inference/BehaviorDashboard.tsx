@@ -219,20 +219,44 @@ function NoiseScheduleChart({ data }: { data: number[] }) {
   );
 }
 
-function HallucinationRiskCard({ risk, confidence }: { risk: InferenceRiskLevel; confidence: number }) {
+/**
+ * Widget 4 — Hallucination Risk.
+ *
+ * Unlike every other widget here, this one used to carry no disclosure at
+ * all, and its copy ("High likelihood of generating unsupported claims.
+ * Manual review recommended.") read like a real finding about the connected
+ * model rather than a score built from sampling settings plus, when a
+ * design is connected, its real parameter count. Rebuilt to match the rest
+ * of the dashboard: an explicit hint, and the two components shown
+ * separately rather than blended into one number nothing distinguishes.
+ */
+function HallucinationRiskCard({
+  risk,
+  confidence,
+  capacityComponent,
+  samplingComponent,
+}: {
+  risk: InferenceRiskLevel;
+  confidence: number;
+  capacityComponent: number | null;
+  samplingComponent: number;
+}) {
   const descriptions: Record<InferenceRiskLevel, string> = {
-    low: 'Model outputs are grounded in context with minimal fabrication risk.',
-    medium: 'Some outputs may deviate from provided context. Verify critical information.',
-    high: 'High likelihood of generating unsupported claims. Manual review recommended.',
+    low: 'At these settings, the score built from sampling behavior (and model size, if connected) stays low.',
+    medium: 'At these settings, that score sits in the middle range — worth a second look at critical outputs.',
+    high: 'At these settings, that score runs high — treat unverified claims with extra caution.',
   };
-  
+
   return (
     <div className="inference-card">
-      <h3 className="text-sm font-semibold flex items-center gap-2 mb-3">
-        <AlertTriangle className="w-4 h-4 text-primary" />
-        Hallucination Risk
-      </h3>
-      
+      <div className="mb-3">
+        <CardHeading
+          icon={AlertTriangle}
+          title="Hallucination Risk"
+          hint="How likely this generation is to include unsupported claims — from temperature, top-p, beam width and repetition penalty (plus the adversarial-prompt stress test), not measured from an actual generation. When a design is connected, its real parameter count also contributes: smaller models confabulate more at identical settings."
+        />
+      </div>
+
       <div className="flex items-center gap-3 mb-3">
         <span className={cn("px-3 py-1 rounded-full text-xs font-semibold uppercase", riskColors[risk])}>
           {risk}
@@ -241,12 +265,27 @@ function HallucinationRiskCard({ risk, confidence }: { risk: InferenceRiskLevel;
           {confidence}% confidence
         </span>
       </div>
-      
+
       <Progress value={confidence} className="h-1.5 mb-3" />
-      
-      <p className="text-xs text-muted-foreground leading-relaxed">
+
+      <p className="text-xs text-muted-foreground leading-relaxed mb-3">
         {descriptions[risk]}
       </p>
+
+      <div className={cn("grid gap-2 text-[11px]", capacityComponent !== null ? "grid-cols-2" : "grid-cols-1")}>
+        <div className="rounded-md bg-secondary/50 p-2">
+          <div className="text-muted-foreground">From sampling settings</div>
+          <div className="font-semibold text-foreground">{Math.round(samplingComponent * 100)}%</div>
+        </div>
+        {capacityComponent !== null && (
+          <div className="rounded-md bg-secondary/50 p-2">
+            <div className="text-muted-foreground">From model size</div>
+            <div className="font-semibold text-foreground">
+              {capacityComponent >= 0 ? '+' : ''}{Math.round(capacityComponent * 100)}%
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -658,6 +697,8 @@ export function BehaviorDashboard({ architectureType, report, loading, error }: 
             <HallucinationRiskCard
               risk={report.hallucination_risk.risk}
               confidence={report.hallucination_risk.confidence}
+              capacityComponent={report.hallucination_risk.capacity_component}
+              samplingComponent={report.hallucination_risk.sampling_component}
             />
 
             {/* Widget 5 — Attention Focus */}

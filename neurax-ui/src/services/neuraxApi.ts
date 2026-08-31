@@ -309,7 +309,18 @@ export interface InferenceReport {
   stability_index: { score: number; level: StabilityLevel };
   entropy_evolution: number[];
   noise_schedule?: number[];
-  hallucination_risk: { risk: InferenceRiskLevel; confidence: number };
+  hallucination_risk: {
+    risk: InferenceRiskLevel;
+    confidence: number;
+    /** From the connected design's real parameter count — a smaller model
+     * confabulates more at identical sampling settings. Absent when no
+     * design is connected, in which case it had no effect on `risk`. */
+    capacity_component: number | null;
+    /** From sampling settings alone (temperature, beam width, top-p,
+     * repetition penalty, the adversarial-prompt stress test) — the only
+     * thing this score is built from when no design is connected. */
+    sampling_component: number;
+  };
   attention_focus: number[];
   /** SSM/Mamba only — a Transformer/MoE/diffusion model has no sequential
    * hidden state for "coherence across sequence length" to describe. */

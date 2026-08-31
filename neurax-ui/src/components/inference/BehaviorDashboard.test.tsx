@@ -21,7 +21,7 @@ function baseReport(overrides: Partial<InferenceReport> = {}): InferenceReport {
   return {
     stability_index: { score: 0.5, level: 'drift' },
     entropy_evolution: Array(20).fill(1.5),
-    hallucination_risk: { risk: 'low', confidence: 80 },
+    hallucination_risk: { risk: 'low', confidence: 80, capacity_component: null, sampling_component: 0.2 },
     attention_focus: Array(12).fill(0.5),
     context_degradation: 42,
     sampling_volatility: { diversity: 30, determinism: 60 },
