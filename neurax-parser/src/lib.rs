@@ -4,19 +4,18 @@
 //!
 //! Part of the [NEURAX](https://github.com/rustnew/NEURAX) analytical compiler
 //! for neural network architectures. Parses the NEURAX JSON format (a universal
-//! description of *any* neural architecture) into a validated, dimension-resolved
-//! strongly-typed AST.
+//! description of *any* neural architecture) into a validated, strongly-typed
+//! AST.
 //!
 //! ## Pipeline
 //!
 //! 1. **Parse** — [`parse_model_config`] turns JSON into a [`ModelConfig`]
-//! 2. **Validate** — [`ModelValidator`] checks schema + semantic coherence
-//! 3. **Absorb** — [`AbsorbedModel::absorb`] resolves symbolic dimensions
+//! 2. **Validate** — [`validate_model_config`] checks schema + semantic coherence
 //!
 //! ## Quick example
 //!
 //! ```rust
-//! use neurax_parser::{parse_model_config, ModelValidator};
+//! use neurax_parser::parse_model_config;
 //!
 //! let json = r#"{
 //!   "schema_version": "1.0",
@@ -42,8 +41,6 @@
 //! }"#;
 //!
 //! let config = parse_model_config(json).expect("valid NEURAX JSON");
-//! let validation = ModelValidator::new().validate(json);
-//! assert!(validation.is_valid);
 //! assert_eq!(config.model.layers.len(), 1);
 //! ```
 //!
@@ -53,23 +50,14 @@
 //! cargo run --example parse_basics
 //! ```
 
-pub mod absorption;
-mod coherence;
 mod error;
 mod model_config;
 mod schema;
-mod schema_validator;
 mod validator;
 
-pub use absorption::{
-    AbsorbedModel, Dim, DimResolver, DimSource, GlobalPropagator, GlobalResolutionContext,
-    LayerDimContext, LayerParamsMap, ResolvedDim,
-};
-pub use coherence::{CoherenceResult, CoherenceValidator};
 pub use error::*;
 pub use model_config::*;
 pub use schema::*;
-pub use schema_validator::{ModelValidator, ValidationError, ValidationMetrics, ValidationResult};
 pub use validator::*;
 
 use std::io::Read;

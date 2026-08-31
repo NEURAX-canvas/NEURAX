@@ -69,7 +69,6 @@ pub mod error;
 pub mod graph;
 pub mod hardware;
 pub mod inference;
-pub mod ir_injector;
 pub mod memory;
 pub mod operator;
 pub mod parallelism;
@@ -84,9 +83,6 @@ pub use cost::*;
 pub use error::*;
 pub use graph::*;
 pub use hardware::*;
-pub use ir_injector::{
-    ArchitectureIRInput, CostPassConfig, HardwarePassConfig, IrInjector, MemoryPassConfig,
-};
 pub use memory::*;
 pub use operator::*;
 pub use parallelism::*;

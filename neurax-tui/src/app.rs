@@ -55,27 +55,23 @@ impl Tab {
 }
 
 pub struct App {
-    pub running: bool,
     pub current_tab: Tab,
     pub models: Vec<Model>,
     pub selected_model: usize,
     pub compiled_result: Option<AnalysisResult>,
     pub real_world_data: Option<RealWorldData>,
     pub status_message: String,
-    pub scroll_offset: u16,
 }
 
 impl App {
     pub fn new() -> Self {
         Self {
-            running: true,
             current_tab: Tab::Overview,
             models: MODEL_LIST.to_vec(),
             selected_model: 0,
             compiled_result: None,
             real_world_data: None,
             status_message: "Select a model and press Enter to compile".to_string(),
-            scroll_offset: 0,
         }
     }
 

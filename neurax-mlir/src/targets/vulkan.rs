@@ -89,46 +89,6 @@ impl TargetLowering for VulkanBackend {
     }
 }
 
-/// Generate Vulkan-specific SPIR-V capabilities
-pub fn spirv_capabilities() -> String {
-    r#"
-  // SPIR-V capabilities for Vulkan
-  // Requires: SPIR-V 1.3+
-  // Extensions: SPV_KHR_storage_buffer_storage_class
-"#
-    .to_string()
-}
-
-/// Generate Vulkan module
-pub fn generate_vulkan_module(
-    model_name: &str,
-    hidden_size: usize,
-    _num_heads: usize,
-    seq_len: usize,
-    dtype: &str,
-) -> String {
-    format!(
-        r#"module @{model_name} attributes {{
-  gpu.container_module
-}} {{
-  // Vulkan/SPIR-V kernel entry points
-  // Compiles via: iree-compile --iree-hal-target-device=vulkan
-  
-  func.func @forward(%input: tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> attributes {{
-    iree.module.export
-  }} {{
-    %output = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>
-    return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
-  }}
-}}
-"#,
-        model_name = model_name,
-        hidden_size = hidden_size,
-        seq_len = seq_len,
-        dtype = dtype
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,11 +102,5 @@ mod tests {
     fn test_vulkan_matmul() {
         let code = VulkanBackend::lower_matmul(1, 1024, 1024, 1024, "f32").unwrap();
         assert!(code.contains("linalg.batch_matmul"));
-    }
-
-    #[test]
-    fn test_vulkan_module() {
-        let code = generate_vulkan_module("test", 768, 12, 512, "f32");
-        assert!(code.contains("gpu.container_module"));
     }
 }

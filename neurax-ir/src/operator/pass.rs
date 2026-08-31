@@ -706,7 +706,8 @@ fn decompose_layer_to_ops(
             // sqrt(seq) stand-in for a square feature-map side that
             // ResidualBlock/ResnetBottleneck already use for the same reason.
             let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops = conv::conv2d_flops(batch, in_ch, out_ch, side, side, kh, kh, stride, padding, 1);
+            let flops =
+                conv::conv2d_flops(batch, in_ch, out_ch, side, side, kh, kh, stride, padding, 1);
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Conv2D,
@@ -753,7 +754,10 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
-        LayerType::AdaIN | LayerType::PixelNorm | LayerType::MinibatchStd | LayerType::SpectralNorm => {
+        LayerType::AdaIN
+        | LayerType::PixelNorm
+        | LayerType::MinibatchStd
+        | LayerType::SpectralNorm => {
             // Normalization-weight cost (~RMSNorm's own 3-ops-per-element), not a
             // full layer's worth of compute — none of these four carry a weight
             // matrix of their own.
@@ -803,7 +807,11 @@ fn decompose_layer_to_ops(
         // placeholder (`batch*seq*hidden^2*4`) across a U-Net ResNet block, a
         // cross-attention block and a time-embedding MLP alike — three
         // structurally different operations costed identically.
-        LayerType::UnetBlock | LayerType::ResnetBlock | LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
+        LayerType::UnetBlock
+        | LayerType::ResnetBlock
+        | LayerType::DownBlock
+        | LayerType::UpBlock
+        | LayerType::MidBlock => {
             let in_ch = layer
                 .params
                 .in_channels_diff

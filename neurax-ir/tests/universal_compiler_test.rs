@@ -2,8 +2,7 @@
 //! Tests ALL model families, ALL layer types, ALL parameter extractions
 //! Generates comprehensive coverage report
 
-use neurax_ir::IrInjector;
-use neurax_parser::{parse_model_config, AbsorbedModel, LayerType, ModelType};
+use neurax_parser::{LayerType, ModelType};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MODEL TYPE COVERAGE TEST
@@ -194,97 +193,6 @@ fn test_all_layer_types() {
 // ═══════════════════════════════════════════════════════════════════════════════
 // COMPILATION PIPELINE TEST
 // ═══════════════════════════════════════════════════════════════════════════════
-
-#[test]
-fn test_compilation_pipeline_universality() {
-    println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
-    println!("║              UNIVERSAL COMPILER TEST - PIPELINE COVERAGE                 ║");
-    println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-
-    // Test a model from each family
-    let test_models = [
-        (
-            "Transformer",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"transformer","layers":[{"id":"embed","layer_type":"embedding","params":{"vocab_size":1000,"embedding_dim":256}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "CNN",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"cnn","layers":[{"id":"conv","layer_type":"conv","params":{"in_channels":3,"out_channels":64,"kernel_size":3}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "Diffusion",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"diffusion","layers":[{"id":"unet","layer_type":"unet_block","params":{}}],"global_params":{"diffusion_timesteps":1000}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "RNN",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"rnn","layers":[{"id":"lstm","layer_type":"lstm_block","params":{"rnn_hidden_size":256}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "MoE",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"moe","layers":[{"id":"moe","layer_type":"moe","params":{"num_experts":8}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "SSM",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"ssm","layers":[{"id":"mamba","layer_type":"mamba_block","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "GAN",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"gan","layers":[{"id":"gen","layer_type":"generator_block","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-        (
-            "Hybrid",
-            r#"{"schema_version":"1.0","model":{"name":"test","type":"hybrid","layers":[{"id":"conv","layer_type":"conv","params":{}},{"id":"attn","layer_type":"attention","params":{}}],"global_params":{}},"training":{"batch_size":1},"hardware":{"gpus":[{"name":"A100","count":1,"memory_gb":80}]},"data":{},"cost_config":{}}"#,
-        ),
-    ];
-
-    println!("┌────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ Family     │ Parse │ Absorb │ IR Inject │ Params │ Status              │");
-    println!("├────────────────────────────────────────────────────────────────────────────┤");
-
-    let mut all_passed = true;
-
-    for (family, json) in &test_models {
-        // Step 1: Parse
-        let config = match parse_model_config(json) {
-            Ok(c) => c,
-            Err(e) => {
-                println!(
-                    "│ {:<10} │ ✗     │ -      │ -         │ -      │ Parse error: {} │",
-                    family, e
-                );
-                all_passed = false;
-                continue;
-            }
-        };
-
-        // Step 2: Absorb
-        let absorbed = AbsorbedModel::absorb(config);
-
-        // Step 3: IR Inject
-        let _arch_ir = IrInjector::to_architecture_ir(&absorbed);
-        let _mem_ir = IrInjector::configure_memory_pass(&absorbed);
-
-        // Step 4: Calculate params
-        let params = IrInjector::calculate_total_params(&absorbed);
-
-        let status = if params > 0 || absorbed.resolution_context.confidence_score > 0.0 {
-            "✓ Complete"
-        } else {
-            all_passed = false;
-            "✗ Incomplete"
-        };
-
-        println!(
-            "│ {:<10} │ ✓     │ ✓      │ ✓         │ {:>6} │ {:<19} │",
-            family, params, status
-        );
-    }
-
-    println!("└────────────────────────────────────────────────────────────────────────────┘\n");
-
-    assert!(all_passed, "Some families failed pipeline");
-    println!("✓ All 8 families pass complete compilation pipeline!\n");
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // PARAMETER EXTRACTION TEST

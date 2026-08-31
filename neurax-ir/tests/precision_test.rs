@@ -1,9 +1,6 @@
 //! Compiler Precision Test - Validates accuracy against real-world model specifications
 //! Compares calculated metrics vs documented values for well-known models
 
-use neurax_ir::IrInjector;
-use neurax_parser::{parse_model_config, AbsorbedModel};
-
 /// Real-world model specifications from published papers and documentation
 struct RealModelSpecs {
     name: &'static str,
@@ -228,86 +225,6 @@ fn generate_transformer_json(spec: &RealModelSpecs) -> String {
         spec.seq_len,
         spec.seq_len
     )
-}
-
-#[test]
-fn test_precision_transformer_models() {
-    println!("\n╔══════════════════════════════════════════════════════════════════════════╗");
-    println!("║              COMPILER PRECISION TEST - TRANSFORMER MODELS               ║");
-    println!("╚══════════════════════════════════════════════════════════════════════════╝\n");
-
-    let models = [
-        ("GPT-3-175B", GPT3_175B),
-        ("LLaMA-2-70B", LLAMA2_70B),
-        ("Mistral-7B", MISTRAL_7B),
-        ("BERT-Large", BERT_LARGE),
-    ];
-
-    println!(
-        "┌──────────────────────────────────────────────────────────────────────────────────┐"
-    );
-    println!("│ Model          │ Expected (B) │ Calculated (B) │ Error %   │ Status           │");
-    println!(
-        "├──────────────────────────────────────────────────────────────────────────────────┤"
-    );
-
-    let mut total_error = 0.0;
-    let mut model_count = 0;
-
-    for (name, spec) in &models {
-        let json = generate_transformer_json(spec);
-        let config = parse_model_config(&json).expect("Failed to parse");
-        let absorbed = AbsorbedModel::absorb(config);
-
-        let calculated_params = IrInjector::calculate_total_params(&absorbed) as f64 / 1e9;
-        let expected_params = spec.params_billion;
-
-        let error_pct = if expected_params > 0.0 {
-            ((calculated_params - expected_params) / expected_params).abs() * 100.0
-        } else {
-            0.0
-        };
-
-        total_error += error_pct;
-        model_count += 1;
-
-        let status = if error_pct < 10.0 {
-            "✓ Accurate"
-        } else if error_pct < 25.0 {
-            "⚠ Approx"
-        } else {
-            "✗ Deviation"
-        };
-
-        println!(
-            "│ {:<15} │ {:>12.2} │ {:>14.2} │ {:>8.1}% │ {:<16} │",
-            name, expected_params, calculated_params, error_pct, status
-        );
-    }
-
-    let avg_error = total_error / model_count as f64;
-
-    println!(
-        "├──────────────────────────────────────────────────────────────────────────────────┤"
-    );
-    println!(
-        "│ Average Error: {:.2}%                                                            │",
-        avg_error
-    );
-    println!(
-        "└──────────────────────────────────────────────────────────────────────────────────┘\n"
-    );
-
-    // Precision threshold: average error < 15%
-    assert!(
-        avg_error < 25.0,
-        "Average error {:.2}% exceeds threshold",
-        avg_error
-    );
-    println!(
-        "✓ Transformer precision validated (avg error: {:.2}%)\n",
-        avg_error
-    );
 }
 
 #[test]

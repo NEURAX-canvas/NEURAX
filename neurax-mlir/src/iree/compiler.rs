@@ -242,38 +242,6 @@ impl Default for IreeCompiler {
     }
 }
 
-/// Generate IREE compilation script for all targets
-pub fn generate_multi_target_script(
-    input_mlir: &str,
-    model_name: &str,
-    targets: &[IreeDevice],
-    output_dir: &str,
-) -> String {
-    let mut script = String::new();
-
-    script.push_str("#!/bin/bash\n\n");
-    script.push_str(&format!("# IREE compilation script for {}\n", model_name));
-    script.push_str(&format!("# Input: {}\n\n", input_mlir));
-
-    for target in targets {
-        let output_file = format!("{}/{}_{}.vmfb", output_dir, model_name, target);
-
-        script.push_str(&format!("# Compile for {}\n", target));
-        script.push_str(&format!("echo 'Compiling for {}...'\n", target));
-        script.push_str(&format!(
-            "iree-compile {} {} -o {}\n",
-            input_mlir,
-            target.backend_flag(),
-            output_file
-        ));
-        script.push_str(&format!("echo 'Output: {}'\n\n", output_file));
-    }
-
-    script.push_str("echo 'All targets compiled successfully!'\n");
-
-    script
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,18 +266,6 @@ mod tests {
             compiler.compile_command(Path::new("model.mlir"), Path::new("model.vmfb"), &target);
         assert!(cmd.contains("iree-compile"));
         assert!(cmd.contains("llvm-cpu"));
-    }
-
-    #[test]
-    fn test_multi_target_script() {
-        let script = generate_multi_target_script(
-            "model.mlir",
-            "test_model",
-            &[IreeDevice::Cpu, IreeDevice::Cuda],
-            "output",
-        );
-        assert!(script.contains("llvm-cpu"));
-        assert!(script.contains("cuda"));
     }
 
     #[test]

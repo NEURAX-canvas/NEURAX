@@ -90,79 +90,6 @@ impl TargetLowering for CudaBackend {
     }
 }
 
-/// Generate tensor core operations for matmul
-pub fn generate_tensor_core_matmul(m: usize, k: usize, n: usize, dtype: &str) -> String {
-    format!(
-        r#"  // Tensor Core matmul using WMMA
-  func.func @tensor_core_matmul(%a: tensor<{m}x{k}x{dtype}>, %b: tensor<{k}x{n}x{dtype}>) -> tensor<{m}x{n}x{dtype}> attributes {{gpu.kernel}} {{
-    %c_init = tensor.empty() : tensor<{m}x{n}x{dtype}>
-    %c = linalg.matmul ins(%a, %b : tensor<{m}x{k}x{dtype}>, tensor<{k}x{n}x{dtype}>) outs(%c_init : tensor<{m}x{n}x{dtype}>) -> tensor<{m}x{n}x{dtype}>
-    return %c : tensor<{m}x{n}x{dtype}>
-  }}
-"#,
-        m = m,
-        k = k,
-        n = n,
-        dtype = dtype
-    )
-}
-
-/// Generate the full MLIR module for CUDA target
-pub fn generate_cuda_module(
-    model_name: &str,
-    hidden_size: usize,
-    num_heads: usize,
-    num_layers: usize,
-    seq_len: usize,
-    dtype: &str,
-) -> String {
-    let head_dim = hidden_size / num_heads;
-    let attention = CudaBackend::lower_attention(seq_len, hidden_size, num_heads, dtype).unwrap();
-
-    format!(
-        r#"module @{model_name} attributes {{
-  gpu.container_module, gpu.kernel_attr = "ptx"
-}} {{
-  // Global constants
-  %hidden_size = arith.constant {hidden_size} : i64
-  %num_heads = arith.constant {num_heads} : i64
-  %head_dim = arith.constant {head_dim} : i64
-  %seq_len = arith.constant {seq_len} : i64
-  %num_layers = arith.constant {num_layers} : i64
-
-  // RMS Norm (GPU kernel)
-  func.func @rms_norm(%input: tensor<{seq_len}x{hidden_size}x{dtype}>, %weight: tensor<{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> attributes {{gpu.kernel}} {{
-    %output = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>
-    return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
-  }}
-
-  // Flash Attention (GPU kernel)
-  {attention}
-
-  // MLP with SwiGLU (GPU kernel)
-  func.func @mlp(%input: tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> attributes {{gpu.kernel}} {{
-    %output = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>
-    return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
-  }}
-
-  // Forward pass
-  func.func @forward(%input: tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> {{
-    %output = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>
-    return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
-  }}
-}}
-"#,
-        model_name = model_name,
-        hidden_size = hidden_size,
-        num_heads = num_heads,
-        head_dim = head_dim,
-        seq_len = seq_len,
-        num_layers = num_layers,
-        dtype = dtype,
-        attention = attention
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,11 +110,5 @@ mod tests {
     fn test_cuda_attention() {
         let code = CudaBackend::lower_attention(2048, 8192, 64, "f16").unwrap();
         assert!(code.contains("linalg.softmax"));
-    }
-
-    #[test]
-    fn test_cuda_module() {
-        let code = generate_cuda_module("test", 768, 12, 12, 512, "f16");
-        assert!(code.contains("gpu.container_module"));
     }
 }

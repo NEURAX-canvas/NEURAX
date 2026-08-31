@@ -55,13 +55,11 @@
 
 mod engine;
 pub mod export;
-pub mod ir;
 mod runner;
 pub mod streaming;
 pub mod units;
 
 pub use engine::*;
-pub use ir::{select_backend, IrBackend, MlirBackend};
 pub use runner::*;
 pub use units::{Bytes, FLOPs, LatencyMs, ParamCount, TokensPerSec};
 

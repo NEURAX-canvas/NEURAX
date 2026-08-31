@@ -12,14 +12,12 @@
 
 pub mod behavioral;
 pub mod evaluation;
-pub mod feedback;
 pub mod stability;
 pub mod types;
 pub mod virtual_memory;
 
 pub use behavioral::{BehavioralMetrics, BehavioralSynthesisPass};
 pub use evaluation::{run_full_evaluation, EvaluationReport};
-pub use feedback::apply_dynamic_feedback;
 pub use stability::{StabilityAnalysisPass, StabilityMetrics};
 pub use types::{DynamicConfig, DynamicResults};
 pub use virtual_memory::{AllocationStrategy, VirtualMemoryMetrics, VirtualMemoryPass};

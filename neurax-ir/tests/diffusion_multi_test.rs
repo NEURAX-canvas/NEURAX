@@ -1,9 +1,6 @@
 //! Multi-model Diffusion compilation test
 //! Compiles SD 1.5, SDXL, SD3, DALL-E 2 to verify Diffusion family support
 
-use neurax_ir::IrInjector;
-use neurax_parser::{parse_model_config, AbsorbedModel};
-
 /// Stable Diffusion 1.5 - 860M UNet params
 const SD15_JSON: &str = r#"
 {
@@ -141,80 +138,6 @@ struct DiffusionModel {
     expected_unet_m: f64,
     expected_image_size: u32,
     expected_timesteps: u32,
-}
-
-#[test]
-fn test_all_diffusion_models() {
-    println!("\n╔════════════════════════════════════════════════════════════════════╗");
-    println!("║           MULTI-MODEL DIFFUSION COMPILATION TEST                   ║");
-    println!("║           SD 1.5 | SDXL | SD3 | DALL-E 2                            ║");
-    println!("╚════════════════════════════════════════════════════════════════════╝\n");
-
-    let models = [
-        DiffusionModel {
-            name: "SD-1.5",
-            json: SD15_JSON,
-            expected_unet_m: 860.0,
-            expected_image_size: 512,
-            expected_timesteps: 1000,
-        },
-        DiffusionModel {
-            name: "SDXL",
-            json: DIFFUSION_SDXL_JSON,
-            expected_unet_m: 2600.0,
-            expected_image_size: 1024,
-            expected_timesteps: 1000,
-        },
-        DiffusionModel {
-            name: "SD3",
-            json: SD3_JSON,
-            expected_unet_m: 2000.0,
-            expected_image_size: 1024,
-            expected_timesteps: 50,
-        },
-        DiffusionModel {
-            name: "DALL-E-2",
-            json: DALLE2_JSON,
-            expected_unet_m: 3000.0,
-            expected_image_size: 1024,
-            expected_timesteps: 1000,
-        },
-    ];
-
-    println!("┌────────────────────────────────────────────────────────────────────────────┐");
-    println!("│ Model      │ Params (M) │ Image Size │ Timesteps │ Status │ Confidence   │");
-    println!("├────────────────────────────────────────────────────────────────────────────┤");
-
-    let mut all_passed = true;
-
-    for model in &models {
-        let config =
-            parse_model_config(model.json).expect(&format!("Failed to parse {}", model.name));
-        let absorbed = AbsorbedModel::absorb(config);
-        let grc = &absorbed.resolution_context;
-
-        let total_params = IrInjector::calculate_total_params(&absorbed) as f64 / 1e6;
-        let image_size = grc.image_size.unwrap_or(0);
-        let timesteps = grc.diffusion_timesteps.unwrap_or(0);
-        let confidence = grc.confidence_score * 100.0;
-
-        let status = if total_params > 0.0 && image_size == model.expected_image_size as u64 {
-            "✓ OK"
-        } else {
-            all_passed = false;
-            "✗ FAIL"
-        };
-
-        println!(
-            "│ {:<10} │ {:>10.1} │ {:>10} │ {:>9} │ {:>6} │ {:>6.1}%       │",
-            model.name, total_params, image_size, timesteps, status, confidence
-        );
-    }
-
-    println!("└────────────────────────────────────────────────────────────────────────────┘\n");
-
-    assert!(all_passed, "Some Diffusion models failed compilation");
-    println!("✓ All Diffusion models compiled successfully!\n");
 }
 
 #[test]

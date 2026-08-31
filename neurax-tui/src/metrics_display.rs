@@ -4,8 +4,7 @@ use crate::real_world_data::RealWorldData;
 use neurax_core::AnalysisResult;
 use ratatui::{
     layout::{Constraint, Rect},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
+    style::{Color, Style},
     widgets::{Block, Borders, Cell, Row, Table},
 };
 
@@ -64,43 +63,6 @@ pub fn accuracy_color(accuracy: f64) -> Color {
     } else {
         Color::Red
     }
-}
-
-pub fn render_overview_tab(
-    result: &AnalysisResult,
-    real: &RealWorldData,
-    _area: Rect,
-) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
-
-    // Model summary - use owned strings
-    let model_type = result.arch.metrics.model_type_info.clone();
-    let params_computed = format_number(result.arch.metrics.total_parameters as f64);
-    let params_real = format_number(real.total_params as f64);
-    let num_layers = format!("{}", result.arch.metrics.num_layers);
-
-    lines.push(Line::from(vec![
-        Span::styled("Model: ", Style::default().fg(Color::Cyan)),
-        Span::styled(
-            model_type,
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("Parameters: ", Style::default().fg(Color::Cyan)),
-        Span::styled(params_computed, Style::default().fg(Color::White)),
-        Span::raw("  (Real: "),
-        Span::styled(params_real, Style::default().fg(Color::Yellow)),
-        Span::raw(")"),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled("Layers: ", Style::default().fg(Color::Cyan)),
-        Span::styled(num_layers, Style::default().fg(Color::White)),
-    ]));
-
-    lines
 }
 
 pub fn render_architecture_metrics(

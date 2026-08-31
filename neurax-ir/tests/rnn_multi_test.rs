@@ -1,9 +1,6 @@
 //! Multi-model RNN/LSTM compilation test
 //! Compiles ELMo, ULMFiT, BiLSTM-CRF, GRU-Seq2Seq to verify RNN family support
 
-use neurax_ir::IrInjector;
-use neurax_parser::{parse_model_config, AbsorbedModel};
-
 /// ELMo - BiLSTM language model (94M params)
 const ELMO_JSON: &str = r#"
 {
@@ -167,100 +164,6 @@ struct RNNModel {
     expected_layers: u32,
     bidirectional: bool,
     cell_type: &'static str,
-}
-
-#[test]
-fn test_all_rnn_models() {
-    println!("\n╔════════════════════════════════════════════════════════════════════╗");
-    println!("║           MULTI-MODEL RNN/LSTM COMPILATION TEST                    ║");
-    println!("║           ELMo | ULMFiT | BiLSTM-CRF | GRU-Seq2Seq | LSTM-1.3B     ║");
-    println!("╚════════════════════════════════════════════════════════════════════╝\n");
-
-    let models = [
-        RNNModel {
-            name: "ELMo",
-            json: ELMO_JSON,
-            expected_hidden: 512,
-            expected_layers: 2,
-            bidirectional: true,
-            cell_type: "lstm",
-        },
-        RNNModel {
-            name: "ULMFiT",
-            json: ULMFIT_JSON,
-            expected_hidden: 400,
-            expected_layers: 3,
-            bidirectional: false,
-            cell_type: "lstm",
-        },
-        RNNModel {
-            name: "BiLSTM-CRF",
-            json: BILSTM_CRF_JSON,
-            expected_hidden: 256,
-            expected_layers: 2,
-            bidirectional: true,
-            cell_type: "lstm",
-        },
-        RNNModel {
-            name: "GRU-Seq2Seq",
-            json: GRU_SEQ2SEQ_JSON,
-            expected_hidden: 512,
-            expected_layers: 2,
-            bidirectional: true,
-            cell_type: "gru",
-        },
-        RNNModel {
-            name: "LSTM-1.3B",
-            json: LSTM_LM_LARGE_JSON,
-            expected_hidden: 2048,
-            expected_layers: 3,
-            bidirectional: false,
-            cell_type: "lstm",
-        },
-    ];
-
-    println!(
-        "┌──────────────────────────────────────────────────────────────────────────────────┐"
-    );
-    println!("│ Model       │ Params (M) │ Hidden │ Layers │ Bidir │ Type  │ Status │ Conf     │");
-    println!(
-        "├──────────────────────────────────────────────────────────────────────────────────┤"
-    );
-
-    let mut all_passed = true;
-
-    for model in &models {
-        let config =
-            parse_model_config(model.json).expect(&format!("Failed to parse {}", model.name));
-        let absorbed = AbsorbedModel::absorb(config);
-        let grc = &absorbed.resolution_context;
-
-        let total_params = IrInjector::calculate_total_params(&absorbed) as f64 / 1e6;
-        let hidden = grc.rnn_hidden_size.unwrap_or(0);
-        let layers = grc.num_rnn_layers.unwrap_or(0);
-        let bidir = grc.bidirectional_rnn;
-        let cell = grc.cell_type.as_deref().unwrap_or("unknown");
-        let confidence = grc.confidence_score * 100.0;
-
-        let status = if total_params > 0.0 && hidden == model.expected_hidden as u64 {
-            "✓ OK"
-        } else {
-            all_passed = false;
-            "✗ FAIL"
-        };
-
-        println!(
-            "│ {:<11} │ {:>10.1} │ {:>6} │ {:>6} │ {:>5} │ {:>5} │ {:>6} │ {:>5.1}%  │",
-            model.name, total_params, hidden, layers, bidir, cell, status, confidence
-        );
-    }
-
-    println!(
-        "└──────────────────────────────────────────────────────────────────────────────────┘\n"
-    );
-
-    assert!(all_passed, "Some RNN models failed compilation");
-    println!("✓ All RNN/LSTM models compiled successfully!\n");
 }
 
 #[test]

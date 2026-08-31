@@ -1,8 +1,8 @@
 //! NEURAX-parser examples.
 //!
-//! Parse, validate and absorb a NEURAX model JSON.
+//! Parse and validate a NEURAX model JSON.
 
-use neurax_parser::{parse_model_config, AbsorbedModel, ModelValidator};
+use neurax_parser::parse_model_config;
 
 const MODEL_JSON: &str = r#"
 {
@@ -43,7 +43,9 @@ const MODEL_JSON: &str = r#"
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== NEURAX parser ===\n");
 
-    // 1. Parse
+    // parse_model_config() both parses and validates (validate_model_config()
+    // runs internally) — there is no separate validate-only entry point in
+    // this crate; use neurax_core::validate_json() for that.
     let config = parse_model_config(MODEL_JSON)?;
     println!(
         "Parsed: {} ({:?}), {} layer(s)",
@@ -51,29 +53,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.model.model_type,
         config.model.layers.len()
     );
-
-    // 2. Validate
-    let validation = ModelValidator::new().validate(MODEL_JSON);
-    println!(
-        "Valid: {} | layer_count: {} | gpu_count: {}",
-        validation.is_valid, validation.metrics.layer_count, validation.metrics.gpu_count
-    );
-
-    // 3. Absorb → resolve symbolic dims
-    let absorbed = AbsorbedModel::absorb(config);
-    let grc = &absorbed.resolution_context;
-
-    println!("\n-- Resolution context --");
-    println!("hidden_size: {:?}", grc.hidden_size);
-    println!("dtype_bytes: {}", grc.dtype_bytes);
-    println!(
-        "optimizer_bytes_per_param: {}",
-        grc.optimizer_bytes_per_param
-    );
-    println!("confidence: {:.0}%", grc.confidence_score * 100.0);
-    if !grc.missing_fields.is_empty() {
-        println!("missing fields: {:?}", grc.missing_fields);
-    }
 
     Ok(())
 }

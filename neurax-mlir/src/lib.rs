@@ -61,7 +61,6 @@ pub mod context;
 pub mod dialects;
 pub mod integration;
 pub mod iree;
-pub mod lowering;
 pub mod module;
 pub mod passes;
 pub mod targets;
@@ -70,12 +69,6 @@ pub mod targets;
 pub use compiler::compile_model_to_mlir;
 pub use context::NeuraxContext;
 pub use module::NeuraxModule;
-
-// Lowering infrastructure
-pub use lowering::{
-    ArchitectureLowering, HardwareLowering, LoweringContext, LoweringPass, MemoryLowering,
-    OperatorLowering, ParallelismLowering,
-};
 
 // Target backends
 pub use targets::{

@@ -90,98 +90,6 @@ impl TargetLowering for MetalBackend {
     }
 }
 
-/// Apple Silicon GPU specifications
-#[derive(Debug, Clone)]
-pub struct AppleGpuSpec {
-    pub name: &'static str,
-    pub gpu_cores: usize,
-    pub memory_bandwidth_gbps: f64,
-    pub tflops_fp16: f64,
-    pub tflops_fp32: f64,
-}
-
-impl AppleGpuSpec {
-    pub fn m1_max() -> Self {
-        Self {
-            name: "M1 Max",
-            gpu_cores: 32,
-            memory_bandwidth_gbps: 400.0,
-            tflops_fp16: 10.4,
-            tflops_fp32: 5.2,
-        }
-    }
-
-    pub fn m1_ultra() -> Self {
-        Self {
-            name: "M1 Ultra",
-            gpu_cores: 64,
-            memory_bandwidth_gbps: 800.0,
-            tflops_fp16: 20.8,
-            tflops_fp32: 10.4,
-        }
-    }
-
-    pub fn m2_max() -> Self {
-        Self {
-            name: "M2 Max",
-            gpu_cores: 38,
-            memory_bandwidth_gbps: 400.0,
-            tflops_fp16: 13.5,
-            tflops_fp32: 6.75,
-        }
-    }
-
-    pub fn m2_ultra() -> Self {
-        Self {
-            name: "M2 Ultra",
-            gpu_cores: 76,
-            memory_bandwidth_gbps: 800.0,
-            tflops_fp16: 27.0,
-            tflops_fp32: 13.5,
-        }
-    }
-
-    pub fn m3_max() -> Self {
-        Self {
-            name: "M3 Max",
-            gpu_cores: 40,
-            memory_bandwidth_gbps: 400.0,
-            tflops_fp16: 14.0,
-            tflops_fp32: 7.0,
-        }
-    }
-}
-
-/// Generate Metal module for Apple Silicon
-pub fn generate_metal_module(
-    model_name: &str,
-    hidden_size: usize,
-    _num_heads: usize,
-    seq_len: usize,
-    dtype: &str,
-) -> String {
-    format!(
-        r#"module @{model_name} attributes {{
-  gpu.container_module
-}} {{
-  // Metal kernel entry points for Apple Silicon
-  // Compiles via: iree-compile --iree-hal-target-device=metal
-  
-  func.func @forward(%input: tensor<{seq_len}x{hidden_size}x{dtype}>) -> tensor<{seq_len}x{hidden_size}x{dtype}> attributes {{
-    iree.module.export
-  }} {{
-    %output = tensor.empty() : tensor<{seq_len}x{hidden_size}x{dtype}>
-    return %output : tensor<{seq_len}x{hidden_size}x{dtype}>
-  }}
-}}
-"#,
-        model_name = model_name,
-        hidden_size = hidden_size,
-        seq_len = seq_len,
-        dtype = dtype
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,18 +103,5 @@ mod tests {
     fn test_metal_matmul() {
         let code = MetalBackend::lower_matmul(1, 1024, 1024, 1024, "f16").unwrap();
         assert!(code.contains("linalg.batch_matmul"));
-    }
-
-    #[test]
-    fn test_apple_gpu_specs() {
-        let m1_max = AppleGpuSpec::m1_max();
-        assert_eq!(m1_max.gpu_cores, 32);
-        assert_eq!(m1_max.name, "M1 Max");
-    }
-
-    #[test]
-    fn test_metal_module() {
-        let code = generate_metal_module("test", 768, 12, 512, "f16");
-        assert!(code.contains("gpu.container_module"));
     }
 }
