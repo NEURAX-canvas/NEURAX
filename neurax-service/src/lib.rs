@@ -4118,7 +4118,7 @@ async fn agent_analyze(
     let analysis_result = match web::block(move || neurax_core::run_analysis(config)).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
-            tracing::error!("Analysis failed: {}", e);
+            tracing::error!("[AGENT_ANALYZE] Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
         Err(_) => {
@@ -4178,7 +4178,7 @@ async fn agent_inference(
     let analysis_result = match web::block(move || neurax_core::run_analysis(config)).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
-            tracing::error!("Analysis failed: {}", e);
+            tracing::error!("[AGENT_INFERENCE] Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
         Err(_) => {
@@ -4236,7 +4236,7 @@ async fn agent_audit(
     let analysis_result = match web::block(move || neurax_core::run_analysis(config)).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
-            tracing::error!("Analysis failed: {}", e);
+            tracing::error!("[AGENT_AUDIT] Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
         Err(_) => {
@@ -4384,7 +4384,7 @@ async fn agent_carbon(
     let analysis_result = match web::block(move || neurax_core::run_analysis(config)).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => {
-            tracing::error!("Analysis failed: {}", e);
+            tracing::error!("[AGENT_CARBON] Analysis failed: {}", e);
             return HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body(e.to_string());
         }
         Err(_) => {
