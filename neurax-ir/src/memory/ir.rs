@@ -67,6 +67,18 @@ pub struct MemoryMetrics {
     pub oom_risk: OomRisk,
     /// GPU VRAM disponible
     pub gpu_vram_bytes: u64,
+    /// True, un-sharded parameter/gradient/optimizer byte counts — not among
+    /// the numbered metrics above (those describe per-GPU footprint,
+    /// correctly reduced by ZeRO). Communication-volume math (a gradient
+    /// all-reduce, or ParallelismPass's own per-stage `memory_per_gpu` split)
+    /// needs the real totals to divide down correctly; feeding it the
+    /// already-sharded per-GPU figures double-shards the result and, for the
+    /// all-reduce case, made higher ZeRO stages look like they *reduce*
+    /// communication, when ZeRO-3 in particular increases it (it must gather
+    /// the sharded parameters back on demand).
+    pub total_parameter_bytes: u64,
+    pub total_gradient_bytes: u64,
+    pub total_optimizer_bytes: u64,
 }
 
 impl MemoryMetrics {

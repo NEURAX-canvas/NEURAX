@@ -273,6 +273,9 @@ impl IrPass for MemoryPass {
 
         let metrics = MemoryMetrics {
             parameter_memory_bytes: effective_param_mem,
+            total_parameter_bytes: parameter_memory_bytes,
+            total_gradient_bytes: gradient_memory_bytes,
+            total_optimizer_bytes: optimizer_state_bytes,
             activation_memory_bytes,
             gradient_memory_bytes: effective_grad_mem,
             optimizer_state_bytes: effective_optim_mem,

@@ -27,9 +27,15 @@ impl IrPass for ParallelismPass {
     ) -> Result<Self::Output, Self::PassError> {
         let (memory_ir, graph_ir) = input;
         let mut parallel_ir = ParallelismIR::default();
-        parallel_ir.parameter_bytes = memory_ir.metrics.parameter_memory_bytes;
-        parallel_ir.gradient_bytes = memory_ir.metrics.gradient_memory_bytes;
-        parallel_ir.optimizer_bytes = memory_ir.metrics.optimizer_state_bytes;
+        // True, un-sharded byte counts. compute_metrics()'s own per-ZeRO-stage
+        // arithmetic (see `memory_per_gpu` below) already divides these down
+        // by num_gpus itself; feeding it MemoryPass's already-sharded
+        // per-GPU figures here would double-shard the result. Same reason
+        // hardware/pass.rs::build() uses the true total for its all-reduce
+        // sizing.
+        parallel_ir.parameter_bytes = memory_ir.metrics.total_parameter_bytes;
+        parallel_ir.gradient_bytes = memory_ir.metrics.total_gradient_bytes;
+        parallel_ir.optimizer_bytes = memory_ir.metrics.total_optimizer_bytes;
 
         // Analyze available strategies
         let num_gpus = ctx.config.hardware.total_gpu_count();
@@ -113,9 +119,19 @@ impl IrPass for ParallelismPass {
         // Calculate communication overhead
         let interconnect_bw = ctx.config.hardware.interconnect_bandwidth_gbs * 1e9;
 
+        // ZeRO-1/2 keep the baseline 2Ψ communication volume (Rajbhandari et
+        // al. 2020, "ZeRO") — only memory changes. ZeRO-3 additionally
+        // gathers its sharded parameters back on demand: the same paper puts
+        // its total at 3Ψ, i.e. 1.5× the baseline. Same fix as
+        // hardware/pass.rs's identical formula.
+        let zero_comm_multiplier = if ctx.config.training.zero_stage >= 3 {
+            1.5
+        } else {
+            1.0
+        };
         let allreduce_time_ms = if num_gpus > 1 && interconnect_bw > 0.0 {
             // Ring All-Reduce: 2 * (N-1)/N * data_size / bandwidth
-            let factor = 2.0 * (num_gpus - 1) as f64 / num_gpus as f64;
+            let factor = 2.0 * (num_gpus - 1) as f64 / num_gpus as f64 * zero_comm_multiplier;
             (param_bytes as f64 * factor / interconnect_bw) * 1000.0
         } else {
             0.0

@@ -38,7 +38,11 @@ impl IrPass for HardwarePass {
     ) -> Result<Self::Output, Self::PassError> {
         let (compute_ir, memory_ir, _parallel_ir) = input;
         let mut hw_ir = HardwareIR::default();
-        hw_ir.parameter_bytes = memory_ir.metrics.parameter_memory_bytes;
+        // The true, un-sharded parameter count — a gradient all-reduce needs
+        // to know the real buffer size, not this GPU's ZeRO-reduced share of
+        // it (using the sharded figure made higher ZeRO stages look like
+        // they reduce communication, when ZeRO-3 specifically increases it).
+        hw_ir.parameter_bytes = memory_ir.metrics.total_parameter_bytes;
         hw_ir.total_flops = compute_ir.metrics.total_flops;
 
         // Get GPU profile from JSON config or fallback to database
@@ -289,9 +293,18 @@ impl IrPass for HardwarePass {
                                                                                     // the size of the parameters — not the model's whole HBM traffic.
         let param_bytes = output.parameter_bytes;
 
-        // Ring all-reduce moves 2·(N-1)/N × buffer per rank.
+        // Ring all-reduce moves 2·(N-1)/N × buffer per rank. ZeRO-1/2 keep
+        // this baseline (Rajbhandari et al. 2020, "ZeRO": stage 1/2 change
+        // memory, not communication volume — still 2Ψ). ZeRO-3 additionally
+        // has to gather its sharded parameters back on demand, which the
+        // same paper's own analysis puts at 3Ψ total — 1.5× the baseline.
+        let zero_comm_multiplier = if ctx.config.training.zero_stage >= 3 {
+            1.5
+        } else {
+            1.0
+        };
         let communication_overhead_ms = if num_gpus > 1 && interconnect_bw > 0.0 {
-            let factor = 2.0 * (num_gpus - 1) as f64 / num_gpus as f64;
+            let factor = 2.0 * (num_gpus - 1) as f64 / num_gpus as f64 * zero_comm_multiplier;
             (param_bytes as f64 * factor / interconnect_bw) * 1000.0
         } else {
             0.0
