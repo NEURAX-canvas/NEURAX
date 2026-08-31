@@ -115,7 +115,7 @@ flowchart LR
         C --> M["Memory<br/>IR"] --> P["Parall.<br/>IR"] --> H["Hardware<br/>IR"] --> CO["Cost<br/>IR"] --> R["Report<br/>IR"]
     end
 
-    PIPELINE --> REPORT["Report<br/>76 metrics<br/>JSON / Markdown"]
+    PIPELINE --> REPORT["Report<br/>~76 scalar metrics<br/>+ per-layer breakdowns"]
 
     style INPUT fill:#4a90d9,color:#fff
     style REPORT fill:#2ecc71,color:#fff
@@ -139,7 +139,7 @@ Each phase transforms the representation and computes metrics. Phases 1-6 run st
 | 8 | HardwareIR | ComputeIR + MemoryIR | HardwareIR | GPU utilization, effective TFLOPS by precision, bandwidth, ridge point, latency |
 | 11 | Dynamic (3 sub-passes) | GraphIR + MemoryIR + ModelConfig | DynamicResults | Memory-virtualization savings, Lyapunov-based stability + recommended max LR, behavioral synthesis |
 | 9 | CostIR | HardwareIR + ParallelismIR | CostIR | Training cost USD, time hours, energy kWh, CO2 kg |
-| 10 | ReportIR | All above + Dynamic's stability output | ReportIR | Consolidated report with 76 metrics, diagnostics, recommendations |
+| 10 | ReportIR | All above + Dynamic's stability output | ReportIR | Consolidated report — a fixed set of scalar metrics per phase, plus per-layer breakdowns whose count scales with model depth (see note below) |
 
 ### Phases 7, 8 and 11 run concurrently, not in numeric order
 
@@ -339,7 +339,7 @@ Supports 11 model families (verified: `FAMILY_TEMPLATES` in `arch_planner.py` ha
 React 18 + TypeScript + Vite single-page application with:
 - Visual canvas (React Flow) with drag-and-drop, parameter editing, minimap
 - 64 reference templates across the 8 architecture families the compiler fully supports
-- Metrics dashboard with 76 metrics and charts
+- Metrics dashboard with dozens of scalar metrics (count depends on what a design has, not one fixed number — see Diagnostics note below) plus charts
 - AI Chat Drawer with SSE streaming
 - Hyperparameter Optimization panel
 - Time Machine cost/carbon projection
@@ -379,6 +379,10 @@ Every analysis can attach diagnostics to the report — not a separate linter bo
 | **Hint** (`H`) | H001–H008 | Enable gradient checkpointing / Flash Attention, consider INT8, increase pipeline-parallel micro-batches, ZeRO-3 recommended, no LR warmup configured, learning rate exceeds the Lipschitz-based stability bound, tokens-per-parameter ratio far from Chinchilla-optimal |
 
 H006, H007 and H008 are the most recent additions and are the ones that reach across phases: H007 needs phase 11's `recommended_max_learning_rate` (see Figure 3), and H008 needs both the real parameter count (phase 1) and a user-declared dataset size. All three, plus I001 (GQA) and I002 (MoE), were validated against all 16 reference models by independently recomputing each one's firing condition from the raw input JSON rather than trusting the compiler's own report — `neurax-core/examples/validate_hints.rs` — with the result checked into the repository (80 checks, 0 false positives, 0 false negatives) rather than asserted in this document from memory.
+
+### A note on "how many metrics" — there is no single honest number
+
+At different points the project has stated 43, 66, 35, 70+ and 77 metrics in five different places (an MLIR doc comment, this book, two comments in the same source file, and a test file) — five different answers to what sounds like one simple question. Counting a real report's JSON output directly (`gpt3_175b.json`, via `to_json()`) resolves why: it has 168 leaf fields, but a large share of them are **per-layer breakdowns** (`structure.params_per_layer.layer_3`, `performance.latency_per_layer.mlp_7`, ...) whose count scales with the model's own depth — a 96-layer model produces far more JSON keys than a 10-layer one for the exact same set of *kinds* of information. "How many metrics" is really two different, both-true answers: a **fixed** ~76 scalar fields across the 9 static phases (`neurax-core/tests/metrics_count.rs`, manually tallied, not by struct reflection), plus the 3 Dynamic sub-passes' own structs (`VirtualMemoryMetrics` + `StabilityMetrics` + `BehavioralMetrics`, 33 fields combined as of this writing), plus a **variable** number of per-layer entries. Stating one flat number without that distinction is exactly how five different, individually-defensible counts ended up contradicting each other — this document states the breakdown instead of adding a sixth number to the pile.
 
 ---
 

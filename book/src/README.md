@@ -28,8 +28,10 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
   metric, not just parameter count. Families without dedicated compiler formulas (RL, SNN, an
   "Experimental" catch-all) were removed rather than left partially supported.
 - **64 reference templates**, counted against the real catalogue by a test, not stated from memory.
-- **11-phase analytical IR pipeline** producing 76 metrics (verified by neurax-core/tests/metrics_count.rs) — three of the eleven phases run
-  concurrently on a shared thread pool since none of them reads another's output.
+- **11-phase analytical IR pipeline** — three of the eleven phases run concurrently on a shared
+  thread pool since none of them reads another's output. Produces ~76 fixed scalar metrics plus
+  per-layer breakdowns that scale with model depth — see [Architecture & Design](DESIGN.md#a-note-on-how-many-metrics--there-is-no-single-honest-number)
+  for why this project has previously stated five different single numbers for that count, and why none of them was the full answer.
 - **MLIR** dialect emission (14 custom dialects, real per-layer formulas) as a standalone,
   independently-testable crate — not part of the request path a user's analysis takes; see
   [Architecture & Design](DESIGN.md#neurax-mlir) for exactly what is and isn't wired up.
