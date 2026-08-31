@@ -82,6 +82,7 @@ fn canonical_gpu_name(name: &str) -> Option<&'static str> {
         "rtx-6000-ada" | "rtx6000-ada" => "RTX6000Ada",
         "t4" | "tesla-t4" => "T4",
         "k80" | "tesla-k80" => "K80",
+        "p100" | "tesla-p100" => "P100",
         _ => return None,
     })
 }
@@ -520,6 +521,34 @@ impl HardwareDatabase {
             },
         );
 
+        // NVIDIA Tesla P100 (PCIe 16GB) — one of the two default free-tier
+        // GPUs on Kaggle Notebooks (the other being T4), so a missing entry
+        // here means every Kaggle-P100 user's config silently degrades to
+        // the generic 20-TFLOPS fallback (see `canonical_gpu_name` doc).
+        // Source: https://images.nvidia.com/content/tesla-p100/pdf/nvidia-tesla-p100-datasheet.pdf
+        self.gpus.insert(
+            "P100".to_string(),
+            GpuSpec {
+                name: "P100".to_string(),
+                manufacturer: "NVIDIA".to_string(),
+                memory_gb: 16,
+                memory_bandwidth_gbs: 732.0,
+                tflops_fp64: 4.7,
+                tflops_fp32: 9.3,
+                tflops_fp16: 18.7, // native half-precision ALUs; Pascal predates Tensor Cores
+                tflops_bf16: 0.0,  // no native bf16 (pre-dates Ampere)
+                tflops_int8: 0.0,  // no INT8 Tensor Core / DP4A path on the GP100 die
+                tflops_fp8: 0.0,
+                tensor_cores: false,
+                nvlink: false, // Kaggle uses the PCIe board, not the NVLink-capable SXM2 one
+                nvlink_bandwidth_gbs: 0.0,
+                tdp_watts: 250,
+                launch_year: 2016,
+                l2_cache_mb: Some(4.0),
+                num_sms: Some(56),
+            },
+        );
+
         // NVIDIA H200 (H100 successor)
         self.gpus.insert(
             "H200".to_string(),
@@ -753,6 +782,8 @@ mod gpu_name_resolution_tests {
             ("h100", "H100-SXM"),
             ("A100-80GB", "A100-SXM"),
             ("4090", "RTX4090"),
+            ("p100", "P100"),
+            ("tesla-p100", "P100"),
         ] {
             let spec = db
                 .get_gpu(query)
