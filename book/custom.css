@@ -38,6 +38,19 @@ html:not(.js) {
     border-bottom: 3px solid var(--neurax-pink-bright);
 }
 
+/* mdBook's default menu-title is a huge (2.4rem), very thin (weight 200)
+   heading — sized to be a page title in its own right. Since the book
+   title is now the plain wordmark "NEURAX" (no restated tagline), it only
+   needs to read as a compact brand mark in the top bar, not compete with
+   the hero's own headline directly below it. */
+.menu-title {
+    font-family: "Sora", sans-serif;
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--neurax-ink);
+}
+
 .chapter li.chapter-item.expanded > a.active,
 .chapter li > a.active {
     box-shadow: inset 3px 0 0 0 var(--sidebar-active);
@@ -75,9 +88,10 @@ h1 {
 
 .hero h1.hero-title {
     font-size: clamp(2rem, 5vw, 3.2rem);
-    line-height: 1.1;
+    line-height: 1.15;
     margin: 0 auto 1.1rem;
-    max-width: 16ch;
+    max-width: 30ch;
+    text-wrap: balance;
     background: linear-gradient(100deg, var(--neurax-ink) 30%, var(--neurax-pink) 75%, var(--neurax-amber));
     -webkit-background-clip: text;
     background-clip: text;

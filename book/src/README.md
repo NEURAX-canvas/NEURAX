@@ -1,7 +1,7 @@
 <div class="hero">
 <p class="eyebrow">Design · Simulate · Optimize</p>
 
-<h1 class="hero-title">Know if it works before you spend a GPU-hour finding out</h1>
+<h1 class="hero-title">Know if it works —<br>before you spend a GPU-hour finding out</h1>
 
 <p class="hero-sub">NEURAX is the environment where you design, simulate, and optimize AI architectures — instantly, without training a thing.</p>
 
