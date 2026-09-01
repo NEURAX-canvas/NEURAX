@@ -14,7 +14,6 @@ COPY neurax-parser/Cargo.toml neurax-parser/Cargo.toml
 COPY neurax-ir/Cargo.toml neurax-ir/Cargo.toml
 COPY neurax-formulas/Cargo.toml neurax-formulas/Cargo.toml
 COPY neurax-hardware-db/Cargo.toml neurax-hardware-db/Cargo.toml
-COPY neurax-cli/Cargo.toml neurax-cli/Cargo.toml
 COPY neurax-tui/Cargo.toml neurax-tui/Cargo.toml
 COPY neurax-service/Cargo.toml neurax-service/Cargo.toml
 COPY neurax-mlir/Cargo.toml neurax-mlir/Cargo.toml
@@ -27,7 +26,6 @@ RUN mkdir -p neurax-core/src && echo "fn main(){}" > neurax-core/src/lib.rs \
     && mkdir -p neurax-ir/src && echo "fn main(){}" > neurax-ir/src/lib.rs \
     && mkdir -p neurax-formulas/src && echo "fn main(){}" > neurax-formulas/src/lib.rs \
     && mkdir -p neurax-hardware-db/src && echo "fn main(){}" > neurax-hardware-db/src/lib.rs \
-    && mkdir -p neurax-cli/src && echo "fn main(){}" > neurax-cli/src/main.rs \
     && mkdir -p neurax-tui/src && echo "fn main(){}" > neurax-tui/src/main.rs \
     && mkdir -p neurax-service/src && echo "fn main(){}" > neurax-service/src/main.rs \
     && mkdir -p neurax-mlir/src && echo "fn main(){}" > neurax-mlir/src/lib.rs
@@ -41,7 +39,6 @@ COPY neurax-parser/ neurax-parser/
 COPY neurax-ir/ neurax-ir/
 COPY neurax-formulas/ neurax-formulas/
 COPY neurax-hardware-db/ neurax-hardware-db/
-COPY neurax-cli/ neurax-cli/
 COPY neurax-tui/ neurax-tui/
 COPY neurax-service/ neurax-service/
 
@@ -68,17 +65,17 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/target/release/neurax-service /app/neurax-service
 
-# Copy presets if they exist
-COPY --from=builder /app/neurax-service/src/presets/ /app/presets/ 2>/dev/null || true
-
 RUN chown -R neurax:neurax /app
 
 USER neurax
 
-# Default env vars (override with --env-file or -e)
+# Default env vars (override with --env-file or -e). NEURAX_DEBUG_NOAUTH is
+# deliberately NOT set here — it defaults to off in the service itself
+# (see neurax-service/src/lib.rs's noauth_enabled doc comment: it used to
+# default to on, which meant a deployment that never set it anonymously
+# served every endpoint). Setting it here would silently reintroduce that.
 ENV NEURAX_BIND=0.0.0.0:9098
 ENV RUST_LOG=info
-ENV NEURAX_DEBUG_NOAUTH=true
 
 EXPOSE 9098
 

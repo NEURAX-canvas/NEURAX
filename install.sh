@@ -2,7 +2,7 @@
 #
 # NEURAX installer — Linux and macOS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/rustnew/neurax-releases/main/install.sh | sh
 #
 # Installs the desktop application and makes `neurax` available in the shell.
 # Nothing is written outside your home directory unless you ask for it, and no
@@ -20,7 +20,7 @@
 
 set -eu
 
-REPO="rustnew/NEURAX"
+REPO="rustnew/neurax-releases"
 API="https://api.github.com/repos/${REPO}"
 
 PREFIX="${NEURAX_PREFIX:-${HOME}/.local}"
@@ -77,7 +77,7 @@ detect_platform() {
     case "${os}" in
         Linux)  PLATFORM=linux ;;
         Darwin) PLATFORM=macos ;;
-        *) die "NEURAX has no build for ${os}. Build from source: https://github.com/${REPO}#building" ;;
+        *) die "NEURAX has no prebuilt build for ${os} yet. Open an issue: https://github.com/${REPO}/issues" ;;
     esac
 
     case "${arch}" in
@@ -89,15 +89,7 @@ detect_platform() {
     # The macOS bundle is universal, so one file serves both architectures.
     # The Linux bundle is built on an x86_64 runner only.
     if [ "${PLATFORM}" = linux ] && [ "${ARCH}" = arm64 ]; then
-        die "no prebuilt Linux arm64 bundle yet.
-
-Build it from a checkout instead — it is one command once the webview
-development packages are installed:
-
-    git clone https://github.com/${REPO}.git
-    cd NEURAX/neurax-desktop && cargo tauri build
-
-See neurax-desktop/README.md for the package list."
+        die "no prebuilt Linux arm64 bundle yet. Open an issue: https://github.com/${REPO}/issues"
     fi
 }
 
@@ -184,14 +176,7 @@ resolve_release_quietly() {
 no_release_error() {
     die "no published release contains $1 yet.
 
-The desktop installers are produced by the \`Build desktop installers\`
-workflow, which runs when a version tag is pushed. A release it creates is a
-draft, and drafts are invisible here until they are published.
-
-Until then, build from a checkout:
-
-    git clone https://github.com/${REPO}.git
-    cd NEURAX/neurax-desktop && cargo tauri build"
+Check back shortly, or open an issue: https://github.com/${REPO}/issues"
 }
 
 # ─── Install: Linux ─────────────────────────────────────────────────
