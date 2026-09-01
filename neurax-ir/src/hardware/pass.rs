@@ -318,14 +318,21 @@ impl IrPass for HardwarePass {
 
         // Kernel launches (estimate) — moved above `latency_ms` so its own
         // overhead can be added to it below, rather than only reported
-        // alongside a latency that never accounted for it. Scaled by the
-        // same diffusion sample factor as FLOPs/bytes (compute/pass.rs):
-        // a 1000-step CFG sample launches every one of the U-Net's kernels
+        // alongside a latency that never accounted for it. Previously a
+        // flat `layers.len() * 2` guess, unrelated to how many atomic
+        // operations the model actually decomposes into (an attention
+        // layer alone is QKV projection + scores + softmax + output
+        // projection — well more than 2, while a plain normalization layer
+        // is one). `output.per_layer_timings` has exactly one entry per
+        // real atomic op from the operator/compute passes
+        // (`calculate_layer_timings` maps 1:1 over `compute_ir.op_flops`),
+        // which is what actually gets scheduled as a kernel. Scaled by the
+        // same diffusion sample factor as FLOPs/bytes (compute/pass.rs): a
+        // 1000-step CFG sample launches every one of the U-Net's kernels
         // 2000 times, not once — leaving this unscaled would have made
         // kernel overhead a fixed floor that swamped the real, correctly
         // scaled FLOPs-driven cost for a small model.
-        let kernel_launch_count = (ctx.config.model.layers.len() as f64
-            * 2.0
+        let kernel_launch_count = (output.per_layer_timings.len() as f64
             * crate::compute::diffusion_sample_factor(ctx))
         .round() as usize;
 
