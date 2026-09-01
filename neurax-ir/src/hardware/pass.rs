@@ -171,6 +171,37 @@ impl IrPass for HardwarePass {
             .iter()
             .filter(|l| l.layer_type == neurax_parser::LayerType::Mlp)
             .count();
+        // Convolution-family ops: many small kernels (conv + batchnorm +
+        // activation) rather than one large GEMM — real throughput on tensor
+        // cores lands far below what a transformer-shaped efficiency table
+        // would predict. Before this was counted, a pure-CNN model had zero
+        // recognized layers (Conv wasn't in the attention/mlp weighting) and
+        // fell back to the 1.0 "no penalty" neutral default below, which
+        // predicted ResNet-50 inference throughput on a single A100 at
+        // ~23,300 img/s — about 7x NVIDIA's own published real number
+        // (~3,229 img/s, mixed precision, batch 256; see
+        // `published_hardware_scaling.rs`'s companion CNN reference).
+        let conv_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
+            .filter(|l| {
+                matches!(
+                    l.layer_type,
+                    neurax_parser::LayerType::Conv
+                        | neurax_parser::LayerType::ResidualBlock
+                        | neurax_parser::LayerType::ResnetBottleneck
+                        | neurax_parser::LayerType::Mbconv
+                        | neurax_parser::LayerType::Inception
+                        | neurax_parser::LayerType::DenseBlock
+                        | neurax_parser::LayerType::ConvnextBlock
+                        | neurax_parser::LayerType::ShuffleUnit
+                        | neurax_parser::LayerType::C2f
+                        | neurax_parser::LayerType::Transition
+                )
+            })
+            .count();
 
         // Real-world GPU efficiency factors based on operation type
         // Attention is memory-bound (lower efficiency)
@@ -187,23 +218,40 @@ impl IrPass for HardwarePass {
             "fp8" => 0.92,
             _ => 0.75,
         };
+        // The fp16/bf16 value is directly calibrated against NVIDIA's own
+        // published ResNet-50 v1.5 mixed-precision inference number on a
+        // single A100 40GB (NGC "ResNet v1.5 for TensorFlow" performance
+        // page): matching NEURAX's own forward-FLOPs figure for that model
+        // to the real 3,229 img/s implies an effective efficiency of
+        // ~0.139. The other precisions follow the same shape as the
+        // attention/mlp tables (no independent reference for them yet) and
+        // should be treated as reasoned estimates, not individually
+        // verified figures.
+        let conv_efficiency = match precision.as_str() {
+            "fp32" => 0.12,
+            "fp16" | "bf16" | "bfloat16" => 0.14,
+            "fp8" => 0.16,
+            _ => 0.12,
+        };
 
-        // Weighted average efficiency based on layer distribution. Only layers
-        // typed Attention or Mlp are counted — a repeated-block architecture
-        // (LAYER_STACK, the shape every template on this app's own catalogue
-        // compiles to) tags its block as `Custom` instead, so attention_count
-        // and mlp_count are both 0 for essentially every real model. Dividing
+        // Weighted average efficiency based on layer distribution. Only
+        // recognized layer families are counted — a repeated-block
+        // architecture (LAYER_STACK, the shape every template on this app's
+        // own catalogue compiles to) tags its block as `Custom` instead, so
+        // every count can be 0 for essentially every real model. Dividing
         // by the resulting 0.0 efficiency below used to turn
         // every per-layer compute time into +/-Infinity; summing them produced
         // NaN, `f64::max` silently dropped it into `latency_ms`, and NaN then
         // serialized as a bare JSON `null` for gpu_utilization — read by the
         // UI as "no hardware data", contradicting the VRAM/GPU numbers sitting
         // right next to it, which come from a different, unaffected path.
-        // With no attention/mlp layer to weight, there is nothing to derate by
+        // With nothing recognized to weight, there is nothing to derate by
         // — 1.0 (no efficiency penalty) is the neutral answer, not a guess.
-        let recognized_layers = attention_count + mlp_count;
+        let recognized_layers = attention_count + mlp_count + conv_count;
         let gpu_efficiency = if recognized_layers > 0 {
-            (attention_count as f64 * attention_efficiency + mlp_count as f64 * mlp_efficiency)
+            (attention_count as f64 * attention_efficiency
+                + mlp_count as f64 * mlp_efficiency
+                + conv_count as f64 * conv_efficiency)
                 / recognized_layers as f64
         } else {
             1.0
