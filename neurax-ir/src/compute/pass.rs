@@ -59,14 +59,24 @@ impl IrPass for ComputePass {
         // re-reading these same per-op numbers, not the aggregate.
         let sample_factor = diffusion_sample_factor(ctx);
 
+        let dtype_bytes = neurax_formulas::dtype_bytes(&ctx.config.training.precision);
+
         // Convert operator FLOPs to compute FLOPs
         for op in &input.operations {
             let flops = op.flops * sample_factor;
+            // This op's own weight bytes (in the run's real dtype) plus its
+            // own activation buffer — both already computed per-op by the
+            // operator pass (`AtomOp::param_count`/`activation_memory`) and
+            // previously dropped here, leaving nothing but a flat ratio for
+            // HardwarePass to estimate memory time from.
+            let param_bytes = (op.param_count as f64 * dtype_bytes).round() as u64;
+            let bytes_accessed = param_bytes.saturating_add(op.activation_memory);
             compute_ir.op_flops.push(OpFlops {
                 op_id: op.id,
                 layer_id: op.layer_id.clone(),
                 forward_flops: flops,
                 backward_flops: flops * 2.0, // Standard approximation
+                bytes_accessed,
             });
         }
 

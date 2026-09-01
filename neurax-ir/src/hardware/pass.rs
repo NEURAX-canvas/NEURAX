@@ -425,8 +425,20 @@ fn calculate_layer_timings(
             } else {
                 0.0
             };
-            // Simplified memory time
-            let memory_time_ms = compute_time_ms * 0.5;
+            // Real memory time: this op's own weight+activation bytes
+            // (`OpFlops::bytes_accessed`, carried over from the operator
+            // pass) over the GPU's actual HBM bandwidth. This replaces a
+            // flat `compute_time_ms * 0.5` guess that ignored the model's
+            // real size and the GPU's real bandwidth entirely — two models
+            // with identical FLOPs but very different memory footprints
+            // (e.g. a wide-and-shallow vs narrow-and-deep network) used to
+            // report the exact same memory time.
+            let bandwidth_bytes_per_s = gpu.memory_bandwidth * 1e9;
+            let memory_time_ms = if bandwidth_bytes_per_s > 0.0 {
+                op.bytes_accessed as f64 / bandwidth_bytes_per_s * 1000.0
+            } else {
+                0.0
+            };
 
             LayerTiming {
                 layer_id: op.layer_id.clone(),

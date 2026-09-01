@@ -28,6 +28,13 @@ pub struct OpFlops {
     pub layer_id: String,
     pub forward_flops: f64,
     pub backward_flops: f64,
+    /// This op's own weight + activation bytes, carried over from the
+    /// operator pass's `AtomOp::param_count`/`activation_memory` — real
+    /// per-op figures that used to be computed and then discarded here,
+    /// leaving `HardwarePass` with nothing to derive a real per-layer
+    /// memory time from (it used a flat `compute_time_ms * 0.5` guess
+    /// instead; see `hardware/pass.rs::calculate_layer_timings`).
+    pub bytes_accessed: u64,
 }
 
 /// Compute metrics (Métriques 6-11, 20-24)
