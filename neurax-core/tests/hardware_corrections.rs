@@ -224,83 +224,19 @@ fn test_f05_overhead_significant_small_batch() {
 // ═══════════════════════════════════════════════════════════════════════════
 // F06: CONTENTION MÉMOIRE MULTI-GPU
 // ═══════════════════════════════════════════════════════════════════════════
-
-/// Test: facteur de contention multi-GPU
-#[test]
-fn test_f06_multi_gpu_contention_factor() {
-    // En multi-GPU, la bande passante effective est réduite
-    // Facteur expérimental: ~0.82 pour 2 GPUs, ~0.70 pour 4 GPUs
-
-    let contention_factor_2gpu = 0.82;
-    let contention_factor_4gpu = 0.70;
-    let contention_factor_8gpu = 0.55;
-
-    assert!(
-        contention_factor_2gpu < 1.0,
-        "F06: Contention factor should be < 1"
-    );
-    assert!(
-        contention_factor_4gpu < contention_factor_2gpu,
-        "F06: More GPUs = more contention"
-    );
-    assert!(
-        contention_factor_8gpu < contention_factor_4gpu,
-        "F06: More GPUs = more contention"
-    );
-
-    println!("✓ F06: Multi-GPU contention factors:");
-    println!("  - 2 GPUs: {:.0}%", contention_factor_2gpu * 100.0);
-    println!("  - 4 GPUs: {:.0}%", contention_factor_4gpu * 100.0);
-    println!("  - 8 GPUs: {:.0}%", contention_factor_8gpu * 100.0);
-}
-
-/// Test: bande passante effective multi-GPU
-#[test]
-fn test_f06_effective_bandwidth_multi_gpu() {
-    // A100: 2039 GB/s par GPU
-    let single_gpu_bandwidth = 2039.0; // GB/s
-
-    // Avec contention
-    let effective_2gpu = single_gpu_bandwidth * 0.82;
-    let effective_4gpu = single_gpu_bandwidth * 0.70;
-
-    // Bande passante totale (agrégée)
-    let total_2gpu = effective_2gpu * 2.0;
-    let total_4gpu = effective_4gpu * 4.0;
-
-    println!("✓ F06: Effective bandwidth multi-GPU:");
-    println!("  - 2 GPUs: {:.0} GB/s total", total_2gpu);
-    println!("  - 4 GPUs: {:.0} GB/s total", total_4gpu);
-}
-
-/// Test: scaling efficiency
-#[test]
-fn test_f06_scaling_efficiency() {
-    // Scaling efficiency = actual_speedup / ideal_speedup
-
-    // Pour 2 GPUs: ideal = 2×, actual ≈ 1.82×
-    let speedup_2gpu = 1.82;
-    let ideal_2gpu = 2.0;
-    let efficiency_2gpu = speedup_2gpu / ideal_2gpu;
-
-    // Pour 4 GPUs: ideal = 4×, actual ≈ 3.2×
-    let speedup_4gpu = 3.2;
-    let ideal_4gpu = 4.0;
-    let efficiency_4gpu = speedup_4gpu / ideal_4gpu;
-
-    assert!(
-        (efficiency_2gpu - 0.91f64).abs() < 0.05,
-        "F06: 2-GPU scaling efficiency incorrect"
-    );
-    assert!(
-        (efficiency_4gpu - 0.80f64).abs() < 0.05,
-        "F06: 4-GPU scaling efficiency incorrect"
-    );
-
-    println!("✓ F06: Scaling efficiency:");
-    println!("  - 2 GPUs: {:.0}%", efficiency_2gpu * 100.0);
-    println!("  - 4 GPUs: {:.0}%", efficiency_4gpu * 100.0);
-}
+//
+// The three tests that used to live here (test_f06_multi_gpu_contention_factor,
+// test_f06_effective_bandwidth_multi_gpu, test_f06_scaling_efficiency)
+// asserted specific "contention factor" constants (0.82 for 2 GPUs, 0.70 for
+// 4, 0.55 for 8) against nothing but themselves and arithmetic on the same
+// literals — no such contention-factor concept exists anywhere in the real
+// hardware pass, so passing told you nothing about the compiler. The
+// mechanism that actually models multi-GPU degradation is an all-reduce
+// communication-overhead term (`hardware/pass.rs::compute_metrics`,
+// ZeRO-stage-aware), verified for real — against a peer-reviewed, precisely
+// cited published figure, not an invented constant — in
+// `published_hardware_scaling.rs`
+// (`per_gpu_throughput_degrades_as_gpu_count_grows_at_fixed_model_and_batch`).
 
 // ═══════════════════════════════════════════════════════════════════════════
 // F07: PROPAGATION DIMENSIONS SYMBOLIQUES
