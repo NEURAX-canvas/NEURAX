@@ -113,6 +113,38 @@ fn sequence_hidden_dim_threads_through_nodes_that_dont_restate_it() {
     assert_eq!(output_shape(&result, "mlp"), output_shape(&result, "attn"));
 }
 
+const GNN_CHAIN_JSON: &str = r#"
+{
+    "schema_version": "1.0",
+    "model": {
+        "name": "GNN-Chain",
+        "type": "gnn",
+        "layers": [
+            {"id": "gcn1", "layer_type": "graph_conv", "params": {"in_features": 1433, "out_features": 64}},
+            {"id": "gcn2", "layer_type": "graph_conv", "params": {"out_features": 7}}
+        ],
+        "connections": [{"from": "gcn1", "to": "gcn2"}],
+        "global_params": {"extra": {"num_nodes": 2708}}
+    },
+    "training": {"batch_size": 1, "precision": "fp32"},
+    "hardware": {"gpus": [{"name": "A100-80GB", "count": 1}]},
+    "data": {"dtype": "fp32"}
+}
+"#;
+
+#[test]
+fn gnn_uses_num_nodes_and_feature_width_not_the_batch_seq_hidden_placeholder() {
+    let result = analyze_json(GNN_CHAIN_JSON).expect("analysis should succeed");
+
+    // gcn1: [num_nodes, in_features] -> [num_nodes, out_features] = [2708, 64],
+    // not the generic [batch, seq, hidden] = [1, 512, 512] every GNN layer
+    // got before this module covered the Graph family.
+    assert_eq!(output_shape(&result, "gcn1"), vec![2708, 64]);
+    // gcn2 doesn't restate in_features — it must carry gcn1's real node
+    // count and feature width forward, not fall back to a placeholder.
+    assert_eq!(output_shape(&result, "gcn2"), vec![2708, 7]);
+}
+
 const NO_CONNECTIONS_JSON: &str = r#"
 {
     "schema_version": "1.0",

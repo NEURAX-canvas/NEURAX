@@ -5,10 +5,10 @@
 //! type: a Conv2D layer was treated identically to an attention layer. This
 //! is a port of the shape engine already built and verified this session in
 //! `neurax-ui/src/utils/neuraxCompiler.ts`, now the canonical implementation
-//! instead of a client-side guess. See the Phase 1 plan for scope: CNN (and
-//! GAN/diffusion, which share the same `[B,C,H,W]` convention) and the
-//! sequence families (transformer/moe/ssm/rnn). GNN and everything else
-//! pass their input shape through unchanged, same as before this module.
+//! instead of a client-side guess. Covers all 8 families NEURAX supports:
+//! CNN (and GAN/diffusion, which share the same `[B,C,H,W]` convention), the
+//! sequence families (transformer/moe/ssm/rnn), and GNN's `[num_nodes,
+//! features]` convention.
 
 use std::collections::HashMap;
 
@@ -26,9 +26,13 @@ enum ShapeFamily {
     Image,
     /// `[batch, sequence, hidden]` — transformer/moe/ssm/rnn.
     Sequence,
-    /// Not yet covered (gnn and the rest) — input shape passes through
-    /// unchanged, exactly like before this module existed.
-    Passthrough,
+    /// `[num_nodes, features]` — gnn. No batch dimension in the same sense
+    /// a tensor family has one: a GNN layer transforms every node's feature
+    /// vector by the same weight matrix, same convention
+    /// `operator/pass.rs`'s GNN FLOPs dispatch already reads `num_nodes`/
+    /// `num_edges` under (`global_params.extra`, defaulting to the Cora
+    /// citation graph's real size).
+    Graph,
 }
 
 fn shape_family(model_type: ModelType) -> ShapeFamily {
@@ -37,7 +41,7 @@ fn shape_family(model_type: ModelType) -> ShapeFamily {
         ModelType::Transformer | ModelType::Moe | ModelType::Ssm | ModelType::Rnn => {
             ShapeFamily::Sequence
         }
-        _ => ShapeFamily::Passthrough,
+        ModelType::Gnn => ShapeFamily::Graph,
     }
 }
 
@@ -63,7 +67,17 @@ fn entry_shape(family: ShapeFamily, batch: usize, config: &ModelConfig) -> Vec<u
                 gp.embedding_dim.unwrap_or(512),
             ]
         }
-        ShapeFamily::Passthrough => vec![],
+        ShapeFamily::Graph => {
+            let num_nodes =
+                crate::operator::extra_usize(&config.model.global_params.extra, "num_nodes", 2708);
+            let in_features = config
+                .model
+                .layers
+                .first()
+                .and_then(|l| l.params.in_features)
+                .unwrap_or(64);
+            vec![num_nodes, in_features]
+        }
     }
 }
 
@@ -143,6 +157,25 @@ fn sequence_output_shape(
     vec![batch, seq, hidden]
 }
 
+/// Every node's feature vector goes through the same weight matrix — the
+/// node count never changes within a layer, only the feature width, same
+/// convention `operator/pass.rs`'s `GraphConvNet`/`MessagePassing`/
+/// `GraphAttentionNet` arms already price
+/// (`Shape::known(vec![num_nodes, out_features])`).
+fn graph_output_shape(layer_type: LayerType, params: &LayerParams, input: &[usize]) -> Vec<usize> {
+    if input.len() != 2 {
+        return input.to_vec();
+    }
+    match layer_type {
+        LayerType::GraphConvNet | LayerType::MessagePassing | LayerType::GraphAttentionNet => {
+            let num_nodes = input[0];
+            let out_features = params.out_features.unwrap_or(input[1]);
+            vec![num_nodes, out_features]
+        }
+        _ => input.to_vec(),
+    }
+}
+
 fn infer_output_shape(
     layer_type: LayerType,
     family: ShapeFamily,
@@ -152,7 +185,7 @@ fn infer_output_shape(
     match family {
         ShapeFamily::Image => image_output_shape(layer_type, params, input),
         ShapeFamily::Sequence => sequence_output_shape(layer_type, params, input),
-        ShapeFamily::Passthrough => input.to_vec(),
+        ShapeFamily::Graph => graph_output_shape(layer_type, params, input),
     }
 }
 

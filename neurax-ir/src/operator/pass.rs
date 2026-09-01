@@ -14,8 +14,10 @@ use neurax_parser::LayerType;
 /// key is absent or not a plain non-negative integer — the same map
 /// `GlobalResolutionContext` reads `num_nodes`/`num_edges` from, so a GNN
 /// design's real graph size (if the client supplied one) reaches its FLOPs
-/// the same way it reaches everything else this map backs.
-fn extra_usize(
+/// the same way it reaches everything else this map backs. `pub(crate)`
+/// so `tensor::shape_inference` reads the same `num_nodes` this pass does,
+/// instead of a second, independently-drifting lookup.
+pub(crate) fn extra_usize(
     extra: &std::collections::HashMap<String, serde_json::Value>,
     key: &str,
     default: usize,
