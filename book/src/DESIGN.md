@@ -17,9 +17,10 @@ This document describes the architecture, design principles, and data flow of th
 4. [Cross-Pass Communication: `NeuraxContext`](#cross-pass-communication-neuraxcontext)
 5. [Component Deep Dive](#component-deep-dive)
 6. [Diagnostics](#diagnostics)
-7. [Hyperparameter Sweep](#hyperparameter-sweep)
-8. [Design Principles](#design-principles)
-9. [Adding a New Model Family](#adding-a-new-model-family)
+7. [Recommendations](#recommendations)
+8. [Hyperparameter Sweep](#hyperparameter-sweep)
+9. [Design Principles](#design-principles)
+10. [Adding a New Model Family](#adding-a-new-model-family)
 
 ---
 
@@ -315,6 +316,44 @@ flowchart LR
 
 *Figure 5 — both `tflops_for_precision()` (compute speed) and `Shape::size_bytes()` (memory footprint) had a missing `"fp8"` match arm this session, silently falling back to the FP32 default: a model configured for fp8 computed `compute_time_ms` as if it ran at FP32 speed and sized every tensor as if it were 4 bytes/element instead of 1. None of the 16 reference models use fp8, so nothing had ever exercised the path. Fixed in both places; verified with a real before/after run (`compute_time_ms` dropped ~29.5x, consistent with real FP8-vs-FP32 throughput ratios).*
 
+#### What actually reaches `latency_ms` — four real gaps closed, none of them touched by any test until this session
+
+Every field HardwarePass reports (latency, throughput, GPU utilization,
+bottleneck) had never once been checked against a real, published,
+measured number — every existing test asserted only that a value was
+positive and finite. Testing against real hardware benchmarks surfaced
+four concrete gaps in the compute chain itself, not just missing tests:
+
+```mermaid
+flowchart LR
+    AtomOp["AtomOp<br/>param_count + activation_memory<br/>(computed, then discarded)"] -.->|"now carried through"| OpFlops["OpFlops.bytes_accessed"]
+    OpFlops --> MEMTIME["memory_time_ms<br/>= bytes / GPU bandwidth"]
+    OLD["compute_time_ms x 0.5<br/>(the old placeholder)"] -.->|removed| MEMTIME
+
+    LAYERTYPE["layer_type<br/>(Attention/Mlp/Conv/GAN/diffusion/MoE)"] --> EFF["gpu_efficiency<br/>weighted by real op family"]
+    EFF --> COMPTIME["compute_time_ms"]
+
+    COMPTIME --> COMBINE{{"max(compute, memory)<br/>+ min x (1 - overlap_factor)<br/>+ kernel_overhead_us x real_op_count"}}
+    MEMTIME --> COMBINE
+    COMBINE --> LATENCY["latency_ms"]
+
+    style OLD fill:#e74c3c,color:#fff
+    style COMBINE fill:#e67e22,color:#fff
+```
+
+*Figure 6 — (1) memory time was a flat `compute_time_ms * 0.5`, unrelated to how many bytes an operation actually moves — two models with identical FLOPs but very different weight footprints reported identical memory time. Fixed by carrying each op's real bytes through from the operator pass, previously computed and discarded. (2) The "Industrial Roofline" model's own `overlap_factor` and `kernel_launch_overhead_us` were built and never read — latency assumed 100% overlap between compute and memory (no real GPU achieves that) and zero cost per kernel launch. (3) Convolution-family layers (Conv, GAN's Generator/DiscriminatorBlock, diffusion's U-Net blocks, MoE's experts) fell outside the attention/mlp efficiency weighting and ran at the "nothing recognized" 100%-efficiency fallback — checked against NVIDIA's own published ResNet-50 inference throughput, NEURAX predicted ~7.2x too fast before a real, calibrated `conv_efficiency` term was added. (4) `gpu_utilization` could exceed 100% on any multi-GPU config (an 8-GPU model reported 486%) because its numerator used pre-division compute time against a per-GPU-divided `latency_ms`.*
+
+Three real published references now exist where none did before —
+`neurax-core/tests/published_hardware_scaling.rs`,
+`published_cnn_inference_throughput.rs`, and
+`published_energy_accounting.rs` — each checking a predicted number
+against a real, cited, measured one, rather than only that it is
+positive and finite. Narayanan et al. 2021's own Megatron-LM data
+doubles as the reference for both a large-scale multi-GPU degradation
+curve and a small, commonly-configured scale; Luccioni et al. 2023's
+BLOOM carbon-footprint report grounds the cost pass's energy formula
+against a real measured training run.
+
 ### neurax-service
 
 Production actix-web HTTP server with:
@@ -386,6 +425,32 @@ At different points the project has stated 43, 66, 35, 70+ and 77 metrics in fiv
 
 ---
 
+## Recommendations
+
+Separate from diagnostics (which describe a problem) are recommendations
+(`generate_recommendations`, `neurax-ir/src/report/pass.rs`) — a small,
+fixed set of rule-triggered suggestions, each carrying a stated *impact*.
+Until recently, every impact was a hardcoded string unrelated to the model
+actually analyzed: a 4-layer model and a 96-layer one got the identical
+"save 70%" gradient-checkpointing estimate, and a model already running on
+the fastest available GPU could be told to expect a "2-3x speedup" from
+switching to one. All four now compute a real, model-specific number:
+
+| Trigger | Recommendation | What it now computes |
+|---|---|---|
+| Peak VRAM > 80% of GPU capacity | Enable Gradient Checkpointing | `1 - 1/sqrt(num_layers)` of activation memory freed (Chen et al. 2016, *Training Deep Nets with Sublinear Memory Cost*) — a 16-layer model and a 96-layer one now get genuinely different figures (75% vs. 90%), not the same flat constant |
+| `optimal_gpu_count > 1` and `data_parallel_efficiency < 0.8` | Use Hybrid Parallelism | A target efficiency computed from *this* model's own current efficiency, `current + (1 - current) * 0.90` — the recovery fraction grounded in Narayanan et al. 2021's real measured PTD-P-vs-ZeRO-3 comparison, so the reported target can never be below where the model already stands |
+| `bottleneck == "memory-bound"` | Consider Higher Bandwidth GPU | The real bandwidth ratio to whichever GPU the hardware database actually reports as fastest (not a hardcoded "H100 SXM") — stays silent if the model is already on that GPU |
+| `training_cost_usd > $10,000` | Optimize Training Duration | A dollar figure — the run's own `training_cost_usd` times a cited, conservative spot-instance discount (60%, the low end of the commonly documented 60-90% AWS/GCP GPU spot range) — rather than a bare, unquantified percentage |
+
+The discount/recovery *rates* themselves are still constants (a spot
+discount is a market fact, not something derivable from a model's
+architecture) — what changed is that every recommendation now multiplies
+its rate by a real number that comes out of the model being analyzed,
+instead of stating the rate alone as if it were the whole answer.
+
+---
+
 ## Hyperparameter Sweep
 
 Given a base configuration, `sweep_hyperparameters` (in `neurax-core`) runs a grid search over `batch_size x zero_stage x gpu_count x precision` — each point a full, real call to `run_analysis()`, not an approximation of one:
@@ -407,7 +472,7 @@ flowchart TB
     style BEST fill:#2ecc71,color:#fff
 ```
 
-*Figure 6 — nothing here is simulated: every candidate is the exact same 11-phase pipeline described above, run once per point in the grid. This is also why it stays cheap: the pipeline itself runs in low single-digit milliseconds, so even a few dozen candidates finish well under the time a single real OOM-and-retry cycle on actual hardware would cost.*
+*Figure 7 — nothing here is simulated: every candidate is the exact same 11-phase pipeline described above, run once per point in the grid. This is also why it stays cheap: the pipeline itself runs in low single-digit milliseconds, so even a few dozen candidates finish well under the time a single real OOM-and-retry cycle on actual hardware would cost.*
 
 Exposed as `POST /sweep` on `neurax-service`, and as the `find_optimal_hyperparameters` MCP tool above — both call the same function, so the AI agent, the MCP client, and a direct API caller are all bounded by the same feasibility check.
 
