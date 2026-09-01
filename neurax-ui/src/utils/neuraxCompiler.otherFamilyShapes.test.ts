@@ -111,6 +111,37 @@ describe('Diffusion shape propagation (UNet: downsample, upsample, skip concat)'
   });
 });
 
+describe('Diffusion unet_encoder/unet_decoder routing', () => {
+  it('routes unet_encoder/unet_decoder to down_block/up_block, not the generic encoder/decoder (LSTM) fallback', () => {
+    // Both node types end with "encoder"/"decoder", which otherwise falls
+    // through to the generic `.endsWith('encoder'/'decoder')` rule
+    // (`encoder_block`/`decoder_block` -> an LSTM formula on the Rust
+    // side) because no earlier rule caught these diffusion-specific names.
+    // Real templates (e.g. modelTemplates.ts's mnist_diffusion) build these
+    // with a per-stage `channels` array and a `num_res_blocks` repeat
+    // count, which must reach the backend layer's params unchanged.
+    const nodes: CanvasNode[] = [
+      node('in', 'input', {}),
+      node('enc', 'unet_encoder', { in_channels: 3, channels: [128, 256, 256], num_res_blocks: 2 }),
+      node('dec', 'unet_decoder', { out_channels: 3, channels: [256, 256, 128], num_res_blocks: 2 }),
+      node('out', 'output', {}),
+    ];
+    const connections: Connection[] = [link('in', 'enc'), link('enc', 'dec'), link('dec', 'out')];
+
+    const ir = compileToNeuraxIR(nodes, connections, {
+      family: 'diffusion', batchSize: 2, inChannels: 3, imgHeight: 64, imgWidth: 64,
+    });
+    const byId = new Map(ir.model.layers.map((l: any) => [l.id, l]));
+
+    expect(byId.get('enc').layer_type).toBe('down_block');
+    expect(byId.get('enc').params.channels).toEqual([128, 256, 256]);
+    expect(byId.get('enc').params.num_res_blocks).toBe(2);
+
+    expect(byId.get('dec').layer_type).toBe('up_block');
+    expect(byId.get('dec').params.channels).toEqual([256, 256, 128]);
+  });
+});
+
 describe('RNN hidden size', () => {
   it('an RNN build\'s configured hiddenSize reaches shape inference instead of 0', () => {
     const nodes: CanvasNode[] = [

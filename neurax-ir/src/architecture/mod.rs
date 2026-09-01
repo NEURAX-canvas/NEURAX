@@ -412,21 +412,74 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             attention::cross_attention_params(hidden, context_dim, true) * block_repeat
         }
         LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
-            let in_ch = layer.params.in_channels_diff.unwrap_or(
-                layer
-                    .params
-                    .in_channels
-                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-            );
-            let out_ch = layer.params.out_channels_diff.unwrap_or(
-                layer
-                    .params
-                    .out_channels
-                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-            );
-            let block_repeat = layer.params.layers_per_block.unwrap_or(1) as u64;
-            cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
-                * block_repeat
+            let block_repeat = layer.params.layers_per_block.unwrap_or(1).max(1) as u64;
+            match layer
+                .params
+                .block_out_channels
+                .as_ref()
+                .filter(|c| !c.is_empty())
+            {
+                // A per-stage channel list (`unet_encoder`/`unet_decoder`
+                // templates: e.g. in=3, channels=[128,256,256]) describes a
+                // widening/narrowing block that a single flat in/out pair
+                // can't represent — treating it as one uniform block (the
+                // arm below) silently dropped every intermediate width.
+                // Cost one stage transition per consecutive pair, each
+                // repeated `layers_per_block`/`num_res_blocks` times, the
+                // same way a real U-Net stage is built.
+                Some(channels) => {
+                    let entry = layer.params.in_channels_diff.unwrap_or(
+                        layer
+                            .params
+                            .in_channels
+                            .unwrap_or(layer.params.hidden_size.unwrap_or(channels[0])),
+                    );
+                    let mut widths = Vec::with_capacity(channels.len() + 1);
+                    widths.push(entry);
+                    widths.extend(channels.iter().copied());
+                    // Only the first block of a stage changes channel count
+                    // (and so is the only one carrying the projection
+                    // shortcut `resnet_basic_block_params` adds whenever
+                    // in != out); repeating that same in!=out pair
+                    // `block_repeat` times — the first attempt at this —
+                    // double-charged the shortcut for every stage.
+                    widths
+                        .windows(2)
+                        .map(|w| {
+                            let (win, wout) = (w[0], w[1]);
+                            let first = cnn_blocks::resnet_basic_block_params(
+                                win,
+                                wout,
+                                1,
+                                layer.params.bias,
+                            );
+                            let rest = cnn_blocks::resnet_basic_block_params(
+                                wout,
+                                wout,
+                                1,
+                                layer.params.bias,
+                            ) * (block_repeat - 1);
+                            first + rest
+                        })
+                        .sum()
+                }
+                None => {
+                    let in_ch = layer.params.in_channels_diff.unwrap_or(
+                        layer
+                            .params
+                            .in_channels
+                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+                    );
+                    let out_ch = layer.params.out_channels_diff.unwrap_or(
+                        layer
+                            .params
+                            .out_channels
+                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+                    );
+                    cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
+                        * block_repeat
+                }
+            }
         }
         LayerType::ConditionBlock => {
             let hidden = layer.params.hidden_size.unwrap_or(320);

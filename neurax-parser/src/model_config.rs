@@ -719,8 +719,20 @@ impl LayerParams {
             latent_channels: raw.get_usize("latent_channels"),
             down_block_types: raw.get_string_vec("down_block_types"),
             up_block_types: raw.get_string_vec("up_block_types"),
-            block_out_channels: raw.get_usize_vec("block_out_channels"),
-            layers_per_block: raw.get_usize("layers_per_block"),
+            // `channels` is the key several U-Net encoder/decoder templates
+            // in neurax-ui actually write for a per-stage channel list;
+            // `block_out_channels` is the diffusers name. Same
+            // dual-name situation as `context_dim`/`cross_attention_dim`
+            // just below.
+            block_out_channels: raw
+                .get_usize_vec("block_out_channels")
+                .or_else(|| raw.get_usize_vec("channels")),
+            // `num_res_blocks` is the key those same templates use for how
+            // many residual blocks make up each stage; `layers_per_block` is
+            // the diffusers name for the identical concept.
+            layers_per_block: raw
+                .get_usize("layers_per_block")
+                .or_else(|| raw.get_usize("num_res_blocks")),
             // `context_dim` is the key every real diffusion template in this
             // repo (SDXL, SD1.5) actually writes — `cross_attention_dim` is
             // the name diffusers/HF configs use. Both are accepted so the

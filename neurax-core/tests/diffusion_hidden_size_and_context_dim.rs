@@ -91,3 +91,61 @@ fn cross_attention_param_count_reacts_to_its_own_context_dim() {
     assert_ne!(narrow_context, self_attention_shaped);
     assert_ne!(wide_context, self_attention_shaped);
 }
+
+/// A third, separate bug found after the two above were fixed:
+/// `neurax-ui`'s own templates (e.g. `mnist_diffusion`) build encoder/decoder
+/// stages with a `unet_encoder`/`unet_decoder` node type carrying a
+/// per-stage channel list (`channels: [128, 256, 256]`) and a
+/// `num_res_blocks` repeat count — a shape `DownBlock`/`UpBlock`'s formula
+/// couldn't consume at all. Two compounding problems: the frontend routed
+/// both node types to the generic `.endsWith('encoder'/'decoder')` fallback
+/// (`encoder_block`/`decoder_block`, an LSTM formula — costing an image
+/// U-Net stage as if it were a recurrent cell), and even after fixing that
+/// routing, `block_out_channels`/`layers_per_block` were parsed under their
+/// diffusers names only, never under the `channels`/`num_res_blocks` names
+/// these templates actually write.
+#[test]
+fn unet_encoder_with_a_per_stage_channel_list_costs_each_transition() {
+    let json = r#"{
+        "schema_version": "1.0",
+        "model": {
+            "name": "unet-encoder-test",
+            "type": "diffusion",
+            "global_params": { "num_layers": 1, "hidden_size": 128 },
+            "layers": [
+                {"id": "enc", "layer_type": "down_block", "params": {
+                    "in_channels": 3, "channels": [128, 256, 256], "num_res_blocks": 2
+                }}
+            ]
+        },
+        "training": {"batch_size": 1, "max_steps": 100},
+        "hardware": {"gpus": [{"name": "A100-SXM", "count": 1}]}
+    }"#;
+    let config = neurax_parser::parse_model_config(json).expect("parses");
+    let measured = neurax_ir::architecture::scaled_total_parameters(&config);
+
+    // Hand-computed: one stage transition per consecutive width pair
+    // (3->128, 128->256, 256->256), each stage's first block carrying the
+    // channel change (and its projection shortcut when in != out) and the
+    // remaining num_res_blocks-1 block(s) at constant width.
+    use neurax_formulas::cnn_blocks::resnet_basic_block_params;
+    let widths = [3usize, 128, 256, 256];
+    let expected: u64 = widths
+        .windows(2)
+        .map(|w| {
+            let first = resnet_basic_block_params(w[0], w[1], 1, true);
+            let rest = resnet_basic_block_params(w[1], w[1], 1, true);
+            first + rest // num_res_blocks=2: 1 changing block + 1 constant-width block
+        })
+        .sum();
+
+    assert_eq!(
+        measured, expected,
+        "a down_block with a per-stage channels list should cost each width \
+         transition separately — got {measured}, expected {expected}"
+    );
+    assert!(
+        measured > 0,
+        "an encoder stage must never cost 0 parameters"
+    );
+}

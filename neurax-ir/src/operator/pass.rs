@@ -820,25 +820,63 @@ fn decompose_layer_to_ops(
             // param formula (architecture/mod.rs) — no real template sets
             // in_channels/in_channels_diff on these nodes, and each node
             // represents `layers_per_block` real ResNet blocks, not one.
-            let in_ch = layer.params.in_channels_diff.unwrap_or(
-                layer
-                    .params
-                    .in_channels
-                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-            );
-            let out_ch = layer.params.out_channels_diff.unwrap_or(
-                layer
-                    .params
-                    .out_channels
-                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-            );
-            let block_repeat = layer.params.layers_per_block.unwrap_or(1) as f64;
+            let block_repeat = layer.params.layers_per_block.unwrap_or(1).max(1) as f64;
             // Same sqrt(seq) spatial-side stand-in the CNN ResidualBlock arm
             // above uses — no per-layer (H, W) tracking exists for diffusion
             // U-Net blocks either.
             let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops = cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, 1)
-                * block_repeat;
+            let flops = match layer
+                .params
+                .block_out_channels
+                .as_ref()
+                .filter(|c| !c.is_empty())
+            {
+                // Same per-stage channel list handled on the param side
+                // (architecture/mod.rs) — one FLOPs term per consecutive
+                // width transition instead of a single flat in/out pair.
+                Some(channels) => {
+                    let entry = layer.params.in_channels_diff.unwrap_or(
+                        layer
+                            .params
+                            .in_channels
+                            .unwrap_or(layer.params.hidden_size.unwrap_or(channels[0])),
+                    );
+                    let mut widths = Vec::with_capacity(channels.len() + 1);
+                    widths.push(entry);
+                    widths.extend(channels.iter().copied());
+                    // Same first-block-only channel-change shape as the
+                    // param formula (architecture/mod.rs).
+                    widths
+                        .windows(2)
+                        .map(|w| {
+                            let (win, wout) = (w[0], w[1]);
+                            let first = cnn_blocks::resnet_basic_block_flops(
+                                batch, win, wout, side, side, 1,
+                            );
+                            let rest = cnn_blocks::resnet_basic_block_flops(
+                                batch, wout, wout, side, side, 1,
+                            ) * (block_repeat - 1.0);
+                            first + rest
+                        })
+                        .sum()
+                }
+                None => {
+                    let in_ch = layer.params.in_channels_diff.unwrap_or(
+                        layer
+                            .params
+                            .in_channels
+                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+                    );
+                    let out_ch = layer.params.out_channels_diff.unwrap_or(
+                        layer
+                            .params
+                            .out_channels
+                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
+                    );
+                    cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, 1)
+                        * block_repeat
+                }
+            };
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Conv2D,

@@ -1515,10 +1515,18 @@ function toParserLayerType(blockType: string): string {
   ) {
     return 'unet_block';
   }
-  if (normalized.includes('down_block') || normalized.includes('downsample')) {
+  if (
+    normalized.includes('down_block') ||
+    normalized.includes('downsample') ||
+    normalized === 'unet_encoder'
+  ) {
     return 'down_block';
   }
-  if (normalized.includes('up_block') || normalized.includes('upsample')) {
+  if (
+    normalized.includes('up_block') ||
+    normalized.includes('upsample') ||
+    normalized === 'unet_decoder'
+  ) {
     return 'up_block';
   }
   if (normalized.includes('mid_block') || normalized === 'unet_mid') {
