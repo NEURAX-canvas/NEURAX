@@ -9,7 +9,7 @@ The usual way to find out an architecture doesn't fit is to launch the training 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 <p align="center">
-  <img width="820" alt="A 28B-parameter transformer (GQA, SwiGLU) loaded on the canvas, with real FLOPs, VRAM, and compute-efficiency numbers computed live" src="https://github.com/user-attachments/assets/d4324dc6-92a1-4742-a849-aa21d1b149ca" />
+ <img width="1914" height="1053" alt="Capture d’écran du 2026-08-27 12-31-58" src="https://github.com/user-attachments/assets/0c69964a-a954-4cc7-b5fa-a8b4fc2bd7af" />
   <br><sub>A 28B GQA/SwiGLU transformer, loaded and analyzed — parameters, FLOPs, VRAM, and roofline position, all computed the moment it was built.</sub>
 </p>
 
