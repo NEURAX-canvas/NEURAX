@@ -10,7 +10,7 @@ use crate::NeuraxContext;
 /// every non-diffusion family, and for a diffusion model without a stated
 /// `diffusion_timesteps` (nothing to scale by, so it stays a single pass
 /// rather than guessing a step count).
-fn diffusion_sample_factor(ctx: &NeuraxContext) -> f64 {
+pub(crate) fn diffusion_sample_factor(ctx: &NeuraxContext) -> f64 {
     if ctx.config.model.model_type != neurax_parser::ModelType::Diffusion {
         return 1.0;
     }
@@ -69,8 +69,16 @@ impl IrPass for ComputePass {
             // operator pass (`AtomOp::param_count`/`activation_memory`) and
             // previously dropped here, leaving nothing but a flat ratio for
             // HardwarePass to estimate memory time from.
-            let param_bytes = (op.param_count as f64 * dtype_bytes).round() as u64;
-            let bytes_accessed = param_bytes.saturating_add(op.activation_memory);
+            // Scaled by the same `sample_factor` as `flops`: a diffusion
+            // sample re-runs this op (and re-reads its weights, re-writes
+            // its activations) once per effective denoising pass, not once
+            // total — leaving this unscaled made memory time (and so
+            // latency) stay flat across a 1-step vs 1000-step CFG sample
+            // while FLOPs correctly scaled 2000x, decoupling latency from
+            // the model's real cost.
+            let param_bytes = (op.param_count as f64 * dtype_bytes * sample_factor).round() as u64;
+            let bytes_accessed =
+                param_bytes.saturating_add((op.activation_memory as f64 * sample_factor) as u64);
             compute_ir.op_flops.push(OpFlops {
                 op_id: op.id,
                 layer_id: op.layer_id.clone(),

@@ -315,8 +315,35 @@ impl IrPass for HardwarePass {
         let num_gpus_f64 = num_gpus.max(1) as f64;
         let parallel_compute_time_ms = compute_time_ms / num_gpus_f64;
         let parallel_memory_time_ms = memory_time_ms / num_gpus_f64;
-        let latency_ms =
-            parallel_compute_time_ms.max(parallel_memory_time_ms) + communication_overhead_ms;
+
+        // Kernel launches (estimate) — moved above `latency_ms` so its own
+        // overhead can be added to it below, rather than only reported
+        // alongside a latency that never accounted for it. Scaled by the
+        // same diffusion sample factor as FLOPs/bytes (compute/pass.rs):
+        // a 1000-step CFG sample launches every one of the U-Net's kernels
+        // 2000 times, not once — leaving this unscaled would have made
+        // kernel overhead a fixed floor that swamped the real, correctly
+        // scaled FLOPs-driven cost for a small model.
+        let kernel_launch_count = (ctx.config.model.layers.len() as f64
+            * 2.0
+            * crate::compute::diffusion_sample_factor(ctx))
+        .round() as usize;
+
+        // `output.roofline` was already built at "Industrial" level
+        // (overlap_factor: 0.3, kernel_launch_overhead_us: 5.0 —
+        // hardware/pass.rs::build()) but neither field was ever read here:
+        // latency took the plain max of compute/memory time (implicitly
+        // assuming 100% overlap between them, which no real GPU achieves)
+        // and kernel launch overhead was computed into `kernel_launch_count`
+        // only to be reported, never actually added to the latency it
+        // should inflate — exactly what `hardware_corrections.rs`'s F05
+        // tests claimed to check without ever calling real code.
+        let max_t = parallel_compute_time_ms.max(parallel_memory_time_ms);
+        let min_t = parallel_compute_time_ms.min(parallel_memory_time_ms);
+        let overlap_adjusted_ms = max_t + min_t * (1.0 - output.roofline.overlap_factor);
+        let kernel_overhead_ms =
+            output.roofline.kernel_launch_overhead_us * kernel_launch_count as f64 / 1000.0;
+        let latency_ms = overlap_adjusted_ms + communication_overhead_ms + kernel_overhead_ms;
 
         // Determine bottleneck
         let bottleneck = if compute_time_ms > memory_time_ms * 1.5 {
@@ -345,9 +372,6 @@ impl IrPass for HardwarePass {
 
         // Tensor core utilization
         let tensor_core_utilization = calculate_tensor_core_utilization(ctx);
-
-        // Kernel launches (estimate)
-        let kernel_launch_count = ctx.config.model.layers.len() * 2;
 
         // Effective TFLOPS = total_flops / latency_seconds / 1e12.
         // latency_ms is milliseconds, so that's `total_flops * 1000.0 /
