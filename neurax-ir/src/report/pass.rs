@@ -819,13 +819,32 @@ fn generate_recommendations(
 
     // Memory optimization
     if metrics.peak_vram_bytes > memory.metrics.gpu_vram_bytes * 80 / 100 {
+        // Checkpointing every sqrt(L)-th layer (Chen et al. 2016, "Training
+        // Deep Nets with Sublinear Memory Cost") retains O(sqrt(L))
+        // activations instead of O(L) for an L-layer model — the fraction
+        // of activation memory freed is `1 - 1/sqrt(L)`, not a flat
+        // constant. This used to be a flat 0.7 regardless of depth,
+        // contradicting the W005 diagnostic's own text ("roughly a
+        // square-root reduction") right next to it, and giving a 4-layer
+        // model and a 96-layer one the identical savings estimate despite
+        // the real technique scaling very differently with depth (4
+        // layers: sqrt(4)=2, 50% freed; 96 layers: sqrt(96)~9.8, ~90%
+        // freed).
+        let checkpointing_savings_fraction = if metrics.num_layers > 1 {
+            1.0 - 1.0 / (metrics.num_layers as f64).sqrt()
+        } else {
+            0.0
+        };
         recommendations.push(Recommendation {
             category: RecommendationCategory::MemoryOptimization,
             title: "Enable Gradient Checkpointing".to_string(),
             description: "Reduce activation memory by recomputing during backward pass".to_string(),
             impact: format!(
-                "Save ~{:.1} GB VRAM",
-                metrics.activation_memory_bytes as f64 / 1e9 * 0.7
+                "Save ~{:.1} GB VRAM (~{:.0}% of activation memory, checkpointing every ~{:.0} of {} layers)",
+                metrics.activation_memory_bytes as f64 / 1e9 * checkpointing_savings_fraction,
+                checkpointing_savings_fraction * 100.0,
+                (metrics.num_layers as f64).sqrt().round().max(1.0),
+                metrics.num_layers
             ),
             priority: Priority::High,
         });
