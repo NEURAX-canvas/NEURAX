@@ -245,19 +245,21 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let expansion = layer.params.expansion_factor.unwrap_or(2);
             ssm::mamba_params(hidden, state_dim, expansion)
         }
-        // Parameter count reuses Mamba's formula — a known approximation,
-        // not a considered exact one: S4/H3 lack Mamba's selective
-        // (input-dependent) B/C/Δ projections, so the real weight count
-        // differs in composition, though it stays the same order of
-        // magnitude (dominated by the same d_inner × state_dim state
-        // matrices either way). The FLOPs side does have real, distinct
-        // formulas (`s4_flops`/`h3_flops`, see operator/pass.rs) — the
-        // params side does not yet.
-        LayerType::S4Block | LayerType::H3Block | LayerType::StateSpace => {
+        // S4/StateSpace lack Mamba's selective (input-dependent) B/C/Δ
+        // projections and gating conv, so `s4_params` mirrors `s4_flops`'s
+        // own shape (full-width in/out projections around a per-channel
+        // A/B/C/D state) instead of reusing Mamba's formula.
+        LayerType::S4Block | LayerType::StateSpace => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
             let state_dim = layer.params.state_dim.unwrap_or(16);
-            let expansion = layer.params.expansion_factor.unwrap_or(2);
-            ssm::mamba_params(hidden, state_dim, expansion)
+            ssm::s4_params(hidden, state_dim)
+        }
+        // H3 stacks two SSM layers between one pair of projections —
+        // `h3_params` mirrors `h3_flops`'s own shape the same way.
+        LayerType::H3Block => {
+            let hidden = layer.params.hidden_size.unwrap_or(512);
+            let state_dim = layer.params.state_dim.unwrap_or(16);
+            ssm::h3_params(hidden, state_dim)
         }
         // RWKV and RetNet are not state-space models. Costing them with
         // Mamba's formula put RWKV-7B at 3.4B against a published 7.5B.
@@ -499,16 +501,22 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
         // Graph Neural Networks — real formulas (`neurax-formulas::gnn`),
         // wired here for the first time: these three used to fall through to
         // `Custom` with no `param_count` supplied, costing 0 regardless of
-        // the design. `MessagePassing` reuses the GCN linear-transform shape
-        // rather than a dedicated formula — an approximation for
-        // GraphSAGE/GIN's own aggregators, but a real, non-zero number
-        // either way. RGCN gets its own arm below: a shared single matrix
+        // the design. RGCN gets its own arm below: a shared single matrix
         // understates it badly once there's more than a couple of relation
         // types (real knowledge graphs: hundreds).
-        LayerType::GraphConvNet | LayerType::MessagePassing => {
+        LayerType::GraphConvNet => {
             let in_features = layer.params.in_features.unwrap_or(64);
             let out_features = layer.params.out_features.unwrap_or(64);
             gnn::gcn_params(in_features, out_features, layer.params.bias)
+        }
+        // GraphSAGE/GIN-style: the transform's real input is the
+        // concatenation of a node's own features with its aggregated
+        // neighbors, not GCN's shared-adjacency mix — `message_passing_params`
+        // prices that doubled input width instead of reusing `gcn_params`.
+        LayerType::MessagePassing => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            gnn::message_passing_params(in_features, out_features, layer.params.bias)
         }
         LayerType::GraphAttentionNet => {
             let in_features = layer.params.in_features.unwrap_or(64);

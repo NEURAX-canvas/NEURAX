@@ -108,6 +108,33 @@ pub fn mamba_conv1d_flops(batch: usize, seq_len: usize, d_inner: usize, kernel_s
     2.0 * batch as f64 * d_inner as f64 * seq_len as f64 * kernel_size as f64
 }
 
+/// Compute parameters for an S4 (Structured State Space) block — mirrors
+/// `s4_flops`'s own shape exactly (full-width in/out projections plus a
+/// per-channel A/B/C/D state, the same A/B/C/D decomposition
+/// `mamba_params` uses): there was no params counterpart to `s4_flops` at
+/// all before this, so S4/H3 reused Mamba's params formula despite lacking
+/// Mamba's selective (input-dependent) projections and gating conv.
+#[inline(always)]
+pub fn s4_params(hidden_size: usize, state_dim: usize) -> u64 {
+    let in_proj = hidden_size * hidden_size;
+    let out_proj = hidden_size * hidden_size;
+    // A, B, C: hidden_size * state_dim each; D: hidden_size (one scalar per channel).
+    let ssm = hidden_size * state_dim * 3 + hidden_size;
+    (in_proj + ssm + out_proj) as u64
+}
+
+/// Compute parameters for an H3 (Hungry Hungry Hippos) block — mirrors
+/// `h3_flops`'s own shape: one pair of full-width projections around two
+/// SSM layers (H3's defining structure), not S4's single SSM.
+#[inline(always)]
+pub fn h3_params(hidden_size: usize, state_dim: usize) -> u64 {
+    let in_proj = hidden_size * hidden_size;
+    let out_proj = hidden_size * hidden_size;
+    let ssm_state = hidden_size * state_dim * 3 + hidden_size;
+    let ssm = 2 * ssm_state;
+    (in_proj + ssm + out_proj) as u64
+}
+
 /// Compute FLOPs for SSM state update specifically
 #[inline(always)]
 pub fn ssm_state_update_flops(
@@ -137,6 +164,24 @@ mod tests {
         let params = mamba_params(2048, 16, 2);
         // Should be roughly 4 * hidden^2 for projections plus SSM params
         assert!(params > 0);
+    }
+
+    #[test]
+    fn test_s4_params() {
+        // hidden=512, state=16: in_proj + out_proj = 2*512*512 = 524_288;
+        // ssm = 512*16*3 + 512 = 25_088. Total = 549_376.
+        let params = s4_params(512, 16);
+        assert_eq!(params, 549_376);
+    }
+
+    #[test]
+    fn test_h3_params_doubles_the_ssm_term_over_s4() {
+        // H3's two SSM layers must cost exactly twice S4's single one, with
+        // the same pair of full-width projections around them either way.
+        let s4 = s4_params(512, 16);
+        let h3 = h3_params(512, 16);
+        let ssm_state = 512 * 16 * 3 + 512;
+        assert_eq!(h3 - s4, ssm_state as u64);
     }
 }
 

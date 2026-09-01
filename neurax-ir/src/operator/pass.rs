@@ -1132,12 +1132,33 @@ fn decompose_layer_to_ops(
         // same default this analyser's own hyperparameter panel already
         // assumes for a GNN design with no explicit graph size — rather than
         // an arbitrary round number.
-        LayerType::GraphConvNet | LayerType::MessagePassing => {
+        LayerType::GraphConvNet => {
             let in_features = layer.params.in_features.unwrap_or(64);
             let out_features = layer.params.out_features.unwrap_or(64);
             let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
             let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
             let flops = gnn::gcn_flops(num_nodes, in_features, out_features, num_edges);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
+                output_shape: Shape::known(vec![num_nodes, out_features]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // GraphSAGE/GIN-style — real per-layer FLOPs (`message_passing_flops`)
+        // instead of reusing GCN's, matching the params side's doubled-input
+        // transform.
+        LayerType::MessagePassing => {
+            let in_features = layer.params.in_features.unwrap_or(64);
+            let out_features = layer.params.out_features.unwrap_or(64);
+            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
+            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
+            let flops = gnn::message_passing_flops(num_nodes, in_features, out_features, num_edges);
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Linear,

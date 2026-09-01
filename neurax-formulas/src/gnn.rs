@@ -80,6 +80,35 @@ pub fn mpnn_flops(
     msg_flops + agg_flops + update_flops
 }
 
+/// Compute parameters for a generic message-passing layer (GraphSAGE-style).
+///
+/// `LayerType::MessagePassing` used to reuse `gcn_params` outright, an
+/// approximation for GraphSAGE/GIN's own aggregators (Hamilton et al.,
+/// 2017): GraphSAGE's defining difference from GCN is that it *concatenates*
+/// a node's own features with its aggregated neighbor features before the
+/// linear transform, rather than mixing self and neighbors through one
+/// shared normalized adjacency the way GCN does — so the transform's real
+/// input width is `2 * in_features`, not `in_features`.
+pub fn message_passing_params(in_features: usize, out_features: usize, bias: bool) -> u64 {
+    let weight = (2 * in_features) * out_features;
+    let bias_params = if bias { out_features } else { 0 };
+    (weight + bias_params) as u64
+}
+
+/// Compute FLOPs for a generic message-passing layer (GraphSAGE-style) —
+/// mirrors `message_passing_params`'s doubled-input transform, applied once
+/// per node, plus the same per-edge aggregation cost `gcn_flops` counts.
+pub fn message_passing_flops(
+    num_nodes: usize,
+    in_features: usize,
+    out_features: usize,
+    num_edges: usize,
+) -> f64 {
+    let linear_flops = 2.0 * num_nodes as f64 * (2 * in_features) as f64 * out_features as f64;
+    let agg_flops = num_edges as f64 * in_features as f64;
+    linear_flops + agg_flops
+}
+
 /// Compute parameters for GCN layer
 pub fn gcn_params(in_features: usize, out_features: usize, bias: bool) -> u64 {
     let weight = in_features * out_features;
@@ -166,6 +195,22 @@ mod tests {
     fn test_gcn_params() {
         let params = gcn_params(128, 256, true);
         assert_eq!(params, 128 * 256 + 256);
+    }
+
+    #[test]
+    fn test_message_passing_params_doubles_gcn_s_input_width() {
+        // Same in/out shape as test_gcn_params, but the concat-based
+        // aggregation makes the real transform's input 2*in_features.
+        let params = message_passing_params(128, 256, true);
+        assert_eq!(params, (2 * 128) * 256 + 256);
+        assert!(params > gcn_params(128, 256, true));
+    }
+
+    #[test]
+    fn test_message_passing_flops_matches_hand_computed_value() {
+        let flops = message_passing_flops(1000, 128, 256, 5000);
+        // linear: 2 * 1000 * (2*128) * 256 = 131_072_000; agg: 5000*128 = 640_000.
+        assert_eq!(flops, 131_072_000.0 + 640_000.0);
     }
 
     #[test]
