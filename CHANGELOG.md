@@ -1,13 +1,13 @@
 # Changelog
 
-All notable changes to **NEURAX** — The Pre‑Flight Compiler for Artificial Intelligence are documented in this file.
+All notable changes to **NEURAX** — the Pre‑Flight Environment for Artificial Intelligence — are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [Unreleased]
+## [0.14.0] — 2026-09
 
 ### Fixed
 
@@ -27,6 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **"Use Hybrid Parallelism" always claimed a flat "~90%"** target regardless of the model's own current efficiency. Replaced with a target computed from the model's real `data_parallel_efficiency`, using a recovery fraction grounded in Narayanan et al. 2021's own PTD-P vs. ZeRO-3-only comparison.
 - **"Consider Higher Bandwidth GPU" always named "H100 SXM" with a flat "2-3x"**, even for a model already running on something faster. Now queries the real hardware database for whichever GPU actually has the highest bandwidth, computes the real bandwidth ratio, and stays silent if the current GPU is already the fastest available.
 - **Spot-instance savings were "up to 70%" with no dollar figure** — a $10,001 run and a $10,000,000 run got the identical, unquantified sentence. Now multiplies a conservative, cited discount (AWS/GCP GPU spot instances commonly realize 60-90% off On-Demand) by the run's own real `training_cost_usd`.
+
+**Deployment**
+- **The desktop Docker image's default env silently enabled anonymous access.** `NEURAX_DEBUG_NOAUTH=true` was baked into the Dockerfile's default environment, serving every endpoint without authentication on any deployment that didn't explicitly override it. Removed so the service's own real default (off) applies.
+- Removed dead `neurax-cli` build stages from the Dockerfile (the crate no longer exists in the workspace); `install.sh` now points at the actual release repository.
+
+### Changed
+- **Every prominent self-description opened with "compiler" as NEURAX's whole identity**, with no mention of "environment" anywhere, despite the project's own stated vision framing it as an environment to design, simulate, and optimize architectures — canvas, AI copilot, and analytical engine together. Reworded the README, the book's own front page, its Overview section, and the GitHub repository description to lead with "environment," keeping "compiler"/"engine" only where a sentence specifically describes the analytical engine as one component inside it.
+- **Reconciled three different, undocumented family counts** (12 parseable `ModelType` values, 8 families exposed as a canvas choice with dedicated formulas, 11 AI-agent planning templates) that previously sat next to each other with no explanation of how they relate — and fixed a stale `ModelType` listing that named a nonexistent `RL` and `Custom` in place of the real `Hybrid` and `Experimental` variants.
 
 ## [0.13.0] — 2026-08
 
