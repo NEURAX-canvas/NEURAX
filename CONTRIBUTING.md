@@ -118,6 +118,6 @@ Example: `feat(neurax): add Multimodal (VLM) support + build tooling`
 ## Publishing
 
 Releases are versioned with SemVer and tagged `vX.Y.Z`. See the
-[Deployment Guide](https://rustnew.github.io/NEURAX/DEPLOYMENT.html) (or
+[Deployment Guide](https://neurax-canvas.github.io/NEURAX/DEPLOYMENT.html) (or
 [`book/src/DEPLOYMENT.md`](book/src/DEPLOYMENT.md) in a checkout) for the
 full release and deployment process.

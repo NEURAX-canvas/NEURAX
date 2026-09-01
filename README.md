@@ -98,7 +98,7 @@ Four of these were wrong before that test existed — one by +122%. That's why t
 
 ## Learn more
 
-The one-liner above is the reference way to run NEURAX — the desktop app, with the compiler embedded. For everything else — Windows and web builds, Docker, running it as a Rust library, the full architecture, the API reference — see the **[documentation](https://rustnew.github.io/NEURAX/)**.
+The one-liner above is the reference way to run NEURAX — the desktop app, with the compiler embedded. For everything else — Windows and web builds, Docker, running it as a Rust library, the full architecture, the API reference — see the **[documentation](https://neurax-canvas.github.io/NEURAX/)**.
 
 [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [License: MIT](LICENSE)
 
