@@ -148,7 +148,7 @@ export default function Landing() {
       {/* ── Hero ── */}
       <div className="mx-auto max-w-5xl px-6 pt-24 pb-20 sm:pt-32 sm:pb-28">
         <div className="max-w-3xl">
-          <Eyebrow>Analytical compiler for neural architectures</Eyebrow>
+          <Eyebrow>Design, simulate and optimize neural architectures</Eyebrow>
 
           <h1 className="text-[clamp(2.25rem,6vw,3.75rem)] font-semibold leading-[1.05] tracking-[-0.03em] text-balance">
             Know what a model costs
@@ -341,7 +341,7 @@ export default function Landing() {
           <div className="flex items-center gap-2.5">
             <NeuraxLogo variant="mark" size={20} />
             <span className="text-[13px] text-muted-foreground">
-              NEURAX — analytical compiler for neural architectures
+              NEURAX — design, simulate and optimize neural architectures
             </span>
           </div>
           <div className="flex items-center gap-5 text-[13px] text-muted-foreground">

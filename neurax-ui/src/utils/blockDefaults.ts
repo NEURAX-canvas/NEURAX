@@ -156,7 +156,7 @@ const DEFAULTS: Record<string, Params> = {
     value_head: { d_model: 768, hidden_dim: 256 },
     advantage_stream: { d_model: 768, action_dim: 18, hidden_dim: 256 },
 
-    // ── Custom / Experimental ────────────────────────────────
+    // ── Custom ───────────────────────────────────────────────
     custom: { flops_formula: 'B*N*D', memory_formula: 'B*N*D*4' },
 };
 

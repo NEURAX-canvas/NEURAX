@@ -62,7 +62,7 @@ function buildReadme(modelName: string, blocks: number, links: number): string {
     `# ${modelName}`,
     '',
     'Architecture designed with [NEURAX](https://github.com/rustnew/NEURAX),',
-    'an analytical compiler for neural network architectures.',
+    'the environment to design, simulate and optimize neural network architectures.',
     '',
     `- Blocks: ${blocks}`,
     `- Connections: ${links}`,
