@@ -45,15 +45,11 @@ html:not(.js) {
     --quote-border: #d6006e;
 }
 
-/* Dark-mode "Auto" fallback (no theme picked yet, browser prefers dark) */
-@media (prefers-color-scheme: dark) {
-    :root:not(.light):not(.rust):not(.coal):not(.navy):not(.ayu) {
-        --sidebar-active: #ff3d81;
-        --links: #ff5c96;
-        --inline-code-color: #00e5ff;
-        --quote-border: #ff3d81;
-    }
-}
+/* book.toml pins default-theme and preferred-dark-theme to "light", so the
+   page stays white regardless of the visitor's OS/browser dark-mode
+   preference — a deliberate choice for this page (product/marketing, not a
+   long-form reading document where a dark theme is usually the better
+   default), not an oversight. No dark-mode fallback block needed here. */
 
 /* A visible accent bar under the top chrome, and a livelier active-chapter
    marker in the sidebar than mdBook's default 3px underline-only style. */

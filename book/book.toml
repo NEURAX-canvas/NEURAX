@@ -9,6 +9,8 @@ git-repository-url = "https://github.com/rustnew/NEURAX"
 edit-url-template = "https://github.com/rustnew/NEURAX/edit/main/book/src/{path}"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
 additional-css = ["custom.css"]
+default-theme = "light"
+preferred-dark-theme = "light"
 
 [preprocessor]
 
