@@ -85,6 +85,7 @@ impl IrPass for ComputePass {
                 forward_flops: flops,
                 backward_flops: flops * 2.0, // Standard approximation
                 bytes_accessed,
+                op_type: op.op_type,
             });
         }
 

@@ -261,23 +261,20 @@ pub struct StabilityMetricsOutput {
     pub confidence: f64,
 }
 
-/// Behavioral metrics (M50-M55)
+/// Behavioral metrics (M50, M54) — see `neurax_ir::dynamic::behavioral` for
+/// why this no longer reports memory contention, cache locality, numerical
+/// sensitivity, or a prediction confidence: none of them were ever computed
+/// from the model being analysed.
 #[derive(Debug, Clone, Serialize)]
 pub struct BehavioralMetricsOutput {
-    /// M50: Expert load imbalance [0,1]
+    /// M50: Expert load imbalance [0,1] — an assumed baseline when the
+    /// model has MoE routing, not a measured value; see `has_moe`.
     pub expert_load_imbalance: f64,
-    /// M51: Memory contention score [0,1]
-    pub memory_contention_score: f64,
-    /// M52: Cache locality score [0,1]
-    pub cache_locality_score: f64,
-    /// M53: Numerical sensitivity [0,1]
-    pub numerical_sensitivity: f64,
-    /// M54: Load balance efficiency [%]
+    /// Whether the model has any MoE routing at all.
+    pub has_moe: bool,
+    /// M54: Load balance efficiency [%], derived from the same assumption
+    /// as `expert_load_imbalance`.
     pub load_balance_efficiency: f64,
-    /// M55: Memory bank conflict rate [%]
-    pub memory_bank_conflict_rate: f64,
-    /// Confidence score
-    pub prediction_confidence: f64,
 }
 
 /// Diagnostic output
@@ -450,36 +447,16 @@ impl JsonOutput {
                     .as_ref()
                     .map(|b| b.expert_load_imbalance)
                     .unwrap_or(0.0),
-                memory_contention_score: dynamic
+                has_moe: dynamic
                     .behavioral
                     .as_ref()
-                    .map(|b| b.memory_contention_score)
-                    .unwrap_or(0.0),
-                cache_locality_score: dynamic
-                    .behavioral
-                    .as_ref()
-                    .map(|b| b.cache_locality_score)
-                    .unwrap_or(0.0),
-                numerical_sensitivity: dynamic
-                    .behavioral
-                    .as_ref()
-                    .map(|b| b.numerical_sensitivity)
-                    .unwrap_or(0.0),
+                    .map(|b| b.has_moe)
+                    .unwrap_or(false),
                 load_balance_efficiency: dynamic
                     .behavioral
                     .as_ref()
                     .map(|b| b.load_balance_efficiency)
                     .unwrap_or(100.0),
-                memory_bank_conflict_rate: dynamic
-                    .behavioral
-                    .as_ref()
-                    .map(|b| b.memory_bank_conflict_rate)
-                    .unwrap_or(0.0),
-                prediction_confidence: dynamic
-                    .behavioral
-                    .as_ref()
-                    .map(|b| b.prediction_confidence)
-                    .unwrap_or(0.0),
             },
         });
         output

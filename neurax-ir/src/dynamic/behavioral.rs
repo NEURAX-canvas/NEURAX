@@ -1,111 +1,74 @@
 //! Behavioral Synthesis Pass
 //!
-//! Infers runtime behaviors from static graph analysis.
+//! Static architecture facts about runtime load balancing — not a
+//! predictor of cache behavior, memory contention, or numerical stability.
+//!
+//! This pass used to also report `memory_contention_score`,
+//! `cache_locality_score`, `numerical_sensitivity`, `dynamic_hotspot_ratio`,
+//! `execution_path_entropy`, `temporal_locality_score`,
+//! `memory_bank_conflict_rate` and a `prediction_confidence` — every one of
+//! them a hardcoded constant (0.1, 0.8, 0.5, 0.6, 1.0, 0.65, ...) returned
+//! identically for every model, since `run()`'s own `compute`/`config`
+//! parameters were never read. A 7-layer MLP and a 175B MoE transformer got
+//! the exact same "Cache Locality: 0.800" and "Prediction Conf.: 65%".
+//! Real cache locality, memory contention and execution hotspots are
+//! properties of an actual execution trace on real hardware — no static
+//! architecture pass can honestly produce them, so they were removed rather
+//! than left as plausible-looking fake precision. Numerical sensitivity is
+//! a real, computable question, but NEURAX already answers it honestly
+//! elsewhere: `StabilityAnalysisPass`'s per-layer Lyapunov margins and
+//! `fp32_required_pct` (`neurax-ir/src/dynamic/stability.rs`).
+//!
+//! What's left is the one thing genuinely readable from the static IR:
+//! whether the model has any MoE routing at all.
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 
 use crate::compute::ComputeIR;
 use crate::dynamic::types::DynamicConfig;
+use crate::operator::OpType;
 
 /// Behavioral Synthesis Pass
-#[derive(Debug, Clone)]
-pub struct BehavioralSynthesisPass {
-    #[allow(dead_code)] // Reserved for future model path tracking
-    model_path: Option<PathBuf>,
-}
+#[derive(Debug, Clone, Default)]
+pub struct BehavioralSynthesisPass;
 
-impl Default for BehavioralSynthesisPass {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Metrics from behavioral synthesis (M50-M55)
+/// Metrics from behavioral synthesis (M50, M54)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BehavioralMetrics {
-    /// M50 : Déséquilibre de charge MoE [0,1]
+    /// M50: Expert load imbalance [0,1]. No runtime token-routing trace is
+    /// available to a static pass, so this is 0.0 whenever the model has no
+    /// MoE layer at all (there is nothing to be imbalanced) and an assumed
+    /// baseline of 0.0 — "balanced until proven otherwise", not a measured
+    /// fact — when it does. `has_moe` is what actually distinguishes the
+    /// two cases; don't read a MoE model's 0.0 here as "verified balanced".
     pub expert_load_imbalance: f64,
-    /// M51 : Probabilité de contention mémoire [0,1]
-    pub memory_contention_score: f64,
-    /// M55 : Taux estimé de conflits de banques mémoire [%]
-    pub memory_bank_conflict_rate: f64,
-    /// M52 : Score de localité cache [0,1]
-    pub cache_locality_score: f64,
-    /// B10 : Localité temporelle [0,1]
-    pub temporal_locality_score: f64,
-    /// M53 : Sensibilité numérique [0,1]
-    pub numerical_sensitivity: f64,
-    /// B05 : Proportion du code exécutée à chaud [%]
-    pub dynamic_hotspot_ratio: f64,
-    /// B06 : Diversité des chemins d'exécution [bits]
-    pub execution_path_entropy: f64,
-    /// M54 : Efficacité du load balancing [%]
+    /// Whether the model contains any MoE routing at all — the real,
+    /// statically-checkable fact `expert_load_imbalance` alone doesn't
+    /// convey (a plain CNN and an unbalanced-but-untraced MoE model would
+    /// otherwise both read `0.0`).
+    pub has_moe: bool,
+    /// M54: Load balance efficiency [%], `(1 - expert_load_imbalance) * 100`
+    /// under the same assumed-until-traced baseline as `expert_load_imbalance`.
     pub load_balance_efficiency: f64,
-    /// Confiance des prédictions [0,1]
-    pub prediction_confidence: f64,
-    /// Mode utilisé
-    pub prediction_mode: String,
 }
 
 impl BehavioralSynthesisPass {
     pub fn new() -> Self {
-        Self { model_path: None }
+        Self
     }
 
-    pub fn with_model(path: PathBuf) -> Self {
-        Self {
-            model_path: Some(path),
-        }
-    }
-
-    pub fn run(&self, _compute: &ComputeIR, _config: &DynamicConfig) -> BehavioralMetrics {
-        // Version simplifiée - utilise des valeurs par défaut basées sur l'analyse
-        let moe_imbalance = 0.0; // TODO: détecter MoE depuis les op_flops
-        let contention = 0.1;
-        let locality = 0.8;
-        let sensitivity = 0.5;
-        let hotspot_ratio = 0.6;
-        let path_entropy = 1.0;
-
-        let lb_efficiency = if moe_imbalance > 0.0 {
-            (1.0 - moe_imbalance) * 100.0
-        } else {
-            100.0
-        };
-        let bank_conflict_rate = contention * 15.0;
-        let temporal = locality * 0.8;
+    pub fn run(&self, compute: &ComputeIR, _config: &DynamicConfig) -> BehavioralMetrics {
+        let has_moe = compute.op_flops.iter().any(|op| op.op_type == OpType::MoE);
+        // No runtime routing trace exists in a static pass, so there is no
+        // honest way to measure real imbalance — 0.0 is the stated
+        // assumption for a MoE model, not a claim of having checked.
+        let expert_load_imbalance = 0.0;
+        let load_balance_efficiency = (1.0 - expert_load_imbalance) * 100.0;
 
         BehavioralMetrics {
-            expert_load_imbalance: moe_imbalance,
-            memory_contention_score: contention,
-            memory_bank_conflict_rate: bank_conflict_rate,
-            cache_locality_score: locality,
-            temporal_locality_score: temporal,
-            numerical_sensitivity: sensitivity,
-            dynamic_hotspot_ratio: hotspot_ratio * 100.0,
-            execution_path_entropy: path_entropy,
-            load_balance_efficiency: lb_efficiency,
-            prediction_confidence: 0.65,
-            prediction_mode: "analytical_v1".to_string(),
+            expert_load_imbalance,
+            has_moe,
+            load_balance_efficiency,
         }
-    }
-
-    pub fn validate(&self, metrics: &BehavioralMetrics) -> Vec<String> {
-        let checks = [
-            ("expert_load_imbalance", metrics.expert_load_imbalance),
-            ("memory_contention_score", metrics.memory_contention_score),
-            ("cache_locality_score", metrics.cache_locality_score),
-            ("numerical_sensitivity", metrics.numerical_sensitivity),
-            ("prediction_confidence", metrics.prediction_confidence),
-        ];
-
-        let mut diags = vec![];
-        for (name, val) in &checks {
-            if !(0.0..=1.0).contains(val) {
-                diags.push(format!("BPS metric '{}' = {:.3} hors [0,1]", name, val));
-            }
-        }
-        diags
     }
 }

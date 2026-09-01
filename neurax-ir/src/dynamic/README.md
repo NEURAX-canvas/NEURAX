@@ -32,15 +32,23 @@ The Dynamic Predictive System extends the static Neurax compiler with three opti
 | M48 | global_robustness_score | 0-1 |
 | M49 | fp32_fallback_memory_overhead_gb | 0+ |
 
-### Behavioral (M50-M55)
+### Behavioral (M50, M54)
 | Metric | Description | Range |
 |--------|-------------|-------|
 | M50 | expert_load_imbalance | 0-1 |
-| M51 | memory_contention_score | 0-1 |
-| M52 | cache_locality_score | 0-1 |
-| M53 | numerical_sensitivity | 0-1 |
+| — | has_moe | bool |
 | M54 | load_balance_efficiency | 0-100% |
-| M55 | memory_bank_conflict_rate | 0-15% |
+
+M51 (memory_contention_score), M52 (cache_locality_score), M53
+(numerical_sensitivity) and M55 (memory_bank_conflict_rate) were removed:
+they were hardcoded constants returned identically for every model,
+regardless of `compute`/`config`, since nothing computed them from real
+execution data. Real cache locality, memory contention and bank-conflict
+rates are properties of an actual runtime trace on real hardware, not of a
+static architecture graph — no static pass can honestly produce them.
+Numerical sensitivity is answered honestly elsewhere: `StabilityAnalysisPass`
+(M43-M49) already derives per-layer Lyapunov margins and `fp32_required_pct`
+from the real graph.
 
 ## Usage
 

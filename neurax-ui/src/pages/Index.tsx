@@ -802,12 +802,8 @@ function parseAnalysisReport(
       } : undefined,
       behavioral: dynamic.behavioral ? {
         expert_load_imbalance: dynamic.behavioral.expert_load_imbalance ?? 0,
-        memory_contention_score: dynamic.behavioral.memory_contention_score ?? 0,
-        cache_locality_score: dynamic.behavioral.cache_locality_score ?? 0,
-        numerical_sensitivity: dynamic.behavioral.numerical_sensitivity ?? 0,
+        has_moe: dynamic.behavioral.has_moe ?? false,
         load_balance_efficiency: dynamic.behavioral.load_balance_efficiency ?? 100,
-        memory_bank_conflict_rate: dynamic.behavioral.memory_bank_conflict_rate ?? 0,
-        prediction_confidence: dynamic.behavioral.prediction_confidence ?? 0,
       } : undefined,
     },
   };

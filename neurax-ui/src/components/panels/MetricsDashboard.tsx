@@ -941,18 +941,20 @@ function HardwareCategory({ analysis }: { analysis: AnalysisResult }) {
         </div>
       )}
 
-      {/* ════ Behavioral Metrics ════ */}
-      {analysis.dynamic?.behavioral && (
+      {/* ════ MoE Routing ════ */}
+      {/* Only the fields NEURAX can actually derive statically: whether the
+          model routes through MoE at all, and an assumed-balanced baseline
+          (no runtime trace exists to measure real imbalance from). The rest
+          of this panel used to show cache locality, memory contention,
+          numerical sensitivity and a "prediction confidence" — all hardcoded
+          constants identical for every model, removed rather than left as
+          fake precision. */}
+      {analysis.dynamic?.behavioral?.has_moe && (
         <div>
-          <SectionIcon icon={BrainCircuit} label="Behavioral Metrics" />
+          <SectionIcon icon={BrainCircuit} label="MoE Routing" />
           <div className="rounded-lg border border-border/50 bg-secondary/20 px-3 py-2 space-y-0.5">
-            <StatRow label="Load Balance Eff." value={`${fmt(analysis.dynamic.behavioral.load_balance_efficiency, 1)}%`} />
-            <StatRow label="Expert Imbalance" value={fmt(analysis.dynamic.behavioral.expert_load_imbalance, 3, true)} />
-            <StatRow label="Cache Locality" value={fmt(analysis.dynamic.behavioral.cache_locality_score, 3)} />
-            <StatRow label="Mem Contention" value={fmt(analysis.dynamic.behavioral.memory_contention_score, 3, true)} />
-            <StatRow label="Num. Sensitivity" value={fmt(analysis.dynamic.behavioral.numerical_sensitivity, 3, true)} />
-            <StatRow label="Mem Bank Conflict" value={`${fmt(analysis.dynamic.behavioral.memory_bank_conflict_rate, 1)}%`} />
-            <StatRow label="Prediction Conf." value={fmtPercent(analysis.dynamic.behavioral.prediction_confidence)} />
+            <StatRow label="Load Balance (assumed)" value={`${fmt(analysis.dynamic.behavioral.load_balance_efficiency, 1)}%`} />
+            <StatRow label="Expert Imbalance (assumed)" value={fmt(analysis.dynamic.behavioral.expert_load_imbalance, 3, true)} />
           </div>
         </div>
       )}

@@ -243,35 +243,48 @@ fn create_test_compute() -> ComputeIR {
     ComputeIR::default()
 }
 
+fn create_test_compute_with_moe() -> ComputeIR {
+    use crate::compute::OpFlops;
+    use crate::operator::OpType;
+    ComputeIR {
+        op_flops: vec![OpFlops {
+            op_id: 0,
+            layer_id: "router_0".to_string(),
+            forward_flops: 1.0,
+            backward_flops: 2.0,
+            bytes_accessed: 0,
+            op_type: OpType::MoE,
+        }],
+        ..Default::default()
+    }
+}
+
 fn eval_behavioral() -> Vec<EvalResult> {
     vec![
-        // OBJ-BPS-01: All BPS metrics in [0,1]
-        EvalResult::test("OBJ-BPS-01: All BPS metrics in [0,1]", || {
+        // OBJ-BPS-01: expert_load_imbalance stays in [0,1]
+        EvalResult::test("OBJ-BPS-01: expert_load_imbalance in [0,1]", || {
             let pass = BehavioralSynthesisPass::new();
             let compute = create_test_compute();
             let config = DynamicConfig::default();
             let metrics = pass.run(&compute, &config);
-
-            metrics.expert_load_imbalance <= 1.0
-                && metrics.memory_contention_score <= 1.0
-                && metrics.cache_locality_score <= 1.0
-                && metrics.numerical_sensitivity <= 1.0
+            (0.0..=1.0).contains(&metrics.expert_load_imbalance)
         }),
-        // OBJ-BPS-02: Dense models have zero MoE imbalance
-        EvalResult::test("OBJ-BPS-02: Dense models have zero MoE imbalance", || {
+        // OBJ-BPS-02: A model with no MoE op reports has_moe = false
+        EvalResult::test("OBJ-BPS-02: Dense models report has_moe = false", || {
             let pass = BehavioralSynthesisPass::new();
             let compute = create_test_compute();
             let config = DynamicConfig::default();
             let metrics = pass.run(&compute, &config);
-            metrics.expert_load_imbalance == 0.0
+            !metrics.has_moe
         }),
-        // OBJ-BPS-03: Confidence in valid range
-        EvalResult::test("OBJ-BPS-03: Confidence in valid range", || {
+        // OBJ-BPS-03: A model with a real MoE op is actually detected —
+        // the pass reads `compute.op_flops`, not a hardcoded default.
+        EvalResult::test("OBJ-BPS-03: A MoE op is detected via op_type", || {
             let pass = BehavioralSynthesisPass::new();
-            let compute = create_test_compute();
+            let compute = create_test_compute_with_moe();
             let config = DynamicConfig::default();
             let metrics = pass.run(&compute, &config);
-            metrics.prediction_confidence >= 0.5 && metrics.prediction_confidence <= 1.0
+            metrics.has_moe
         }),
         // OBJ-BPS-04: Load balance efficiency in valid range
         EvalResult::test("OBJ-BPS-04: Load balance efficiency in valid range", || {

@@ -931,12 +931,8 @@ export interface AnalysisResult {
     };
     behavioral?: {
       expert_load_imbalance: number;
-      memory_contention_score: number;
-      cache_locality_score: number;
-      numerical_sensitivity: number;
+      has_moe: boolean;
       load_balance_efficiency: number;
-      memory_bank_conflict_rate: number;
-      prediction_confidence: number;
     };
   };
 }

@@ -25,6 +25,10 @@ pub struct OpFlops {
     /// memory time from (it used a flat `compute_time_ms * 0.5` guess
     /// instead; see `hardware/pass.rs::calculate_layer_timings`).
     pub bytes_accessed: u64,
+    /// This op's kind, carried over from `AtomOp::op_type` — lets a later
+    /// pass (e.g. `BehavioralSynthesisPass`'s MoE detection) tell what an
+    /// op actually is instead of only how expensive it was.
+    pub op_type: crate::operator::OpType,
 }
 
 /// Compute metrics (Métriques 6-11, 20-24)
