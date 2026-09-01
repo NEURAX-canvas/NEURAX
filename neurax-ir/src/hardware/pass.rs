@@ -181,6 +181,17 @@ impl IrPass for HardwarePass {
         // ~23,300 img/s — about 7x NVIDIA's own published real number
         // (~3,229 img/s, mixed precision, batch 256; see
         // `published_hardware_scaling.rs`'s companion CNN reference).
+        // Includes every layer type whose own param/FLOPs formula
+        // (architecture/mod.rs, operator/pass.rs) already calls
+        // `conv::conv2d_params`/`cnn_blocks::resnet_basic_block_*` — i.e.
+        // types the compiler already treats as "this is a convolution" at
+        // the formula level. GAN's GeneratorBlock/DiscriminatorBlock (plain
+        // conv2d_params) and diffusion's UnetBlock/ResnetBlock/DownBlock/
+        // UpBlock/MidBlock/VaeEncoder/VaeDecoder/NoisePredictor (the same
+        // resnet_basic_block_params/conv2d_params as CNN's own blocks) used
+        // to fall outside this count and get the 1.0 neutral fallback
+        // despite running the literal same kernels as a recognized Conv
+        // layer — not a new guess, a real formula-equivalence gap.
         let conv_count = ctx
             .config
             .model
@@ -199,6 +210,38 @@ impl IrPass for HardwarePass {
                         | neurax_parser::LayerType::ShuffleUnit
                         | neurax_parser::LayerType::C2f
                         | neurax_parser::LayerType::Transition
+                        | neurax_parser::LayerType::Detection
+                        | neurax_parser::LayerType::ProgressiveBlock
+                        | neurax_parser::LayerType::GeneratorBlock
+                        | neurax_parser::LayerType::DiscriminatorBlock
+                        | neurax_parser::LayerType::UnetBlock
+                        | neurax_parser::LayerType::ResnetBlock
+                        | neurax_parser::LayerType::DownBlock
+                        | neurax_parser::LayerType::UpBlock
+                        | neurax_parser::LayerType::MidBlock
+                        | neurax_parser::LayerType::VaeEncoder
+                        | neurax_parser::LayerType::VaeDecoder
+                        | neurax_parser::LayerType::NoisePredictor
+                )
+            })
+            .count();
+        // Same formula-equivalence principle for MLP: MoE's experts and
+        // router are `mlp::gated_mlp_params`/a dense gating matrix under
+        // the hood (architecture/mod.rs's MoE/MoeRouter/MoeSharedExpert
+        // arms) — mechanically the same operation as a recognized Mlp
+        // layer, so they get the same efficiency treatment rather than the
+        // 1.0 fallback.
+        let mlp_shaped_count = ctx
+            .config
+            .model
+            .layers
+            .iter()
+            .filter(|l| {
+                matches!(
+                    l.layer_type,
+                    neurax_parser::LayerType::MoE
+                        | neurax_parser::LayerType::MoeRouter
+                        | neurax_parser::LayerType::MoeSharedExpert
                 )
             })
             .count();
@@ -247,10 +290,10 @@ impl IrPass for HardwarePass {
         // right next to it, which come from a different, unaffected path.
         // With nothing recognized to weight, there is nothing to derate by
         // — 1.0 (no efficiency penalty) is the neutral answer, not a guess.
-        let recognized_layers = attention_count + mlp_count + conv_count;
+        let recognized_layers = attention_count + mlp_count + conv_count + mlp_shaped_count;
         let gpu_efficiency = if recognized_layers > 0 {
             (attention_count as f64 * attention_efficiency
-                + mlp_count as f64 * mlp_efficiency
+                + (mlp_count + mlp_shaped_count) as f64 * mlp_efficiency
                 + conv_count as f64 * conv_efficiency)
                 / recognized_layers as f64
         } else {
@@ -409,9 +452,14 @@ impl IrPass for HardwarePass {
             Bottleneck::Balanced
         };
 
-        // GPU utilization
+        // GPU utilization — must use the same per-GPU (parallel) compute
+        // time that actually fed `latency_ms`, not the pre-division,
+        // whole-batch `compute_time_ms`. Using the un-divided figure here
+        // made utilization scale up with GPU count instead of staying
+        // bounded to [0, 1]: an 8-GPU run could — and did, for
+        // stable_diffusion_1.5.json — report "486% utilization".
         let gpu_utilization = if latency_ms > 0.0 {
-            compute_time_ms / latency_ms
+            parallel_compute_time_ms / latency_ms
         } else {
             0.0
         };
