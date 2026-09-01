@@ -1,0 +1,88 @@
+/* NEURAX brand accent — a vivid magenta/pink paired with an electric cyan,
+   overriding mdBook's default muted blues across all five built-in themes
+   so the accent reads the same regardless of which theme a visitor picks. */
+
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&display=swap');
+
+h1, h2, h3 {
+    font-family: "Sora", "Source Sans Pro", sans-serif;
+    letter-spacing: -0.01em;
+}
+
+.ayu {
+    --sidebar-active: #ff3d81;
+    --links: #ff3d81;
+    --inline-code-color: #00e5ff;
+    --quote-border: #ff3d81;
+}
+
+.coal {
+    --sidebar-active: #ff3d81;
+    --links: #ff5c96;
+    --inline-code-color: #00e5ff;
+    --quote-border: #ff3d81;
+}
+
+.navy {
+    --sidebar-active: #ff3d81;
+    --links: #ff5c96;
+    --inline-code-color: #00e5ff;
+    --quote-border: #ff3d81;
+}
+
+.rust {
+    --sidebar-active: #d6006e;
+    --links: #d6006e;
+    --inline-code-color: #007a94;
+    --quote-border: #d6006e;
+}
+
+.light,
+html:not(.js) {
+    --sidebar-active: #d6006e;
+    --links: #d6006e;
+    --inline-code-color: #007a94;
+    --quote-border: #d6006e;
+}
+
+/* Dark-mode "Auto" fallback (no theme picked yet, browser prefers dark) */
+@media (prefers-color-scheme: dark) {
+    :root:not(.light):not(.rust):not(.coal):not(.navy):not(.ayu) {
+        --sidebar-active: #ff3d81;
+        --links: #ff5c96;
+        --inline-code-color: #00e5ff;
+        --quote-border: #ff3d81;
+    }
+}
+
+/* A visible accent bar under the top chrome, and a livelier active-chapter
+   marker in the sidebar than mdBook's default 3px underline-only style. */
+#menu-bar {
+    border-bottom: 3px solid #ff3d81;
+}
+
+.chapter li.chapter-item.expanded > a.active,
+.chapter li > a.active {
+    box-shadow: inset 3px 0 0 0 var(--sidebar-active);
+    font-weight: 600;
+}
+
+/* Buttons/links inside content that use mdBook's default flat look get a
+   touch of the same accent so the palette feels intentional, not just a
+   link-color swap. */
+h1 {
+    background: linear-gradient(90deg, #ff3d81, #ff8a5c 60%, #ffd43d);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    display: inline-block;
+}
+
+.light h1,
+html:not(.js) h1,
+.rust h1 {
+    background: linear-gradient(90deg, #d6006e, #ff6b3d 60%, #d69800);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}

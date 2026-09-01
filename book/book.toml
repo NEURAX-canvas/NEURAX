@@ -1,5 +1,5 @@
 [book]
-title = "NEURAX Documentation"
+title = "NEURAX — Design, Simulate, Optimize"
 description = "NEURAX — An environment to design, simulate, and optimize neural architectures"
 authors = ["Fossouo"]
 language = "en"
@@ -8,6 +8,7 @@ language = "en"
 git-repository-url = "https://github.com/rustnew/NEURAX"
 edit-url-template = "https://github.com/rustnew/NEURAX/edit/main/book/src/{path}"
 additional-js = ["mermaid.min.js", "mermaid-init.js"]
+additional-css = ["custom.css"]
 
 [preprocessor]
 
