@@ -1,9 +1,19 @@
-<p align="center"><img src="images/neurax-logo.svg" alt="NEURAX logo" width="96" height="96"></p>
+<div class="hero">
+<p class="eyebrow">Design · Simulate · Optimize</p>
 
-<h1 align="center">NEURAX</h1>
-<p align="center"><strong>The environment to design, simulate, and optimize AI models — before a single GPU turns on.</strong></p>
+<h1 class="hero-title">Know if it works before you spend a GPU-hour finding out</h1>
 
----
+<p class="hero-sub">NEURAX is the environment where you design, simulate, and optimize AI architectures — instantly, without training a thing.</p>
+
+<a class="cta-button" href="DESKTOP.md">Get NEURAX free →</a>
+</div>
+
+<div class="stat-strip">
+<div><strong>&lt;50ms</strong><span>per analysis</span></div>
+<div><strong>0</strong><span>GPUs required</span></div>
+<div><strong>8</strong><span>architecture families</span></div>
+<div><strong>100%</strong><span>runs on your machine</span></div>
+</div>
 
 ## The problem
 
@@ -15,13 +25,34 @@ Global AI infrastructure spending is projected to reach **$497 billion in 2026**
 
 ## The vision
 
-NEURAX exists to move that decision from *after the fact* to *before you commit*.
+NEURAX exists to move that decision from *after the fact* to *before you commit* — one environment built around three things engineers actually do when they build a model.
 
-It's an environment — a canvas, an AI copilot, and an engine underneath — built around three things engineers actually do when they build a model:
+<div class="pillars">
+<div class="pillar-card">
+<span class="pillar-number">01</span>
 
-- **Design** it — lay out the architecture, drag in blocks, import a model from elsewhere.
-- **Simulate** it — see exactly what it will cost: memory, speed, dollars, energy, on the hardware you actually have.
-- **Optimize** it — get concrete, numbered ways to make it fit, run faster, or cost less, computed for *your* design, not a generic tip.
+### Design
+
+Lay out an architecture on a canvas, or import one from HuggingFace by URL. Drag in blocks, connect them, and see it take shape.
+
+</div>
+<div class="pillar-card">
+<span class="pillar-number">02</span>
+
+### Simulate
+
+See exactly what it will cost: memory, speed, dollars, energy — on the hardware you actually have, computed live as you build.
+
+</div>
+<div class="pillar-card">
+<span class="pillar-number">03</span>
+
+### Optimize
+
+Get concrete, numbered ways to make it fit, run faster, or cost less — computed for *your* design, not a generic tip.
+
+</div>
+</div>
 
 All three happen instantly, without touching a GPU. The idea and the verdict are the same conversation, not separated by a training run.
 
@@ -35,10 +66,24 @@ All three happen instantly, without touching a GPU. The idea and the verdict are
 
 ## Who it's for
 
-- **Startups and small teams** who can't afford a wasted training run and don't have a platform team to catch mistakes for them.
-- **ML engineers and researchers** building a custom architecture, not just calling an existing model's API.
-- **Platform and infrastructure teams** planning GPU capacity across many models and many teams.
-- **Anyone learning** how architecture choices actually translate into cost and performance — with real, immediate feedback instead of a textbook formula.
+<div class="audience-grid">
+<div class="audience-card">
+<strong>Startups and small teams</strong>
+<span>Can't afford a wasted training run, and don't have a platform team to catch mistakes for them.</span>
+</div>
+<div class="audience-card">
+<strong>ML engineers and researchers</strong>
+<span>Building a custom architecture, not just calling an existing model's API.</span>
+</div>
+<div class="audience-card">
+<strong>Platform and infrastructure teams</strong>
+<span>Planning GPU capacity across many models and many teams.</span>
+</div>
+<div class="audience-card">
+<strong>Anyone learning</strong>
+<span>How architecture choices actually translate into cost and performance — with real, immediate feedback.</span>
+</div>
+</div>
 
 A small, specialized model tuned to your own dataset gets exactly the same precise answer as a 70-billion-parameter one. That's the case NEURAX is built for as much as the headline-grabbing one.
 
@@ -48,6 +93,11 @@ Right now, the cost of experimentation in AI is paid in GPU-hours — the indust
 
 That's the change: not a faster way to train models, but a faster way to know which ones are worth training at all.
 
-## Get started
+<div class="cta-banner">
 
-The fastest way to experience this is the desktop app — see the [Desktop App](DESKTOP.md) chapter for installation on Linux, macOS, or Windows. No account, no setup beyond one command.
+## Stop finding out the hard way.
+
+<p>One command. No account. Nothing leaves your machine.</p>
+
+<a class="cta-button" href="DESKTOP.md">Install NEURAX →</a>
+</div>
