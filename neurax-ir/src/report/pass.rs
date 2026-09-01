@@ -356,7 +356,7 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
 
         // Generate recommendations
         report.recommendations =
-            generate_recommendations(&report.metrics, &input.memory, &input.hardware);
+            generate_recommendations(&report.metrics, &input.memory, &input.hardware, &ctx.gpu_db);
 
         // Collect warnings
         report.warnings = collect_warnings(&input);
@@ -813,7 +813,8 @@ fn generate_diagnostics(metrics: &AllMetrics, memory: &MemoryIR) -> Vec<Diagnost
 fn generate_recommendations(
     metrics: &AllMetrics,
     memory: &MemoryIR,
-    _hardware: &HardwareIR,
+    hardware: &HardwareIR,
+    gpu_db: &neurax_hardware_db::HardwareDatabase,
 ) -> Vec<Recommendation> {
     let mut recommendations = Vec::new();
 
@@ -882,15 +883,42 @@ fn generate_recommendations(
         });
     }
 
-    // Hardware
-    if metrics.bottleneck == "memory-bound" {
-        recommendations.push(Recommendation {
-            category: RecommendationCategory::Hardware,
-            title: "Consider Higher Bandwidth GPU".to_string(),
-            description: "Model is memory-bound; H100 SXM offers 3.35 TB/s bandwidth".to_string(),
-            impact: "Potential 2-3x speedup".to_string(),
-            priority: Priority::Medium,
-        });
+    // Hardware — a memory-bound step's latency scales roughly linearly with
+    // 1/bandwidth (bytes moved is fixed; time = bytes / bandwidth), so the
+    // achievable speedup from a faster GPU is the real bandwidth ratio, not
+    // a flat guess. This used to hardcode "H100 SXM, 2-3x speedup" even for
+    // a model already running ON an H100 (or something faster) — a claimed
+    // speedup from switching to the same or a slower card.
+    let current_bandwidth = hardware.gpu_profile.memory_bandwidth;
+    if metrics.bottleneck == "memory-bound" && current_bandwidth > 0.0 {
+        if let Some(fastest) = gpu_db
+            .list_gpus()
+            .into_iter()
+            .max_by(|a, b| a.memory_bandwidth_gbs.total_cmp(&b.memory_bandwidth_gbs))
+        {
+            let speedup = fastest.memory_bandwidth_gbs / current_bandwidth;
+            // Only worth surfacing if there's real headroom — the database's
+            // fastest entry being the card already in use (or slower) is not
+            // a recommendation.
+            if speedup > 1.05 {
+                recommendations.push(Recommendation {
+                    category: RecommendationCategory::Hardware,
+                    title: "Consider Higher Bandwidth GPU".to_string(),
+                    description: format!(
+                        "Model is memory-bound on {} ({:.0} GB/s); {} offers {:.0} GB/s",
+                        hardware.gpu_profile.name,
+                        current_bandwidth,
+                        fastest.name,
+                        fastest.memory_bandwidth_gbs
+                    ),
+                    impact: format!(
+                        "Potential ~{:.1}x speedup (memory-bound, scales with bandwidth ratio)",
+                        speedup
+                    ),
+                    priority: Priority::Medium,
+                });
+            }
+        }
     }
 
     // Cost
