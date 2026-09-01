@@ -30,7 +30,7 @@ Lay out a CNN on the canvas and get live FLOPs, parameter counts, and per-layer 
 </div>
 </div>
 
-<div class="showcase-row reverse">
+<div class="showcase-row">
 <div class="showcase-media"><img src="images/screenshot-moe.png" alt="NEURAX canvas analyzing a Mixture-of-Experts model, showing 16 SwiGLU experts and estimated latency"></div>
 <div class="showcase-text">
 <p class="showcase-eyebrow">Mixture of experts</p>
@@ -54,7 +54,7 @@ A LLaMA-style transformer with the complete cost breakdown attached: dollars, ho
 </div>
 </div>
 
-<div class="showcase-row reverse">
+<div class="showcase-row">
 <div class="showcase-media"><img src="images/screenshot-moe-pink.png" alt="NEURAX canvas analyzing another Mixture-of-Experts model, showing router softmax and multi-head attention"></div>
 <div class="showcase-text">
 <p class="showcase-eyebrow">Any architecture, one canvas</p>

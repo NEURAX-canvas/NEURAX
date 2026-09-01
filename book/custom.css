@@ -17,6 +17,10 @@
     --neurax-teal: #076678;
     --neurax-ink: #322a2d; /* studio's --foreground: 340 8% 18% */
     --neurax-cream: #f7f3ee;
+    /* mdBook's own default (750px) is sized for a long-form reading
+       column, not a marketing page — widened so the page uses the full
+       browser window instead of a narrow strip in the middle of it. */
+    --content-max-width: 1180px;
 }
 
 h1, h2, h3 {
@@ -196,21 +200,17 @@ h1 {
 
 .showcase-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.6rem;
-    align-items: center;
-    padding: 1.6rem;
+    grid-template-columns: 1fr;
+    gap: 1.4rem;
+    padding: 1.8rem;
     border-radius: 20px;
     background: #faf8fb;
     border: 1px solid #ece7ec;
 }
 
-.showcase-row.reverse .showcase-text { order: 2; }
-.showcase-row.reverse .showcase-media { order: 1; }
-
 .showcase-media {
     border-radius: 14px;
-    padding: 0.6rem;
+    padding: 0.7rem;
     background: linear-gradient(135deg, var(--neurax-pink), var(--neurax-amber));
 }
 
@@ -233,6 +233,12 @@ h1 {
     border-radius: 10px;
 }
 
+.showcase-text {
+    max-width: 640px;
+    margin: 0 auto;
+    text-align: center;
+}
+
 .showcase-text .showcase-eyebrow {
     font-family: "Sora", sans-serif;
     font-size: 0.75rem;
@@ -245,11 +251,11 @@ h1 {
 
 .showcase-text h3 {
     margin: 0 0 0.5rem;
-    font-size: 1.25rem;
+    font-size: 1.4rem;
 }
 
 .showcase-text p {
-    font-size: 0.95rem;
+    font-size: 1rem;
     line-height: 1.6;
     color: #4a4550;
     margin: 0;
@@ -456,12 +462,4 @@ h1 {
     .pillars { grid-template-columns: 1fr; }
     .audience-grid { grid-template-columns: 1fr; }
     .market-table { font-size: 0.82rem; }
-    .showcase-row,
-    .showcase-row.reverse {
-        grid-template-columns: 1fr;
-    }
-    .showcase-row.reverse .showcase-text,
-    .showcase-row.reverse .showcase-media {
-        order: initial;
-    }
 }
