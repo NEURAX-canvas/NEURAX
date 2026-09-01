@@ -120,3 +120,62 @@ fn per_gpu_throughput_degrades_as_gpu_count_grows_at_fixed_model_and_batch() {
          (real data: ~3.3x), got only {degradation_4x:.2}x"
     );
 }
+
+/// A companion reference at a far more typical scale: Narayanan et al.'s
+/// own Table 1, row 1 — a 1.7B-parameter GPT model, tensor-parallel and
+/// pipeline-parallel size both 1 (i.e. also pure data-parallel, the same
+/// regime as the test above), 32 A100s, batch 512: 137 TFLOP/s per GPU,
+/// 44% of theoretical peak. Unlike the calibration in
+/// `published_cnn_inference_throughput.rs`, nothing here was tuned against
+/// this specific number — it exercises the same attention/mlp efficiency
+/// tables and communication-overhead formula already in place, just at a
+/// much smaller, more commonly-configured scale than the 384-1536 GPU rows
+/// above.
+#[test]
+fn small_scale_transformer_throughput_matches_a_real_reference_within_reason() {
+    let json = r#"{
+        "schema_version": "1.0.0",
+        "model": {
+            "name": "gpt-1.7b",
+            "type": "transformer",
+            "global_params": {
+                "num_layers": 24, "hidden_size": 2304, "num_heads": 24,
+                "intermediate_size": 9216, "vocab_size": 51200, "sequence_length": 2048
+            },
+            "layers": [
+                {"id": "embed", "layer_type": "embedding", "params": {"vocab_size": 51200, "hidden_size": 2304}},
+                {"id": "layer_0", "layer_type": "attention", "params": {"hidden_size": 2304, "num_attention_heads": 24, "intermediate_size": 9216}},
+                {"id": "mlp_0", "layer_type": "mlp", "params": {"hidden_size": 2304, "intermediate_size": 9216}}
+            ]
+        },
+        "training": {
+            "batch_size": 512, "sequence_length": 2048, "precision": "bf16",
+            "learning_rate": 0.00015, "max_steps": 1
+        },
+        "hardware": {
+            "gpus": [{"name": "A100-SXM", "memory_gb": 80, "count": 32}],
+            "interconnect_bandwidth_gb_s": 200.0
+        },
+        "data": {"dataset_size": 300000000000, "vocab_size": 51200, "num_classes": 0}
+    }"#;
+    let r = analyze(json);
+
+    let param_error = (r.arch.metrics.total_parameters as f64 - 1.7e9).abs() / 1.7e9;
+    assert!(
+        param_error < 0.05,
+        "expected ~1.7B params, got {}",
+        r.arch.metrics.total_parameters
+    );
+
+    let per_gpu_tflops = r.hardware.metrics.effective_tflops / 32.0;
+    const REAL_TFLOPS_PER_GPU: f64 = 137.0;
+    let error = (per_gpu_tflops - REAL_TFLOPS_PER_GPU).abs() / REAL_TFLOPS_PER_GPU;
+    assert!(
+        error < 0.30,
+        "predicted {per_gpu_tflops:.1} TFLOP/s/GPU vs the real measured 137 \
+         (44% of peak) — {:.1}% off, outside a 30% band for an uncalibrated \
+         cross-check at a different scale from the reference this formula was \
+         actually built against",
+        error * 100.0
+    );
+}
