@@ -2,7 +2,7 @@
 
 # NEURAX
 
-**The Analytical Compiler for Neural Architectures**
+**An environment to design, simulate, and optimize neural architectures — before you spend a GPU-hour on one**
 
 NEURAX predicts the **cost, memory, and performance** of neural network architectures **before training** — in under 50 ms, with zero GPU, and fully deterministically.
 
@@ -12,7 +12,7 @@ NEURAX predicts the **cost, memory, and performance** of neural network architec
 
 ## About
 
-NEURAX is an analytical compiler for neural network architectures. Whereas training frameworks (PyTorch, TensorFlow) execute models and runtime compilers (IREE, OpenXLA) lower them for execution, NEURAX operates at **design time**: it answers the questions you need resolved before committing GPU resources.
+NEURAX is an environment for designing, simulating, and optimizing neural network architectures — a visual canvas, an AI copilot, and a Rust analytical engine underneath, not a single command-line tool. Whereas training frameworks (PyTorch, TensorFlow) execute models and runtime compilers (IREE, OpenXLA) lower them for execution, NEURAX operates at **design time**: it answers the questions you need resolved before committing GPU resources.
 
 - Will this architecture fit in VRAM?
 - What is the training cost on 8x H100?
@@ -25,8 +25,11 @@ All in under 50 ms. Zero GPU required. Fully deterministic.
 ## Key capabilities
 
 - **8 architecture families, fully supported** — Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RNN — every
-  metric, not just parameter count. Families without dedicated compiler formulas (RL, SNN, an
-  "Experimental" catch-all) were removed rather than left partially supported.
+  metric, not just parameter count. Four more (`Hybrid`, `Multimodal`, `Snn`, `Experimental`) exist as
+  `ModelType` values the schema still parses — a hand-written or imported JSON that declares one still
+  gets a report — but aren't offered as a family choice in the canvas: none has the compiler's own
+  dedicated formulas behind it, only a generic layer-level fallback, so exposing it as a first-class
+  choice would have left it partially supported.
 - **64 reference templates**, counted against the real catalogue by a test, not stated from memory.
 - **11-phase analytical IR pipeline** — three of the eleven phases run concurrently on a shared
   thread pool since none of them reads another's output. Produces ~76 fixed scalar metrics plus

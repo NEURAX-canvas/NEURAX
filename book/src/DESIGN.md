@@ -26,7 +26,7 @@ This document describes the architecture, design principles, and data flow of th
 
 ## Overview
 
-NEURAX is an **analytical compiler** for neural network architectures. Unlike traditional compilers that emit machine code, NEURAX emits a complete **engineering report** of a model's behaviour on target hardware — cost, memory, speed, safety, and feasibility — **in milliseconds**, before a single GPU spins up.
+NEURAX is an **environment to design, simulate, and optimize** neural network architectures — a visual canvas, an AI copilot, and the analytical engine described in this document, not a single tool. That engine is a real compiler in the traditional sense (parse → IR → passes → output), but unlike a compiler that emits machine code, it emits a complete **engineering report** of a model's behaviour on target hardware — cost, memory, speed, safety, and feasibility — **in milliseconds**, before a single GPU spins up.
 
 The system is composed of:
 
@@ -206,11 +206,11 @@ The parser ingests JSON model configurations conforming to the NEURAX universal 
 
 **Key types**:
 - `ModelConfig` — top-level configuration (model, training, hardware, parallelism)
-- `ModelType` enum — Transformer, CNN, MoE, SSM, Diffusion, GNN, GAN, RL, SNN, RNN, Multimodal, Custom
+- `ModelType` enum — Transformer, Cnn, Moe, Diffusion, Gnn, Rnn, Ssm, Gan, Hybrid, Multimodal, Snn, Experimental (verified against the real enum, `neurax-parser/src/model_config.rs`, rather than restated from an earlier, since-drifted list that named a nonexistent `RL` and `Custom` in place of the real `Hybrid` and `Experimental`)
 - `LayerType` enum — Attention, Mlp, Embedding, Conv2d, etc.
 - Schema validation via `ModelValidator`
 
-**Supported model types**: transformer, cnn, moe, ssm, diffusion, gnn, gan, rl, snn, rnn, multimodal, custom
+**Parseable model types**: all 12 above — the schema accepts any of them so a design of that type parses and gets a report. Only 8 (transformer, cnn, moe, ssm, diffusion, gnn, gan, rnn) are exposed as a family choice in the canvas and have the compiler's own real, per-family formulas behind them end to end — the same 8 the neurax-ui section below states. `hybrid`, `multimodal`, `snn` and `experimental` still parse (useful for a hand-written or imported JSON that declares one) but aren't offered in the UI and fall back to generic layer-level formulas rather than a family-specific one.
 
 ### neurax-ir
 
@@ -371,7 +371,7 @@ Python/FastAPI/LangChain AI copilot with a 3-phase declarative pipeline:
 2. **Validation** — Pure Python topology validator checks DAG, fan-in, connectivity
 3. **Materialization** — Stream tool calls to the canvas with auto-correction (up to 3 retries)
 
-Supports 11 model families (verified: `FAMILY_TEMPLATES` in `arch_planner.py` has exactly 11 keys), with a catalogue (`catalogue.json`) of 170 blocks plus 23 macro-blocks — counted directly from the JSON rather than restated from an earlier, since-drifted figure.
+Has planning templates for 11 families (verified: `FAMILY_TEMPLATES` in `arch_planner.py` has exactly 11 keys: `cnn`, `transformer`, `moe`, `ssm`, `rnn`, `gnn`, `gan`, `diffusion`, `snn`, `multimodal`, `experimental`), with a catalogue (`catalogue.json`) of 170 blocks plus 23 macro-blocks — counted directly from the JSON rather than restated from an earlier, since-drifted figure. This is not the same count as the compiler's own 8 fully-supported families below, and the two should not be read as contradicting each other: 8 of these 11 keys (all but `snn`, `multimodal`, `experimental`) map to a family the compiler backs with real, verified formulas; the other 3 are generic prompts the agent falls back to for a family it can still *draw* but that has no dedicated formula module of its own yet.
 
 ### neurax-ui
 

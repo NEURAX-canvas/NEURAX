@@ -1,8 +1,8 @@
 # NEURAX
 
-**Know what a model costs — before you spend a single GPU-hour finding out.**
+**An environment to design, simulate, and optimize neural architectures — before you spend a single GPU-hour finding out what they cost.**
 
-The usual way to find out an architecture doesn't fit is to launch the training run and watch it OOM six hours in  or finish, and cost three times what you budgeted, because nothing checked before you committed the GPU-hours. NEURAX checks first. Point it at an architecture  a full LLM or a small model built for your own dataset  and it hands back memory, speed, and training cost in under 50 milliseconds. No GPU, no training run, no waiting to find out.
+The usual way to find out an architecture doesn't fit is to launch the training run and watch it OOM six hours in  or finish, and cost three times what you budgeted, because nothing checked before you committed the GPU-hours. NEURAX checks first. Point its analytical engine at an architecture  a full LLM or a small model built for your own dataset  and it hands back memory, speed, and training cost in under 50 milliseconds. No GPU, no training run, no waiting to find out.
 
 [![CI](https://github.com/rustnew/NEURAX/actions/workflows/ci.yml/badge.svg)](https://github.com/rustnew/NEURAX/actions)
 [![Release](https://img.shields.io/github/v/release/rustnew/NEURAX?style=flat-square&color=blue)](https://github.com/rustnew/NEURAX/releases)
@@ -37,7 +37,7 @@ Runs on **Debian, Ubuntu, Kali, Arch, Fedora, and effectively any Linux**, plus 
 3. Run the downloaded file. Windows 11 already has the WebView2 runtime NEURAX renders through; the installer adds it on Windows 10 if it's missing.
 4. Launch **NEURAX** from the Start menu.
 
-Same install as Linux and macOS otherwise: no account to create, no data leaves the machine, and the compiler runs locally, in the app itself.
+Same install as Linux and macOS otherwise: no account to create, no data leaves the machine, and the whole environment runs locally, in the app itself.
 
 Not sure yet? Read the install script before running it — one file, plain shell: [`install.sh`](install.sh).
 
@@ -55,7 +55,7 @@ Every number is computed from the architecture you built, live — not a lookup 
 <p align="center">
   <img width="49%" alt="Importing a model directly from a HuggingFace config.json, by URL or by pasting the file" src="https://github.com/user-attachments/assets/ba4445ef-d13f-4a7f-874c-a691b3cd891c" />
   <img width="49%" alt="A Mixture-of-Experts diffusion model (MMDiT blocks, VAE, T5-XXL text encoder) analyzed on the canvas" src="https://github.com/user-attachments/assets/69771bb1-9954-4dfd-a7a2-ed18f8c39e69" />
-  <br><sub>Left: import any public model straight from HuggingFace — paste an ID or a <code>config.json</code>, nothing uploaded. Right: the same compiler, on a diffusion architecture — not just LLMs.</sub>
+  <br><sub>Left: import any public model straight from HuggingFace — paste an ID or a <code>config.json</code>, nothing uploaded. Right: the same environment, on a diffusion architecture — not just LLMs.</sub>
 </p>
 
 **This is what the opening line means, in practice** — a 512-expert, 92-layer design pushed deliberately past a single GPU, caught before any training run:
@@ -81,7 +81,7 @@ Every number is computed from the architecture you built, live — not a lookup 
 
 - No account to create — a local profile is generated automatically, kept on your machine.
 - No API key leaves your browser — the AI copilot (bring your own key: OpenAI, Anthropic, Gemini, Mistral, Fireworks, DeepSeek, GLM, or any custom endpoint) talks straight to your chosen provider.
-- No project ever uploaded anywhere. The compiler runs on your machine; that's the whole design.
+- No project ever uploaded anywhere. The whole environment runs on your machine; that's the whole design.
 
 ## Accuracy, measured
 
