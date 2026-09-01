@@ -921,14 +921,28 @@ fn generate_recommendations(
         }
     }
 
-    // Cost
+    // Cost — the discount percentage itself is a market/region fact (AWS
+    // states "up to 90%" off On-Demand for Spot; real GPU instances
+    // commonly realize 60-90%, e.g. a documented p5.48xlarge, 8x H100,
+    // averaging ~80% off), not something derivable from the model, so a
+    // single conservative constant (60%, the low end of that range) is
+    // used here as before. What actually used to be wrong is that the
+    // dollar figure was never computed at all — "Save up to 70%" told a
+    // $10,001 run and a $10,000,000 run the exact same thing.
     if metrics.training_cost_usd > 10000.0 {
+        const CONSERVATIVE_SPOT_DISCOUNT: f64 = 0.60;
+        let estimated_savings_usd = metrics.training_cost_usd * CONSERVATIVE_SPOT_DISCOUNT;
         recommendations.push(Recommendation {
             category: RecommendationCategory::Cost,
             title: "Optimize Training Duration".to_string(),
             description: "Consider spot instances or reserved capacity for cost savings"
                 .to_string(),
-            impact: format!("Save up to 70% on GPU costs"),
+            impact: format!(
+                "Save ~${:.0} (~{:.0}% of this run's ${:.0} estimated on-demand cost via spot capacity)",
+                estimated_savings_usd,
+                CONSERVATIVE_SPOT_DISCOUNT * 100.0,
+                metrics.training_cost_usd
+            ),
             priority: Priority::Low,
         });
     }

@@ -212,6 +212,71 @@ fn higher_bandwidth_gpu_speedup_is_the_real_bandwidth_ratio() {
     );
 }
 
+fn cost_json(max_steps: u32) -> String {
+    format!(
+        r#"{{
+            "schema_version": "1.0.0",
+            "model": {{ "name": "test", "type": "transformer",
+                "global_params": {{
+                    "num_layers": 32, "hidden_size": 4096, "num_heads": 32,
+                    "intermediate_size": 16384, "vocab_size": 32000, "sequence_length": 2048
+                }},
+                "layers": [
+                    {{"id": "embed", "layer_type": "embedding", "params": {{"vocab_size": 32000, "hidden_size": 4096}}}},
+                    {{"id": "attn", "layer_type": "attention", "params": {{"hidden_size": 4096, "num_attention_heads": 32, "intermediate_size": 16384}}}},
+                    {{"id": "mlp", "layer_type": "mlp", "params": {{"hidden_size": 4096, "intermediate_size": 16384}}}}
+                ]
+            }},
+            "training": {{"batch_size": 8, "sequence_length": 2048, "precision": "bf16", "max_steps": {max_steps}}},
+            "hardware": {{"gpus": [{{"name": "A100-SXM", "count": 8}}]}},
+            "data": {{"dataset_size": 1000000000, "vocab_size": 32000, "num_classes": 0}}
+        }}"#
+    )
+}
+
+fn cost_recommendation(max_steps: u32) -> (f64, Option<String>) {
+    let config = neurax_parser::parse_model_config(&cost_json(max_steps)).expect("parses");
+    let r = neurax_core::run_analysis(config).expect("analyzes");
+    let impact = r
+        .report
+        .recommendations
+        .iter()
+        .find(|rec| rec.title == "Optimize Training Duration")
+        .map(|rec| rec.impact.clone());
+    (r.cost.metrics.training_cost_usd, impact)
+}
+
+#[test]
+fn spot_instance_savings_scale_with_the_models_real_training_cost() {
+    // Below the $10k trigger: no recommendation at all.
+    let (small_cost, small_impact) = cost_recommendation(500_000);
+    assert!(
+        small_cost < 10_000.0,
+        "expected a small run under the trigger, got ${small_cost}"
+    );
+    assert!(
+        small_impact.is_none(),
+        "a run under the $10k trigger should not get this recommendation, got: {small_impact:?}"
+    );
+
+    // Above it: the dollar figure must reflect this specific run's real
+    // cost (~60% of it, the conservative spot-discount constant), not a
+    // flat "up to 70%" untethered to any amount.
+    let (big_cost, big_impact) = cost_recommendation(5_000_000);
+    assert!(
+        big_cost > 10_000.0,
+        "expected a run over the trigger, got ${big_cost}"
+    );
+    let big_impact = big_impact.expect("a run over $10k should get this recommendation");
+
+    let expected_savings = big_cost * 0.60;
+    assert!(
+        big_impact.contains(&format!("{:.0}", expected_savings)),
+        "expected the savings figure to be ~60% of this run's real ${big_cost:.0} \
+         cost (~${expected_savings:.0}), got: {big_impact}"
+    );
+}
+
 #[test]
 fn already_on_the_fastest_gpu_gets_no_bandwidth_recommendation() {
     // Recommending a switch to a GPU that isn't actually faster than the
