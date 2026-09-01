@@ -1,6 +1,6 @@
 [book]
 title = "NEURAX Documentation"
-description = "NEURAX — The Analytical Compiler for Neural Architectures"
+description = "NEURAX — An environment to design, simulate, and optimize neural architectures"
 authors = ["Martial-Christian Fossouo"]
 language = "en"
 

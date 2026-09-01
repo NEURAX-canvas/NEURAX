@@ -31,6 +31,19 @@ jobs:
             | tar -xz -C /usr/local/bin
           mdbook --version
 
+      # book.toml declares a non-optional `[preprocessor.mermaid]` — every
+      # diagram in the book depends on this binary being on PATH. Its
+      # absence here was silent: `mdbook build` exits non-zero, but nothing
+      # surfaced that failure anywhere a human would see it, so the last
+      # three pushes to `book/**` (back to 2026-08-31) never actually
+      # updated the published site even though each run reported "failure"
+      # in the Actions tab.
+      - name: Install mdbook-mermaid
+        run: |
+          curl -LsSf https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.1/mdbook-mermaid-v0.17.1-x86_64-unknown-linux-gnu.tar.gz \
+            | tar -xz -C /usr/local/bin
+          mdbook-mermaid --version
+
       - name: Build book
         run: mdbook build book
 
