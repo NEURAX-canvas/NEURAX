@@ -852,12 +852,32 @@ fn generate_recommendations(
 
     // Parallelism
     if metrics.optimal_gpu_count > 1 && metrics.data_parallel_efficiency < 0.8 {
+        // Grounded in Narayanan et al. 2021 ("Efficient Large-Scale Language
+        // Model Training on GPU Clusters Using Megatron-LM"), Table 2 /
+        // Figure 10: at the same 174.6B-parameter model and 1536 GPUs,
+        // pure data parallelism (ZeRO-3, no model parallelism) fell to
+        // 30.6% of its own small-scale efficiency (44 of 144 TFLOP/s/GPU),
+        // while adding tensor+pipeline parallelism (PTD-P) recovered it to
+        // 97.9% (141 of 144) — about 97% of the efficiency pure data
+        // parallelism lost at that scale. Used conservatively here (90% of
+        // the gap) and applied to *this* model's own current efficiency,
+        // not a flat absolute target — a model already at 79% and one at
+        // 30% get different, both-realistic ceilings, and the estimate can
+        // never claim a target below where the model already is — the flat
+        // "~90%" this replaced didn't depend on the model at all.
+        let recovered_fraction = 0.90;
+        let achievable_efficiency = metrics.data_parallel_efficiency
+            + (1.0 - metrics.data_parallel_efficiency) * recovered_fraction;
         recommendations.push(Recommendation {
             category: RecommendationCategory::Parallelism,
             title: "Use Hybrid Parallelism".to_string(),
             description: "Combine data, tensor, and pipeline parallelism for better scaling"
                 .to_string(),
-            impact: format!("Improve efficiency to ~90%"),
+            impact: format!(
+                "Improve efficiency from ~{:.0}% to ~{:.0}%",
+                metrics.data_parallel_efficiency * 100.0,
+                achievable_efficiency * 100.0
+            ),
             priority: Priority::Medium,
         });
     }

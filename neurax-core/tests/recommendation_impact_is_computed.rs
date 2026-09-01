@@ -38,11 +38,47 @@ fn analyze(num_layers: u32, batch_size: u32) -> neurax_core::AnalysisResult {
     neurax_core::run_analysis(config).expect("analyzes")
 }
 
+fn model_json_with_gpus(num_layers: u32, num_gpus: u32) -> String {
+    format!(
+        r#"{{
+            "schema_version": "1.0.0",
+            "model": {{ "name": "test", "type": "transformer",
+                "global_params": {{
+                    "num_layers": {num_layers}, "hidden_size": 4096, "num_heads": 32,
+                    "intermediate_size": 16384, "vocab_size": 32000, "sequence_length": 4096
+                }},
+                "layers": [
+                    {{"id": "embed", "layer_type": "embedding", "params": {{"vocab_size": 32000, "hidden_size": 4096}}}},
+                    {{"id": "attn", "layer_type": "attention", "params": {{"hidden_size": 4096, "num_attention_heads": 32, "intermediate_size": 16384}}}},
+                    {{"id": "mlp", "layer_type": "mlp", "params": {{"hidden_size": 4096, "intermediate_size": 16384}}}}
+                ]
+            }},
+            "training": {{"batch_size": 32, "sequence_length": 4096, "precision": "bf16", "max_steps": 100}},
+            "hardware": {{"gpus": [{{"name": "A100-SXM", "count": {num_gpus}}}]}},
+            "data": {{"dataset_size": 1000000000, "vocab_size": 32000, "num_classes": 0}}
+        }}"#
+    )
+}
+
+fn analyze_with_gpus(num_layers: u32, num_gpus: u32) -> neurax_core::AnalysisResult {
+    let config = neurax_parser::parse_model_config(&model_json_with_gpus(num_layers, num_gpus))
+        .expect("parses");
+    neurax_core::run_analysis(config).expect("analyzes")
+}
+
 fn checkpointing_recommendation(r: &neurax_core::AnalysisResult) -> Option<String> {
     r.report
         .recommendations
         .iter()
         .find(|rec| rec.title == "Enable Gradient Checkpointing")
+        .map(|rec| rec.impact.clone())
+}
+
+fn hybrid_parallelism_recommendation(r: &neurax_core::AnalysisResult) -> Option<String> {
+    r.report
+        .recommendations
+        .iter()
+        .find(|rec| rec.title == "Use Hybrid Parallelism")
         .map(|rec| rec.impact.clone())
 }
 
@@ -76,4 +112,36 @@ fn gradient_checkpointing_savings_scale_with_real_depth_not_a_flat_constant() {
         deep_impact.contains("90%"),
         "expected ~90% for a 96-layer model, got: {deep_impact}"
     );
+}
+
+#[test]
+fn hybrid_parallelism_target_reacts_to_the_models_own_current_efficiency() {
+    // Two GPU counts that land on different current data_parallel_efficiency
+    // values (calculate_dp_efficiency, parallelism/pass.rs) should produce
+    // different "from X% to Y%" reports, not the same flat "~90%" target
+    // regardless of where the model actually starts.
+    let low_gpus = analyze_with_gpus(32, 64);
+    let high_gpus = analyze_with_gpus(32, 512);
+
+    let low_impact = hybrid_parallelism_recommendation(&low_gpus)
+        .expect("64-GPU config should trigger the parallelism recommendation");
+    let high_impact = hybrid_parallelism_recommendation(&high_gpus)
+        .expect("512-GPU config should trigger the parallelism recommendation");
+
+    assert_ne!(
+        low_impact, high_impact,
+        "different GPU counts produced different current efficiencies but the \
+         identical recommendation text — the target should be computed from \
+         each model's own starting point, not a flat constant"
+    );
+    // The target must never be reported below the model's own current
+    // efficiency (a real risk with a flat absolute target like the old
+    // "~90%": nonsensical for a model already above 90%).
+    for impact in [&low_impact, &high_impact] {
+        assert!(
+            impact.starts_with("Improve efficiency from ~"),
+            "expected the current efficiency to be reported alongside the \
+             target, got: {impact}"
+        );
+    }
 }
