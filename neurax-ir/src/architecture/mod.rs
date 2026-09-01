@@ -313,9 +313,18 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             // since a stacked RNN's layers 2..N each have `hidden` as their
             // own input size (they consume the previous layer's output),
             // not the original `input_size`.
+            //
+            // When also bidirectional, layer 2..N consume the *concatenated*
+            // forward+backward output of the previous layer
+            // (`hidden * bidir_mult` wide), not just `hidden` — real
+            // `nn.LSTM`'s own behavior for a stacked bidirectional stack. No
+            // current template combines num_layers>1 with bidirectional, so
+            // this was previously unverified in practice rather than
+            // deliberately simplified.
             let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let rest_input_size = hidden * bidir_mult as usize;
             let first = rnn::lstm_params(hidden, input_size, true);
-            let rest = rnn::lstm_params(hidden, hidden, true) * (stack - 1);
+            let rest = rnn::lstm_params(hidden, rest_input_size, true) * (stack - 1);
             (first + rest) * bidir_mult
         }
         LayerType::GruBlock => {
@@ -323,8 +332,9 @@ pub fn calculate_layer_params(layer: &Layer) -> u64 {
             let input_size = layer.params.hidden_size.unwrap_or(hidden);
             let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
             let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let rest_input_size = hidden * bidir_mult as usize;
             let first = rnn::gru_params(hidden, input_size, true);
-            let rest = rnn::gru_params(hidden, hidden, true) * (stack - 1);
+            let rest = rnn::gru_params(hidden, rest_input_size, true) * (stack - 1);
             (first + rest) * bidir_mult
         }
         LayerType::RnnCell => {

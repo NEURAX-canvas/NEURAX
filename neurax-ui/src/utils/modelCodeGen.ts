@@ -179,17 +179,20 @@ function gruCellParams(hidden: number, inputSize: number): number {
 }
 
 /** Mirrors architecture/mod.rs's stacking fix exactly: layer 1 takes the
- * real input dimension, layers 2..N each take `hidden` as their own input
- * (they consume the previous layer's output) — not `hidden * num_directions`
- * for a bidirectional stack, which is what `nn.LSTM`/`nn.GRU` actually do
- * internally for layer 2 onward. No current template combines
- * `num_layers > 1` with `bidirectional: true`, so this simplification and
- * PyTorch's real module don't currently diverge in practice — flagged here
- * rather than silently assumed correct for that combination. */
-function stackedRnnParams(cellParams: (h: number, i: number) => number, hidden: number, inputSize: number, numLayers: number): number {
+ * real input dimension; layers 2..N take `hidden * numDirections` as their
+ * own input, since a bidirectional layer's next layer consumes the
+ * *concatenated* forward+backward output — real `nn.LSTM`/`nn.GRU`
+ * behavior, and now also what the analysis computes. */
+function stackedRnnParams(
+  cellParams: (h: number, i: number) => number,
+  hidden: number,
+  inputSize: number,
+  numLayers: number,
+  numDirections: number,
+): number {
   const layers = Math.max(numLayers, 1);
   const first = cellParams(hidden, inputSize);
-  const rest = cellParams(hidden, hidden) * (layers - 1);
+  const rest = cellParams(hidden, hidden * numDirections) * (layers - 1);
   return first + rest;
 }
 
@@ -439,7 +442,7 @@ function genNode(node: CanvasNode, ctx: GenContext): GeneratedLayer {
       const dirMult = bidirectional ? 2 : 1;
       // architecture/mod.rs hardcodes bias=true for every LSTM/GRU/RNN
       // arm — never read from the node's own params — so this does too.
-      const paramCount = stackedRnnParams(cellParams, hiddenSize, inputSize, numLayers) * dirMult;
+      const paramCount = stackedRnnParams(cellParams, hiddenSize, inputSize, numLayers, dirMult) * dirMult;
       ctx.channels = hiddenSize * dirMult;
       const moduleName = isGru ? 'nn.GRU' : 'nn.LSTM';
       return {
