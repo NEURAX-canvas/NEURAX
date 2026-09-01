@@ -444,6 +444,189 @@ pub fn mbconv_flops(
     expand_flops + depthwise_flops + se_flops + project_flops
 }
 
+/// FLOPs for an Inception Module — same four parallel branches as
+/// `inception_module_params`, all at the module's input spatial resolution
+/// (a real Inception module doesn't downsample internally; that happens in
+/// separate strided layers between modules).
+#[allow(clippy::too_many_arguments)]
+pub fn inception_module_flops(
+    batch: usize,
+    height: usize,
+    width: usize,
+    in_channels: usize,
+    out_1x1: usize,
+    out_3x3_reduce: usize,
+    out_3x3: usize,
+    out_5x5_reduce: usize,
+    out_5x5: usize,
+    pool_proj: usize,
+) -> f64 {
+    let b = batch as f64;
+    let hw = (height * width) as f64;
+
+    let branch1x1 = 2.0 * b * out_1x1 as f64 * hw * in_channels as f64;
+
+    let branch3x3 = 2.0 * b * out_3x3_reduce as f64 * hw * in_channels as f64
+        + 2.0 * b * out_3x3 as f64 * hw * out_3x3_reduce as f64 * 9.0;
+
+    let branch5x5 = 2.0 * b * out_5x5_reduce as f64 * hw * in_channels as f64
+        + 2.0 * b * out_5x5 as f64 * hw * out_5x5_reduce as f64 * 25.0;
+
+    let branch_pool = 2.0 * b * pool_proj as f64 * hw * in_channels as f64;
+
+    branch1x1 + branch3x3 + branch5x5 + branch_pool
+}
+
+/// FLOPs for a DenseNet Dense Block — the same per-layer bottleneck (1×1) +
+/// growth (3×3) structure as `dense_block_params`, at a constant spatial
+/// resolution (DenseNet only downsamples in its separate Transition layers).
+pub fn dense_block_flops(
+    batch: usize,
+    height: usize,
+    width: usize,
+    in_channels: usize,
+    growth_rate: usize,
+    num_layers: usize,
+    bottleneck_factor: usize,
+) -> f64 {
+    let b = batch as f64;
+    let hw = (height * width) as f64;
+    let mut total = 0.0;
+    let mut channels = in_channels;
+
+    for _ in 0..num_layers {
+        let bn_channels = channels * bottleneck_factor;
+        let bottleneck = 2.0 * b * bn_channels as f64 * hw * channels as f64;
+        let main_conv = 2.0 * b * growth_rate as f64 * hw * bn_channels as f64 * 9.0;
+        total += bottleneck + main_conv;
+        channels += growth_rate;
+    }
+
+    total
+}
+
+/// FLOPs for a ConvNeXt Block: 7×7 depthwise (no cross-channel multiplier —
+/// groups == channels) then a 1×1-expand/1×1-project MLP, matching
+/// `convnext_block_params`'s structure.
+pub fn convnext_block_flops(
+    batch: usize,
+    height: usize,
+    width: usize,
+    channels: usize,
+    mlp_ratio: f64,
+) -> f64 {
+    let b = batch as f64;
+    let hw = (height * width) as f64;
+
+    let depthwise = 2.0 * b * channels as f64 * hw * 49.0;
+
+    let mlp_hidden = (channels as f64 * mlp_ratio) as usize;
+    let expand = 2.0 * b * mlp_hidden as f64 * hw * channels as f64;
+    let project = 2.0 * b * channels as f64 * hw * mlp_hidden as f64;
+
+    depthwise + expand + project
+}
+
+/// FLOPs for a ShuffleNet Unit: grouped 1×1 → depthwise 3×3 (carries the
+/// stride) → grouped 1×1, matching `shuffle_unit_params`'s structure and
+/// reusing `conv::conv2d_flops`'s grouped/depthwise arithmetic directly
+/// instead of re-deriving it by hand.
+pub fn shuffle_unit_flops(
+    batch: usize,
+    height: usize,
+    width: usize,
+    in_channels: usize,
+    out_channels: usize,
+    groups: usize,
+    stride: usize,
+) -> f64 {
+    let mid_channels = out_channels / 2;
+    let groups = groups.max(1);
+    let (out_h, out_w) = super::conv::conv2d_output_shape(height, width, 3, 3, stride, 1);
+
+    let conv1 = super::conv::conv2d_flops(
+        batch,
+        in_channels,
+        mid_channels,
+        height,
+        width,
+        1,
+        1,
+        1,
+        0,
+        groups,
+    );
+    let depthwise = super::conv::conv2d_flops(
+        batch,
+        mid_channels,
+        mid_channels,
+        height,
+        width,
+        3,
+        3,
+        stride,
+        1,
+        mid_channels.max(1),
+    );
+    let conv2 = super::conv::conv2d_flops(
+        batch,
+        mid_channels,
+        out_channels,
+        out_h,
+        out_w,
+        1,
+        1,
+        1,
+        0,
+        groups,
+    );
+
+    let skip = if stride != 1 || in_channels != out_channels {
+        super::conv::conv2d_flops(
+            batch,
+            in_channels,
+            out_channels,
+            height,
+            width,
+            1,
+            1,
+            stride,
+            0,
+            1,
+        )
+    } else {
+        0.0
+    };
+
+    conv1 + depthwise + conv2 + skip
+}
+
+/// FLOPs for a C2f block (YOLOv8 style): initial 1×1, `num_bottlenecks`
+/// pairs of 3×3 convs on the split half, final 1×1 over the concatenated
+/// channels — matches `c2f_block_params`'s structure.
+pub fn c2f_block_flops(
+    batch: usize,
+    height: usize,
+    width: usize,
+    in_channels: usize,
+    out_channels: usize,
+    num_bottlenecks: usize,
+) -> f64 {
+    let b = batch as f64;
+    let hw = (height * width) as f64;
+    let hidden = out_channels / 2;
+
+    let init_conv = 2.0 * b * out_channels as f64 * hw * in_channels as f64;
+
+    let per_bottleneck_conv = 2.0 * b * hidden as f64 * hw * hidden as f64 * 9.0;
+    let bottleneck_flops = 2.0 * per_bottleneck_conv * num_bottlenecks as f64;
+
+    let concat_channels = out_channels + hidden * num_bottlenecks;
+    let final_conv = 2.0 * b * out_channels as f64 * hw * concat_channels as f64;
+
+    init_conv + bottleneck_flops + final_conv
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -562,5 +745,55 @@ mod tests {
         let with_shortcut = c2f_block_params(128, 128, 3, true, false);
         let without_shortcut = c2f_block_params(128, 128, 3, false, false);
         assert_eq!(with_shortcut, without_shortcut);
+    }
+
+    // The five FLOPs formulas below had no counterpart at all before this —
+    // every expected value was computed independently in Python from the raw
+    // conv arithmetic (mirroring, not calling, the function under test), the
+    // same discipline the params tests above already use.
+
+    #[test]
+    fn test_inception_module_flops() {
+        // InceptionV3 style module at a 17x17 feature map.
+        let flops = inception_module_flops(1, 17, 17, 288, 64, 48, 64, 8, 32, 64);
+        assert_eq!(flops, 50_309_120.0);
+    }
+
+    #[test]
+    fn test_dense_block_flops() {
+        // DenseNet-121 style: growth_rate=32, 6 layers, bottleneck factor=4,
+        // 14x14 feature map.
+        let flops = dense_block_flops(1, 14, 14, 64, 32, 6, 4);
+        assert_eq!(flops, 613_351_424.0);
+    }
+
+    #[test]
+    fn test_convnext_block_flops() {
+        // ConvNeXt-Tiny style: 96 channels, 4x MLP ratio, 56x56 feature map.
+        let flops = convnext_block_flops(1, 56, 56, 96, 4.0);
+        assert_eq!(flops, 491_925_504.0);
+    }
+
+    #[test]
+    fn test_shuffle_unit_flops_stride1_no_skip() {
+        // Same shape as test_shuffle_unit's params test: 64->64, no
+        // downsample, so no skip-projection FLOPs.
+        let flops = shuffle_unit_flops(1, 28, 28, 64, 64, 2, 1);
+        assert_eq!(flops, 3_662_848.0);
+    }
+
+    #[test]
+    fn test_shuffle_unit_flops_stride2_adds_skip_projection() {
+        // Downsampling unit (stride=2, channel change): skip-projection
+        // FLOPs must be included, and output resolution must shrink.
+        let flops = shuffle_unit_flops(1, 28, 28, 64, 128, 2, 2);
+        assert_eq!(flops, 8_253_952.0);
+    }
+
+    #[test]
+    fn test_c2f_block_flops() {
+        // YOLOv8 C2f style: 128->128, 3 bottlenecks, 80x80 feature map.
+        let flops = c2f_block_flops(1, 80, 80, 128, 128, 3);
+        assert_eq!(flops, 3_565_158_400.0);
     }
 }

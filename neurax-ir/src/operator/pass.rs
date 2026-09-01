@@ -602,22 +602,166 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
-        // The remaining CNN block types don't yet have their real FLOPs
-        // formulas wired in here the way the two ResNet block shapes just
-        // were, even though several of those formulas already exist in
-        // `neurax_formulas::cnn_blocks` (`mbconv_flops` in particular) — this
-        // placeholder is a known, separate gap, not a considered estimate.
-        LayerType::Mbconv
-        | LayerType::Inception
-        | LayerType::DenseBlock
-        | LayerType::ConvnextBlock
-        | LayerType::ShuffleUnit
-        | LayerType::C2f
-        | LayerType::Detection
-        | LayerType::Transition => {
-            // Treat as conv-like operations
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let flops = (batch * seq * hidden * hidden) as f64;
+        // Each of these now uses its real per-block FLOPs formula from
+        // `neurax_formulas::cnn_blocks`, mirroring exactly the params-side
+        // formula already used for this layer type in `architecture/mod.rs`
+        // (same channel/kernel/stride reads). `sqrt(seq)` stands in for a
+        // square spatial size, the same assumption `ResidualBlock` above
+        // already makes — nothing in this pass tracks a feature map's real
+        // height/width as it shrinks through the network.
+        LayerType::Mbconv => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(32);
+            let out_ch = layer.params.out_channels.unwrap_or(16);
+            let expand = layer.params.expansion_factor.unwrap_or(6);
+            let kernel = layer.params.kernel_size.unwrap_or(3);
+            let stride = layer.params.stride.unwrap_or(1);
+            let se_reduction = layer.params.se_reduction_ratio.unwrap_or(4);
+            let flops = cnn_blocks::mbconv_flops(
+                batch,
+                in_ch,
+                out_ch,
+                side,
+                side,
+                expand,
+                kernel,
+                stride,
+                layer.params.se,
+                se_reduction,
+            );
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::Inception => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(288);
+            let out_1x1 = layer.params.out_channels.unwrap_or(64);
+            let flops = cnn_blocks::inception_module_flops(
+                batch,
+                side,
+                side,
+                in_ch,
+                out_1x1,
+                out_1x1 / 2,
+                out_1x1,
+                out_1x1 / 8,
+                out_1x1 / 2,
+                out_1x1,
+            );
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::DenseBlock => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(64);
+            let growth = layer.params.growth_rate.unwrap_or(32);
+            let num_layers = layer.params.num_layers.unwrap_or(4);
+            let flops =
+                cnn_blocks::dense_block_flops(batch, side, side, in_ch, growth, num_layers, 4);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::ConvnextBlock => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let channels = layer.params.hidden_size.unwrap_or(96);
+            let mlp_ratio = layer.params.mlp_ratio.unwrap_or(4.0);
+            let flops = cnn_blocks::convnext_block_flops(batch, side, side, channels, mlp_ratio);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::ShuffleUnit => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(64);
+            let out_ch = layer.params.out_channels.unwrap_or(64);
+            let groups = layer.params.groups.unwrap_or(2);
+            let stride = layer.params.stride.unwrap_or(1);
+            let flops =
+                cnn_blocks::shuffle_unit_flops(batch, side, side, in_ch, out_ch, groups, stride);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::C2f => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(64);
+            let out_ch = layer.params.out_channels.unwrap_or(64);
+            let num_bn = layer.params.num_bottlenecks.unwrap_or(3);
+            let flops = cnn_blocks::c2f_block_flops(batch, side, side, in_ch, out_ch, num_bn);
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Conv2D,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![],
+                output_shape: crate::tensor::Shape::default(),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        // Detection heads and transition layers are a simple conv
+        // (`architecture/mod.rs` prices their params the same way).
+        LayerType::Detection | LayerType::Transition => {
+            let side = (seq as f64).sqrt().round().max(1.0) as usize;
+            let in_ch = layer.params.in_channels.unwrap_or(256);
+            let out_ch = layer.params.out_channels.unwrap_or(256);
+            let kernel = layer.params.kernel_size.unwrap_or(3);
+            let flops = conv::conv2d_flops(
+                batch,
+                in_ch,
+                out_ch,
+                side,
+                side,
+                kernel,
+                kernel,
+                1,
+                kernel / 2,
+                1,
+            );
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Conv2D,
