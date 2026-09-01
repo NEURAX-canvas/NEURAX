@@ -244,16 +244,13 @@ export const DOCUMENTATION: DocChapter[] = [
               '**Diffusion** — denoisers, U-Nets and DiTs.',
               '**GNN** — graph networks.',
               '**GAN** — generator and discriminator pairs.',
-              '**RL** — policy and value networks.',
-              '**SNN** — spiking networks.',
               '**RNN** — LSTM and GRU models.',
-              '**Experimental** — blocks outside the established families.',
             ],
           },
           {
             kind: 'text',
             text:
-              'There are **208 blocks** across these families and **88 reference templates** built from them.',
+              'There are **150 blocks** across these 8 families and **30 reference templates** built from them.',
           },
         ],
       },

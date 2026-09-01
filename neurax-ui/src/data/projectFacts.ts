@@ -17,13 +17,10 @@
 export const CATALOGUE = {
   cnn: { blocks: 20, macroBlocks: 3 },
   diffusion: { blocks: 16, macroBlocks: 3 },
-  experimental: { blocks: 8, macroBlocks: 0 },
   gan: { blocks: 13, macroBlocks: 2 },
   gnn: { blocks: 17, macroBlocks: 3 },
   moe: { blocks: 19, macroBlocks: 2 },
-  multimodal: { blocks: 22, macroBlocks: 0 },
   rnn: { blocks: 14, macroBlocks: 3 },
-  snn: { blocks: 11, macroBlocks: 2 },
   ssm: { blocks: 13, macroBlocks: 2 },
   transformer: { blocks: 17, macroBlocks: 3 },
 } as const;
@@ -76,7 +73,7 @@ export const HERO_STATS = [
   {
     value: String(FAMILY_COUNT),
     label: 'Architecture families',
-    detail: 'Transformer, CNN, MoE, SSM, diffusion, GAN, GNN, RNN, SNN, multimodal, experimental',
+    detail: 'Transformer, CNN, MoE, SSM, diffusion, GAN, GNN, RNN',
   },
   {
     value: String(BLOCK_COUNT),

@@ -135,7 +135,7 @@ const AGENT_TYPE_ALIASES: Record<string, string> = {
   expert: 'expert_gated_ffn',
   add: 'residual_add',
   merge: 'concat',
-  // cnn / gan / diffusion / gnn / multimodal
+  // cnn / gan / diffusion / gnn
   dense: 'linear_projection',
   depthwise_conv2d: 'depthwise_conv',
   conv_transpose2d: 'transposed_conv',

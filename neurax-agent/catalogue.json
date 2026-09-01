@@ -169,17 +169,17 @@
       {
         "id": "macro-resnet-block",
         "name": "ResNet Block",
-        "description": "Conv2D → BN → ReLU → Conv2D → BN → (+Skip) → ReLU"
+        "description": "Conv2D \u2192 BN \u2192 ReLU \u2192 Conv2D \u2192 BN \u2192 (+Skip) \u2192 ReLU"
       },
       {
         "id": "macro-bottleneck",
         "name": "Bottleneck Block",
-        "description": "1×1 Conv → 3×3 Conv → 1×1 Conv with residual"
+        "description": "1\u00d71 Conv \u2192 3\u00d73 Conv \u2192 1\u00d71 Conv with residual"
       },
       {
         "id": "macro-mbconv",
         "name": "MBConv Block",
-        "description": "Expand Conv → Depthwise Conv2D → SE Block → Project Conv"
+        "description": "Expand Conv \u2192 Depthwise Conv2D \u2192 SE Block \u2192 Project Conv"
       }
     ],
     "presets": [
@@ -196,7 +196,7 @@
       {
         "id": "cnn-vgg",
         "name": "VGG-16",
-        "description": "Very deep CNN with 3×3 convolutions"
+        "description": "Very deep CNN with 3\u00d73 convolutions"
       },
       {
         "id": "cnn-mobilenet",
@@ -388,17 +388,17 @@
       {
         "id": "macro-transformer-block",
         "name": "Standard Transformer Block",
-        "description": "LayerNorm → MHA → Residual → LayerNorm → FFN → Residual"
+        "description": "LayerNorm \u2192 MHA \u2192 Residual \u2192 LayerNorm \u2192 FFN \u2192 Residual"
       },
       {
         "id": "macro-decoder-block",
         "name": "Decoder-Only Block",
-        "description": "RMSNorm → GQA (causal) → Residual → RMSNorm → SwiGLU → Residual"
+        "description": "RMSNorm \u2192 GQA (causal) \u2192 Residual \u2192 RMSNorm \u2192 SwiGLU \u2192 Residual"
       },
       {
         "id": "macro-cross-attn",
         "name": "Cross-Attention Block",
-        "description": "LayerNorm → Cross-MHA → Residual (encoder-decoder)"
+        "description": "LayerNorm \u2192 Cross-MHA \u2192 Residual (encoder-decoder)"
       }
     ],
     "presets": [
@@ -615,18 +615,18 @@
       {
         "id": "macro-moe-block",
         "name": "MoE Transformer Block",
-        "description": "LayerNorm → MHA → Residual → LayerNorm → Gate → Expert FFN → Combine → Residual"
+        "description": "LayerNorm \u2192 MHA \u2192 Residual \u2192 LayerNorm \u2192 Gate \u2192 Expert FFN \u2192 Combine \u2192 Residual"
       },
       {
         "id": "macro-moe-ffn",
         "name": "MoE FFN Layer",
-        "description": "Gate (Router) → Dispatch Top-K → Expert FFN → Expert Combine"
+        "description": "Gate (Router) \u2192 Dispatch Top-K \u2192 Expert FFN \u2192 Expert Combine"
       }
     ],
     "presets": [
       {
         "id": "mixtral-style",
-        "name": "Mixtral 8×7B",
+        "name": "Mixtral 8\u00d77B",
         "description": "8 experts with top-2 routing per layer"
       },
       {
@@ -780,12 +780,12 @@
       {
         "id": "macro-mamba-block",
         "name": "MAMBA Block",
-        "description": "Linear Proj → Conv1D → SSM Core (d_state, dt_rank) → SiLU Gate → Output Proj"
+        "description": "Linear Proj \u2192 Conv1D \u2192 SSM Core (d_state, dt_rank) \u2192 SiLU Gate \u2192 Output Proj"
       },
       {
         "id": "macro-s4-block",
         "name": "S4 Block",
-        "description": "SSM Core (HiPPO) → GLU Gate → Residual"
+        "description": "SSM Core (HiPPO) \u2192 GLU Gate \u2192 Residual"
       }
     ],
     "presets": [
@@ -797,7 +797,7 @@
       {
         "id": "mamba2-style",
         "name": "Mamba 2",
-        "description": "Structured State Space Duality (SSD) — longer sequences, better parallelism"
+        "description": "Structured State Space Duality (SSD) \u2014 longer sequences, better parallelism"
       }
     ],
     "constraints": {
@@ -958,12 +958,12 @@
       {
         "id": "macro-lstm-cell",
         "name": "LSTM Cell",
-        "description": "Gates: Forget → Input → Cell → Output"
+        "description": "Gates: Forget \u2192 Input \u2192 Cell \u2192 Output"
       },
       {
         "id": "macro-gru-cell",
         "name": "GRU Cell",
-        "description": "Gates: Reset → Update → Candidate"
+        "description": "Gates: Reset \u2192 Update \u2192 Candidate"
       },
       {
         "id": "macro-bidirectional",
@@ -1150,17 +1150,17 @@
       {
         "id": "macro-gcn-res",
         "name": "ResNet GCN Block",
-        "description": "GCN Conv → GraphNorm → ReLU → Dropout → Residual"
+        "description": "GCN Conv \u2192 GraphNorm \u2192 ReLU \u2192 Dropout \u2192 Residual"
       },
       {
         "id": "macro-mpnn-block",
         "name": "MPNN Block",
-        "description": "Edge Conv (Message) → Global Aggr → Dense (Update)"
+        "description": "Edge Conv (Message) \u2192 Global Aggr \u2192 Dense (Update)"
       },
       {
         "id": "macro-gat-block",
         "name": "GAT Block",
-        "description": "GAT Conv (concat=true) → BatchNorm → ReLU → Dropout"
+        "description": "GAT Conv (concat=true) \u2192 BatchNorm \u2192 ReLU \u2192 Dropout"
       }
     ],
     "presets": [
@@ -1315,12 +1315,12 @@
       {
         "id": "macro-gen-block",
         "name": "Generator Block",
-        "description": "ConvTranspose2D → BN → ReLU (upsampling block)"
+        "description": "ConvTranspose2D \u2192 BN \u2192 ReLU (upsampling block)"
       },
       {
         "id": "macro-disc-block",
         "name": "Discriminator Block",
-        "description": "Conv2D (SpectralNorm) → InstanceNorm → LeakyReLU (downsampling block)"
+        "description": "Conv2D (SpectralNorm) \u2192 InstanceNorm \u2192 LeakyReLU (downsampling block)"
       }
     ],
     "presets": [
@@ -1501,17 +1501,17 @@
       {
         "id": "macro-unet-down",
         "name": "U-Net Down Block",
-        "description": "ResidualBlock → GroupNorm → SiLU → Downsample"
+        "description": "ResidualBlock \u2192 GroupNorm \u2192 SiLU \u2192 Downsample"
       },
       {
         "id": "macro-unet-up",
         "name": "U-Net Up Block",
-        "description": "Upsample → Concat (skip) → ResidualBlock → GroupNorm → SiLU"
+        "description": "Upsample \u2192 Concat (skip) \u2192 ResidualBlock \u2192 GroupNorm \u2192 SiLU"
       },
       {
         "id": "macro-unet-mid",
         "name": "U-Net Middle Block",
-        "description": "ResidualBlock → Attention → ResidualBlock"
+        "description": "ResidualBlock \u2192 Attention \u2192 ResidualBlock"
       }
     ],
     "presets": [
@@ -1542,429 +1542,6 @@
         "mamba_block",
         "s4_block"
       ]
-    }
-  },
-  "snn": {
-    "description": "Spiking Neural Networks for neuromorphic computing",
-    "taskHints": [
-      "neuromorphic",
-      "event-based",
-      "low-power",
-      "spiking neurons",
-      "temporal coding"
-    ],
-    "defaultInputShape": "[B, time_steps, features]",
-    "blocks": [
-      {
-        "type": "input",
-        "name": "Input",
-        "defaultParams": {
-          "shape": "[B, time_steps, features]"
-        }
-      },
-      {
-        "type": "output",
-        "name": "Output",
-        "defaultParams": {}
-      },
-      {
-        "type": "rate_encoder",
-        "name": "Rate Encoder",
-        "defaultParams": {
-          "time_steps": 10,
-          "gain": 1.0
-        }
-      },
-      {
-        "type": "latency_encoder",
-        "name": "Latency Encoder",
-        "defaultParams": {
-          "time_steps": 10,
-          "tau": 5.0,
-          "normalize": true
-        }
-      },
-      {
-        "type": "lif_neuron",
-        "name": "LIF Neuron",
-        "defaultParams": {
-          "threshold": 1.0,
-          "tau": 0.9,
-          "reset_mechanism": "subtract",
-          "spike_grad": "fast_sigmoid",
-          "time_steps": 10
-        }
-      },
-      {
-        "type": "leaky_neuron",
-        "name": "Leaky Neuron (no spike)",
-        "defaultParams": {
-          "tau": 0.9,
-          "time_steps": 10
-        }
-      },
-      {
-        "type": "synaptic_layer",
-        "name": "Synaptic Layer",
-        "defaultParams": {
-          "in_features": 256,
-          "out_features": 256,
-          "alpha": 0.9,
-          "beta": 0.8
-        }
-      },
-      {
-        "type": "dense",
-        "name": "Linear Projection",
-        "defaultParams": {
-          "in_features": 256,
-          "out_features": 256,
-          "bias": false
-        }
-      },
-      {
-        "type": "batchnorm",
-        "name": "BatchNorm1D",
-        "defaultParams": {
-          "num_features": 256,
-          "eps": 1e-05
-        }
-      },
-      {
-        "type": "dropout",
-        "name": "Dropout",
-        "defaultParams": {
-          "p": 0.1
-        }
-      },
-      {
-        "type": "classification_head",
-        "name": "Classification Head",
-        "defaultParams": {
-          "in_features": 256,
-          "num_classes": 10
-        }
-      }
-    ],
-    "macroBlocks": [
-      {
-        "id": "macro-lif-layer",
-        "name": "LIF Layer",
-        "description": "Dense → BatchNorm → LIF Neuron (with leak and reset)"
-      },
-      {
-        "id": "macro-snn-encoder",
-        "name": "SNN Encoder",
-        "description": "Rate Encoder → Dense → LIF Neuron → Dropout"
-      }
-    ],
-    "presets": [
-      {
-        "id": "snn-classifier",
-        "name": "Simple SNN Classifier",
-        "description": "Rate Encoder → 2× (Dense → LIF) → Classification Head"
-      }
-    ],
-    "constraints": {
-      "requiredBlocks": [
-        "input",
-        "output"
-      ],
-      "incompatibleBlocks": [
-        "mha",
-        "gqa",
-        "expert",
-        "gate",
-        "gcn_conv",
-        "gat_conv",
-        "mamba_block",
-        "s4_block",
-        "conv2d"
-      ]
-    }
-  },
-  "multimodal": {
-    "description": "Multimodal architectures combining vision and text",
-    "taskHints": [
-      "vision-language",
-      "image and text",
-      "multimodal",
-      "visual question answering",
-      "image captioning",
-      "vision encoder text decoder",
-      "mobile multimodal",
-      "lightweight vision language"
-    ],
-    "defaultInputShape": "[B, ...]",
-    "blocks": [
-      {
-        "type": "input",
-        "name": "Input",
-        "defaultParams": {
-          "shape": "[B, ...]"
-        }
-      },
-      {
-        "type": "output",
-        "name": "Output",
-        "defaultParams": {}
-      },
-      {
-        "type": "conv2d",
-        "name": "Conv2D",
-        "defaultParams": {
-          "in_channels": 3,
-          "out_channels": 64,
-          "kernel_size": 3,
-          "stride": 1,
-          "padding": 1,
-          "bias": true
-        }
-      },
-      {
-        "type": "depthwise_conv2d",
-        "name": "Depthwise Conv2D",
-        "defaultParams": {
-          "in_channels": 64,
-          "kernel_size": 3,
-          "stride": 1,
-          "padding": 1,
-          "groups": 64,
-          "bias": false
-        }
-      },
-      {
-        "type": "max_pool",
-        "name": "MaxPool2D",
-        "defaultParams": {
-          "kernel_size": 2,
-          "stride": 2,
-          "padding": 0
-        }
-      },
-      {
-        "type": "avg_pool",
-        "name": "AvgPool2D",
-        "defaultParams": {
-          "kernel_size": 2,
-          "stride": 2,
-          "padding": 0
-        }
-      },
-      {
-        "type": "global_pool",
-        "name": "Global Pooling",
-        "defaultParams": {
-          "pool_type": "avg"
-        }
-      },
-      {
-        "type": "flatten",
-        "name": "Flatten",
-        "defaultParams": {}
-      },
-      {
-        "type": "embedding",
-        "name": "Embedding",
-        "defaultParams": {
-          "vocab_size": 30522,
-          "d_model": 256,
-          "padding_idx": 0
-        }
-      },
-      {
-        "type": "positional_encoding",
-        "name": "Positional Encoding",
-        "defaultParams": {
-          "max_seq_len": 512,
-          "d_model": 256,
-          "dropout": 0.1
-        }
-      },
-      {
-        "type": "mha",
-        "name": "Multi-Head Attention",
-        "defaultParams": {
-          "num_heads": 8,
-          "d_model": 256,
-          "head_dim": 32,
-          "dropout": 0.1,
-          "bias": true
-        }
-      },
-      {
-        "type": "ffn",
-        "name": "Feed-Forward Network",
-        "defaultParams": {
-          "d_model": 256,
-          "intermediate_size": 1024,
-          "activation": "gelu",
-          "dropout": 0.1,
-          "bias": true
-        }
-      },
-      {
-        "type": "layernorm",
-        "name": "Layer Normalization",
-        "defaultParams": {
-          "normalized_shape": 256,
-          "eps": 1e-05
-        }
-      },
-      {
-        "type": "rmsnorm",
-        "name": "RMS Normalization",
-        "defaultParams": {
-          "normalized_shape": 256,
-          "eps": 1e-06
-        }
-      },
-      {
-        "type": "batchnorm",
-        "name": "Batch Normalization",
-        "defaultParams": {
-          "num_features": 64,
-          "eps": 1e-05,
-          "momentum": 0.1
-        }
-      },
-      {
-        "type": "dense",
-        "name": "Dense",
-        "defaultParams": {
-          "in_features": 256,
-          "out_features": 128,
-          "bias": true
-        }
-      },
-      {
-        "type": "dropout",
-        "name": "Dropout",
-        "defaultParams": {
-          "p": 0.1
-        }
-      },
-      {
-        "type": "residual",
-        "name": "Residual Connection",
-        "defaultParams": {
-          "projection": false
-        }
-      },
-      {
-        "type": "add",
-        "name": "Element-wise Add",
-        "defaultParams": {}
-      },
-      {
-        "type": "concat",
-        "name": "Concatenate",
-        "defaultParams": {
-          "axis": -1
-        }
-      },
-      {
-        "type": "merge",
-        "name": "Merge",
-        "defaultParams": {
-          "mode": "concat"
-        }
-      },
-      {
-        "type": "classification_head",
-        "name": "Classification Head",
-        "defaultParams": {
-          "in_features": 256,
-          "num_classes": 10
-        }
-      }
-    ],
-    "macroBlocks": [],
-    "presets": [],
-    "constraints": {
-      "requiredBlocks": [
-        "input",
-        "output"
-      ],
-      "incompatibleBlocks": []
-    }
-  },
-  "experimental": {
-    "description": "Experimental and research architectures",
-    "taskHints": [
-      "research",
-      "novel architectures",
-      "custom blocks",
-      "experimental"
-    ],
-    "defaultInputShape": "[B, ...]",
-    "blocks": [
-      {
-        "type": "input",
-        "name": "Input",
-        "defaultParams": {
-          "shape": "[B, ...]"
-        }
-      },
-      {
-        "type": "output",
-        "name": "Output",
-        "defaultParams": {}
-      },
-      {
-        "type": "custom",
-        "name": "Custom Block",
-        "defaultParams": {
-          "description": "",
-          "input_shape": [],
-          "output_shape": [],
-          "custom_equations": {}
-        }
-      },
-      {
-        "type": "dense",
-        "name": "Linear Projection",
-        "defaultParams": {
-          "in_features": 256,
-          "out_features": 256,
-          "bias": true
-        }
-      },
-      {
-        "type": "add",
-        "name": "Element-wise Add",
-        "defaultParams": {}
-      },
-      {
-        "type": "concat",
-        "name": "Concatenate",
-        "defaultParams": {
-          "axis": 1
-        }
-      },
-      {
-        "type": "residual",
-        "name": "Residual Connection",
-        "defaultParams": {
-          "projection": false
-        }
-      },
-      {
-        "type": "dropout",
-        "name": "Dropout",
-        "defaultParams": {
-          "p": 0.1
-        }
-      }
-    ],
-    "macroBlocks": [],
-    "presets": [],
-    "constraints": {
-      "requiredBlocks": [
-        "input",
-        "output"
-      ],
-      "incompatibleBlocks": []
     }
   }
 }

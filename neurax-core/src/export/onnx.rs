@@ -453,11 +453,6 @@ fn get_input_shape(model_type: &ModelType, global: &GlobalParams, data: &DataCon
             let latent = data.input_shape.first().copied().unwrap_or(128) as i64;
             vec![latent]
         }
-        _ => {
-            let seq_len = data.input_shape.first().copied().unwrap_or(128) as i64;
-            let hidden = global.embedding_dim.unwrap_or(768) as i64;
-            vec![seq_len, hidden]
-        }
     }
 }
 

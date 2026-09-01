@@ -85,12 +85,8 @@ pub enum ModelType {
     Diffusion,
     Gnn,
     Rnn,
-    Ssm,          // State Space Models (Mamba, S4, H3, etc.)
-    Gan,          // Generative Adversarial Networks
-    Hybrid,       // Multi-architecture models (ViT, DiT, etc.)
-    Multimodal,   // Vision+language models (CLIP, LLaVA-style, mobile VLMs)
-    Snn,          // Spiking neural networks
-    Experimental, // Novel designs built from custom blocks
+    Ssm, // State Space Models (Mamba, S4, H3, etc.)
+    Gan, // Generative Adversarial Networks
 }
 
 impl ModelType {
@@ -105,10 +101,6 @@ impl ModelType {
             "rnn" | "recurrent" => Ok(Self::Rnn),
             "ssm" | "state_space" | "mamba" | "state_space_model" => Ok(Self::Ssm),
             "gan" | "generative_adversarial" | "adversarial" => Ok(Self::Gan),
-            "hybrid" | "multi_architecture" => Ok(Self::Hybrid),
-            "multimodal" | "multi_modal" | "vision_language" | "vlm" => Ok(Self::Multimodal),
-            "snn" | "spiking" | "spiking_neural_network" => Ok(Self::Snn),
-            "experimental" | "custom_architecture" | "novel" => Ok(Self::Experimental),
             _ => Err(ParserError::InvalidModelType(s.to_string())),
         }
     }
@@ -123,10 +115,6 @@ impl ModelType {
             Self::Rnn => "rnn",
             Self::Ssm => "ssm",
             Self::Gan => "gan",
-            Self::Hybrid => "hybrid",
-            Self::Multimodal => "multimodal",
-            Self::Snn => "snn",
-            Self::Experimental => "experimental",
         }
     }
 }

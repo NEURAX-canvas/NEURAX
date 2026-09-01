@@ -23,8 +23,6 @@ fn test_all_model_types() {
         ("rnn", ModelType::Rnn),
         ("ssm", ModelType::Ssm),
         ("gan", ModelType::Gan),
-        ("hybrid", ModelType::Hybrid),
-        ("multimodal", ModelType::Multimodal),
     ];
 
     println!("┌────────────────────────────────────────────────────────────────┐");
@@ -52,10 +50,6 @@ fn test_all_model_types() {
             ModelType::Rnn => "Recurrent networks",
             ModelType::Ssm => "State space models",
             ModelType::Gan => "Generative adversarial",
-            ModelType::Hybrid => "Multi-architecture",
-            ModelType::Multimodal => "Multimodal vision+language",
-            ModelType::Snn => "Spiking neural networks",
-            ModelType::Experimental => "Custom / novel designs",
         };
 
         println!(
@@ -67,7 +61,7 @@ fn test_all_model_types() {
     println!("└────────────────────────────────────────────────────────────────┘\n");
 
     assert!(all_passed, "Some model types failed parsing");
-    println!("✓ All 9 model types supported!\n");
+    println!("✓ All 8 model types supported!\n");
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -253,10 +247,6 @@ fn test_parameter_extraction_universality() {
         ),
         ("SSM", vec!["state_dim", "expansion_factor", "conv_kernel"]),
         ("GAN", vec!["latent_dim", "style_dim", "progressive_stages"]),
-        (
-            "Hybrid",
-            vec!["mixed architectures", "cross-family parameters"],
-        ),
     ];
 
     for (category, fields) in &param_categories {
@@ -300,7 +290,6 @@ fn test_universality_certification() {
     println!("│  ║  ✓ MoE           - Mixtral, DeepSeek-V3, Grok-1, Switch Transformer  ║  │");
     println!("│  ║  ✓ SSM           - Mamba, S4, H3, RWKV, RetNet                       ║  │");
     println!("│  ║  ✓ GAN           - StyleGAN, ProGAN, BigGAN, CycleGAN                ║  │");
-    println!("│  ║  ✓ Hybrid        - ViT, DiT, Whisper, ConvNeXt+Attn, LSTM+Attn       ║  │");
     println!("│  ╚══════════════════════════════════════════════════════════════════════╝  │");
     println!("│                                                                             │");
     println!("│  ╔══════════════════════════════════════════════════════════════════════╗  │");

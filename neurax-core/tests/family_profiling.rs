@@ -182,45 +182,6 @@ fn test_f02_gan_discriminator_flops() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SNN - Spiking Neural Networks
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Test Spiking NN FLOPs (different from standard NN)
-#[test]
-fn test_f02_snn_flops() {
-    // SNN: neurons spike over time steps
-    // FLOPs = standard FLOPs × num_timesteps
-    // But each spike is binary, so actual compute is different
-
-    let base_flops = 1.0e9;
-    let num_timesteps = 10u64;
-
-    // SNN FLOPs are typically higher due to temporal dimension
-    let snn_flops = base_flops * num_timesteps as f64;
-
-    println!("✓ F02 SNN: FLOPs = base × timesteps = {:.3e}", snn_flops);
-}
-
-/// Test Spiking ResNet FLOPs
-#[test]
-fn test_f02_spiking_resnet_flops() {
-    // Spiking ResNet: ResNet architecture with spiking neurons
-    // FLOPs = ResNet FLOPs × timesteps
-    // But with potential optimizations (sparse spikes)
-
-    let resnet_flops = 4.09e9;
-    let timesteps = 4u64;
-    let sparsity_factor = 0.3; // 30% of neurons spike on average
-
-    let expected_flops = resnet_flops * timesteps as f64 * sparsity_factor;
-
-    println!(
-        "✓ F02 Spiking ResNet: FLOPs ≈ {:.3e} (with sparsity)",
-        expected_flops
-    );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
 // FORMULES GÉNÉRALES
 // ═══════════════════════════════════════════════════════════════════════════
 
