@@ -1,7 +1,7 @@
 [book]
 title = "NEURAX Documentation"
 description = "NEURAX — An environment to design, simulate, and optimize neural architectures"
-authors = ["Martial-Christian Fossouo"]
+authors = ["Fossouo"]
 language = "en"
 
 [output.html]
