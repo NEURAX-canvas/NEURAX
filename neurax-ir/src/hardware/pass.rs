@@ -8,8 +8,6 @@ use crate::parallelism::ParallelismIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
 
-/// Hardware pass implementation
-
 /// True for the 16-bit float formats that use tensor cores.
 ///
 /// Configs, papers and the UI write `bf16`; only the longer `bfloat16` spelling
@@ -19,6 +17,7 @@ fn is_half_precision(precision: &str) -> bool {
     matches!(precision, "fp16" | "float16" | "bf16" | "bfloat16")
 }
 
+/// Hardware pass implementation
 pub struct HardwarePass;
 
 impl IrPass for HardwarePass {
@@ -37,13 +36,15 @@ impl IrPass for HardwarePass {
         ctx: &NeuraxContext,
     ) -> Result<Self::Output, Self::PassError> {
         let (compute_ir, memory_ir, _parallel_ir) = input;
-        let mut hw_ir = HardwareIR::default();
         // The true, un-sharded parameter count — a gradient all-reduce needs
         // to know the real buffer size, not this GPU's ZeRO-reduced share of
         // it (using the sharded figure made higher ZeRO stages look like
         // they reduce communication, when ZeRO-3 specifically increases it).
-        hw_ir.parameter_bytes = memory_ir.metrics.total_parameter_bytes;
-        hw_ir.total_flops = compute_ir.metrics.total_flops;
+        let mut hw_ir = HardwareIR {
+            parameter_bytes: memory_ir.metrics.total_parameter_bytes,
+            total_flops: compute_ir.metrics.total_flops,
+            ..Default::default()
+        };
 
         // Get GPU profile from JSON config or fallback to database
         let gpu_config = ctx.config.hardware.gpus.first();
@@ -137,7 +138,7 @@ impl IrPass for HardwarePass {
         };
 
         // Calculate per-layer timings
-        hw_ir.per_layer_timings = calculate_layer_timings(&compute_ir, &hw_ir.gpu_profile);
+        hw_ir.per_layer_timings = calculate_layer_timings(compute_ir, &hw_ir.gpu_profile);
 
         Ok(hw_ir)
     }

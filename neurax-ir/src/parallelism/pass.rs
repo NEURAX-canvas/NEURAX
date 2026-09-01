@@ -26,16 +26,18 @@ impl IrPass for ParallelismPass {
         ctx: &NeuraxContext,
     ) -> Result<Self::Output, Self::PassError> {
         let (memory_ir, graph_ir) = input;
-        let mut parallel_ir = ParallelismIR::default();
         // True, un-sharded byte counts. compute_metrics()'s own per-ZeRO-stage
         // arithmetic (see `memory_per_gpu` below) already divides these down
         // by num_gpus itself; feeding it MemoryPass's already-sharded
         // per-GPU figures here would double-shard the result. Same reason
         // hardware/pass.rs::build() uses the true total for its all-reduce
         // sizing.
-        parallel_ir.parameter_bytes = memory_ir.metrics.total_parameter_bytes;
-        parallel_ir.gradient_bytes = memory_ir.metrics.total_gradient_bytes;
-        parallel_ir.optimizer_bytes = memory_ir.metrics.total_optimizer_bytes;
+        let mut parallel_ir = ParallelismIR {
+            parameter_bytes: memory_ir.metrics.total_parameter_bytes,
+            gradient_bytes: memory_ir.metrics.total_gradient_bytes,
+            optimizer_bytes: memory_ir.metrics.total_optimizer_bytes,
+            ..Default::default()
+        };
 
         // Analyze available strategies
         let num_gpus = ctx.config.hardware.total_gpu_count();
@@ -271,9 +273,7 @@ fn calculate_dp_efficiency(ctx: &NeuraxContext, param_bytes: u64) -> f64 {
         1.0 // No penalty for smaller models
     };
 
-    (base_efficiency * interconnect_factor * size_penalty)
-        .min(1.0_f64)
-        .max(0.5_f64)
+    (base_efficiency * interconnect_factor * size_penalty).clamp(0.5_f64, 1.0_f64)
 }
 
 fn calculate_zero_memory(memory_ir: &MemoryIR, stage: u8, num_gpus: u32) -> u64 {

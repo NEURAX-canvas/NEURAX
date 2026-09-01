@@ -203,8 +203,8 @@ fn main() {
     }
 
     println!(
-        "{:<24} {:<6} {:<8} {:<12} {}",
-        "model", "code", "fired", "should_fire", "verdict"
+        "{:<24} {:<6} {:<8} {:<12} verdict",
+        "model", "code", "fired", "should_fire"
     );
     let mut wrong = 0;
     for r in &all_results {

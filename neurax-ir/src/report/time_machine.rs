@@ -14,7 +14,9 @@ use super::ir::{AllMetrics, Recommendation};
 /// generational perf-per-dollar improvement rate (newer silicon is cheaper per FLOP).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum HardwareTrack {
+    #[default]
     A100,
     H200,
     B100,
@@ -51,12 +53,6 @@ impl HardwareTrack {
             (HardwareTrack::B100, 2) => Some("X100 available".to_string()),
             _ => None,
         }
-    }
-}
-
-impl Default for HardwareTrack {
-    fn default() -> Self {
-        HardwareTrack::A100
     }
 }
 
@@ -366,11 +362,12 @@ mod tests {
     use super::*;
 
     fn metrics_with(cost: f64, co2: f64, params_count: u64) -> AllMetrics {
-        let mut m = AllMetrics::default();
-        m.training_cost_usd = cost;
-        m.co2_kg = co2;
-        m.total_parameters = params_count;
-        m
+        AllMetrics {
+            training_cost_usd: cost,
+            co2_kg: co2,
+            total_parameters: params_count,
+            ..Default::default()
+        }
     }
 
     #[test]

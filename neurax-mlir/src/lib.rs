@@ -56,6 +56,14 @@
 //! cargo run --example compile_to_mlir
 //! ```
 
+// MLIR dialect-builder functions construct a typed IR operation from its
+// real fields (shape dims, strides, precision, ...) — each argument is a
+// distinct, independent piece of that operation's own signature, the same
+// shape MLIR's own C++ builder APIs take. Splitting these into a params
+// struct per builder would trade one kind of verbosity for another without
+// making any of them easier to get right.
+#![allow(clippy::too_many_arguments)]
+
 pub mod compiler;
 pub mod context;
 pub mod dialects;

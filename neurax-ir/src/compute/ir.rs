@@ -3,22 +3,12 @@
 use std::collections::HashMap;
 
 /// Compute IR - dialecte du calcul analytique
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ComputeIR {
     /// FLOPs par opération (hérités de OperatorIR)
     pub op_flops: Vec<OpFlops>,
     pub metrics: ComputeMetrics,
     pub metrics_done: bool,
-}
-
-impl Default for ComputeIR {
-    fn default() -> Self {
-        Self {
-            op_flops: Vec::new(),
-            metrics: ComputeMetrics::default(),
-            metrics_done: false,
-        }
-    }
 }
 
 /// FLOPs record for an operation
@@ -78,9 +68,10 @@ impl ComputeMetrics {
 }
 
 /// Complexity class enumeration
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ComplexityClass {
-    Linear,      // O(n)
+    #[default]
+    Linear, // O(n)
     NLogN,       // O(n log n)
     Quadratic,   // O(n²) — attention standard
     Cubic,       // O(n³)
@@ -98,11 +89,5 @@ impl ComplexityClass {
             Self::Exponential => "O(2^n)",
             Self::Custom => "Custom",
         }
-    }
-}
-
-impl Default for ComplexityClass {
-    fn default() -> Self {
-        Self::Linear
     }
 }

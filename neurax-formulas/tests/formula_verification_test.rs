@@ -39,7 +39,7 @@ fn test_conv2d_params_formula() {
 
     // Test 3: Depthwise conv (groups = in_channels)
     let params = conv::conv2d_params(64, 64, 3, 3, 64, true);
-    let expected = 64 * 1 * 3 * 3 + 64; // 576 + 64 = 640
+    let expected = 64 * 3 * 3 + 64; // 576 + 64 = 640
     println!(
         "│ Depthwise conv (64, 3×3, groups=64): {} params (expected: {})",
         params, expected
@@ -464,7 +464,7 @@ fn test_normalization_params_formula() {
         params,
         2 * 768
     );
-    assert_eq!(params, 2 * 768 as u64);
+    assert_eq!(params, 2 * 768_u64);
 
     // RMSNorm (LLaMA style)
     let params = normalization::rms_norm_params(4096);
@@ -478,7 +478,7 @@ fn test_normalization_params_formula() {
         params,
         4 * 256
     );
-    assert_eq!(params, 4 * 256 as u64);
+    assert_eq!(params, 4 * 256_u64);
 
     println!("└─────────────────────────────────────────────────────────────────────────────┘\n");
     println!("✓ Normalization parameter formula verified\n");

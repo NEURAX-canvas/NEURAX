@@ -1,7 +1,7 @@
 //! Parallelism IR structures
 
 /// Parallelism IR - dialecte de l'analyse de scalabilité
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ParallelismIR {
     pub strategies: Vec<ParallelStrategy>,
     pub optimal_strategy: ParallelStrategy,
@@ -13,20 +13,6 @@ pub struct ParallelismIR {
     pub parameter_bytes: u64,
     pub gradient_bytes: u64,
     pub optimizer_bytes: u64,
-}
-
-impl Default for ParallelismIR {
-    fn default() -> Self {
-        Self {
-            strategies: Vec::new(),
-            optimal_strategy: ParallelStrategy::default(),
-            metrics: ParallelismMetrics::default(),
-            metrics_done: false,
-            parameter_bytes: 0,
-            gradient_bytes: 0,
-            optimizer_bytes: 0,
-        }
-    }
 }
 
 /// Parallel strategy

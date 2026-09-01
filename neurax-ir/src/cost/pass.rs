@@ -26,10 +26,11 @@ impl IrPass for CostPass {
         ctx: &NeuraxContext,
     ) -> Result<Self::Output, Self::PassError> {
         let (hw_ir, _parallel_ir) = input;
-        let mut cost_ir = CostIR::default();
-
         // Carry the hardware pass's measured step latency into the cost pass.
-        cost_ir.step_latency_ms = hw_ir.metrics.latency_ms;
+        let mut cost_ir = CostIR {
+            step_latency_ms: hw_ir.metrics.latency_ms,
+            ..Default::default()
+        };
 
         // Take the TDP from the hardware database rather than a local table.
         // The previous inline match only knew exact board names, so the common

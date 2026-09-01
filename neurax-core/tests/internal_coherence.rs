@@ -326,7 +326,7 @@ fn test_a17_fragmentation_reasonable() {
 
     let frag = result.memory.metrics.fragmentation_estimate;
     assert!(
-        frag >= 0.05 && frag <= 0.20,
+        (0.05..=0.20).contains(&frag),
         "A17: fragmentation = {:.1}% should be 5-20%",
         frag * 100.0
     );

@@ -159,9 +159,9 @@ impl From<&GpuSpec> for GpuProfile {
             hbm_bandwidth_gb_s: spec.memory_bandwidth_gbs,
             hbm_capacity_gb: spec.memory_gb as f64,
             l2_cache_mb: spec.l2_cache_mb.unwrap_or(40.0),
-            l2_bandwidth_tb_s: spec.memory_bandwidth_gbs as f64 * 5.0 / 1000.0,
+            l2_bandwidth_tb_s: spec.memory_bandwidth_gbs * 5.0 / 1000.0,
             sram_per_sm_kb: 164.0,
-            sram_bandwidth_tb_s: spec.memory_bandwidth_gbs as f64 * 50.0 / 1000.0,
+            sram_bandwidth_tb_s: spec.memory_bandwidth_gbs * 50.0 / 1000.0,
             num_sms: spec.num_sms.unwrap_or(108),
             cuda_cores_per_sm: 128,
             tensor_cores_per_sm: 4,
@@ -174,20 +174,15 @@ impl From<&GpuSpec> for GpuProfile {
 }
 
 /// Cache level for Industrial Roofline
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CacheLevel {
     /// SRAM/L1 - fastest, smallest
     Sram,
     /// L2 cache
     L2,
     /// HBM (main GPU memory)
+    #[default]
     Hbm,
-}
-
-impl Default for CacheLevel {
-    fn default() -> Self {
-        Self::Hbm
-    }
 }
 
 /// Roofline model - extended to 4 levels
@@ -226,9 +221,10 @@ impl Default for RooflineModel {
 }
 
 /// Roofline precision level
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RooflineLevel {
     /// Level 1: Classic (peak_flops vs peak_BW)
+    #[default]
     Classic,
     /// Level 2: Calibrated (efficiency per op)
     Calibrated,
@@ -236,12 +232,6 @@ pub enum RooflineLevel {
     MemoryHierarchy,
     /// Level 4: Industrial (all effects)
     Industrial,
-}
-
-impl Default for RooflineLevel {
-    fn default() -> Self {
-        Self::Classic
-    }
 }
 
 impl RooflineModel {
@@ -374,10 +364,11 @@ impl HardwareMetrics {
 }
 
 /// Bottleneck type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Bottleneck {
     ComputeBound,
     MemoryBound,
+    #[default]
     Balanced,
 }
 
@@ -388,11 +379,5 @@ impl Bottleneck {
             Self::MemoryBound => "memory-bound",
             Self::Balanced => "balanced",
         }
-    }
-}
-
-impl Default for Bottleneck {
-    fn default() -> Self {
-        Self::Balanced
     }
 }

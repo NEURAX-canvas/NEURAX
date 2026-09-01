@@ -55,7 +55,7 @@ fn test_param_memory_consistency() {
     let bytes_per_param = param_memory as f64 / total_params as f64;
 
     assert!(
-        bytes_per_param >= 2.0 && bytes_per_param <= 4.0,
+        (2.0..=4.0).contains(&bytes_per_param),
         "Param memory: {} bytes for {} params = {:.1} bytes/param (expected 2-4)",
         param_memory,
         total_params,
@@ -183,7 +183,7 @@ fn test_fragmentation_reasonable() {
 
     // Fragmentation typique: 5-20%
     assert!(
-        frag >= 0.05 && frag <= 0.20,
+        (0.05..=0.20).contains(&frag),
         "Fragmentation should be 5-20%, got {:.1}%",
         frag * 100.0
     );

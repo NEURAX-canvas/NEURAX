@@ -39,7 +39,14 @@ impl TargetBackend {
         }
     }
 
-    /// Parse from string
+    /// Parse from string.
+    ///
+    /// Not `std::str::FromStr`: this returns `Option`, not `Result`, and
+    /// accepts vendor aliases (`"nvidia"`, `"apple"`, ...) a real `FromStr`
+    /// impl would need its own `Err` type to reject cleanly — kept as a
+    /// plain inherent method instead of forcing that out for a type with
+    /// exactly this one caller shape.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "cpu" | "llvm" => Some(Self::Cpu),

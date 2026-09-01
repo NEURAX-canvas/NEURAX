@@ -46,18 +46,13 @@ pub struct VirtualMemoryMetrics {
 }
 
 /// Memory allocation strategy recommendation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AllocationStrategy {
+    #[default]
     NoAction,
     EnableCompaction,
     EnableFlashAttention,
     EnableVirtualMemory,
-}
-
-impl Default for AllocationStrategy {
-    fn default() -> Self {
-        Self::NoAction
-    }
 }
 
 impl VirtualMemoryPass {

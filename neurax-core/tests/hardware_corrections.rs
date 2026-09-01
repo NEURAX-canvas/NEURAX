@@ -27,19 +27,19 @@ fn test_f03_gpu_efficiency_factors() {
     let reduction_eff = 0.87;
 
     assert!(
-        matmul_eff >= 0.70 && matmul_eff <= 0.90,
+        (0.70..=0.90).contains(&matmul_eff),
         "F03: MatMul efficiency out of range"
     );
     assert!(
-        attention_eff >= 0.60 && attention_eff <= 0.85,
+        (0.60..=0.85).contains(&attention_eff),
         "F03: Attention efficiency out of range"
     );
     assert!(
-        elementwise_eff >= 0.85 && elementwise_eff <= 0.98,
+        (0.85..=0.98).contains(&elementwise_eff),
         "F03: Element-wise efficiency out of range"
     );
     assert!(
-        reduction_eff >= 0.75 && reduction_eff <= 0.95,
+        (0.75..=0.95).contains(&reduction_eff),
         "F03: Reduction efficiency out of range"
     );
 

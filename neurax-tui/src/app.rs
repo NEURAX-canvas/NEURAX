@@ -113,7 +113,7 @@ impl App {
         match neurax_core::analyze_json(model.json_content) {
             Ok(result) => {
                 self.compiled_result = Some(result);
-                self.real_world_data = Some(RealWorldData::for_model(&model.name));
+                self.real_world_data = Some(RealWorldData::for_model(model.name));
                 self.status_message =
                     format!("✓ {} compiled successfully - {} metrics", model.name, 77);
             }

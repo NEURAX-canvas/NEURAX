@@ -493,6 +493,12 @@ pub struct AppState {
     pub shares: Arc<DashMap<String, Share>>,
 }
 
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppState {
     pub fn new() -> Self {
         Self {
@@ -4198,9 +4204,6 @@ async fn agent_inference(
         "inference": inference_report,
     }))
 }
-
-/// POST /agent/compare — Compare multiple hardware configs
-/// Now uses the unified analyze_compare handler (supports both JWT and API key auth)
 
 /// GET /agent/audit — Audit a model: run analysis + inference + compliance check
 async fn agent_audit(

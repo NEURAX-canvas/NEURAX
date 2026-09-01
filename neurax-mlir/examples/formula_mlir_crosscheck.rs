@@ -133,6 +133,7 @@ fn assess_mlp_up_projection(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // each is a distinct dimension of the convolution being cross-checked
 fn assess_conv(
     batch: usize,
     in_ch: usize,
@@ -440,8 +441,8 @@ fn main() {
 
     // ---- Detailed table ----
     println!(
-        "{:<15} {:<14} {:<16} {:<20} {}",
-        "family", "model", "layer", "type", "verdict"
+        "{:<15} {:<14} {:<16} {:<20} verdict",
+        "family", "model", "layer", "type"
     );
     println!("{}", "-".repeat(110));
     for r in &rows {

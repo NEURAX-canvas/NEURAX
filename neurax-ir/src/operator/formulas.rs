@@ -11,6 +11,7 @@ pub fn batched_matmul_flops(batch: usize, m: usize, k: usize, n: usize) -> f64 {
 }
 
 /// Conv2D FLOPs: batch * out_h * out_w * out_ch * kernel_h * kernel_w * in_ch
+#[allow(clippy::too_many_arguments)] // each is a distinct, independent physical dimension of the convolution
 pub fn conv2d_flops(
     batch: usize,
     out_h: usize,

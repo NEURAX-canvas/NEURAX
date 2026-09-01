@@ -28,7 +28,7 @@ fn test_metrics_count() {
     );
     println!(
         "║ {:<20} │ {:<50} │ {:>15} │",
-        "Architecture", "model_type_info", &result.arch.metrics.model_type_info
+        "Architecture", "model_type_info", result.arch.metrics.model_type_info
     );
     println!(
         "║ {:<20} │ {:<50} │ {:>15} │",

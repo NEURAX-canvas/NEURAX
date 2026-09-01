@@ -54,7 +54,7 @@ pub struct StabilityMetrics {
 
 impl StabilityAnalysisPass {
     pub fn new() -> Self {
-        Self::default()
+        Self
     }
 
     pub fn run(

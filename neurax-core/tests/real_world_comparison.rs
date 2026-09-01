@@ -349,7 +349,7 @@ fn test_all_families_summary() {
         let computed = ComputedMetrics::from_json(json);
         let real = REAL_WORLD_DATA
             .iter()
-            .find(|r| r.model_name.contains(&name.split('-').next().unwrap_or("")));
+            .find(|r| r.model_name.contains(name.split('-').next().unwrap_or("")));
 
         if let Some(real) = real {
             let diff_pct = if real.total_params > 0 {

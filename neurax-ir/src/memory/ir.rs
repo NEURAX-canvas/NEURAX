@@ -1,7 +1,7 @@
 //! Memory IR structures
 
 /// Memory IR - dialecte de la simulation mémoire
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MemoryIR {
     /// Intervalles de liveness pour chaque tenseur
     pub liveness: Vec<LivenessInterval>,
@@ -11,18 +11,6 @@ pub struct MemoryIR {
     pub metrics_done: bool,
     /// Total parameters from ArchitectureIR for consistent memory calculation
     pub total_parameters: u64,
-}
-
-impl Default for MemoryIR {
-    fn default() -> Self {
-        Self {
-            liveness: Vec::new(),
-            memory_timeline: Vec::new(),
-            metrics: MemoryMetrics::default(),
-            metrics_done: false,
-            total_parameters: 0,
-        }
-    }
 }
 
 /// Intervalle de vie d'un tenseur [start_step, end_step]

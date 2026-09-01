@@ -128,6 +128,7 @@ struct OnnxNode {
     attributes: Vec<OnnxAttribute>,
 }
 
+#[derive(Default)]
 struct OnnxAttribute {
     name: String,
     attr_type: i32, // 1=float, 2=int, 3=string, 6=floats, 7=ints
@@ -136,20 +137,6 @@ struct OnnxAttribute {
     string_value: Option<String>,
     floats: Vec<f32>,
     ints: Vec<i64>,
-}
-
-impl Default for OnnxAttribute {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            attr_type: 0,
-            float_value: None,
-            int_value: None,
-            string_value: None,
-            floats: Vec::new(),
-            ints: Vec::new(),
-        }
-    }
 }
 
 struct OnnxTensor {

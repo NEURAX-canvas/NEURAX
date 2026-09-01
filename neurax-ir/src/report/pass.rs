@@ -338,7 +338,7 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
         };
 
         // Generate diagnostics
-        report.diagnostics = generate_diagnostics(&report.metrics, &input.memory);
+        report.diagnostics = generate_diagnostics(&report.metrics, input.memory);
         report
             .diagnostics
             .extend(check_shape_consistency(input.graph));
@@ -356,16 +356,16 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
 
         // Generate recommendations
         report.recommendations =
-            generate_recommendations(&report.metrics, &input.memory, &input.hardware, &ctx.gpu_db);
+            generate_recommendations(&report.metrics, input.memory, input.hardware, &ctx.gpu_db);
 
         // Collect warnings
-        report.warnings = collect_warnings(&input);
+        report.warnings = collect_warnings(input);
 
         // Compute confidence score
         report.confidence_score = compute_confidence_score(
             input.tensor.metrics.resolution_ratio,
             input.operator.metrics.custom_op_count > 0,
-            has_custom_formulas(&input.arch),
+            has_custom_formulas(input.arch),
             input.tensor.metrics.unresolved_dim_count == 0,
         );
 
@@ -605,8 +605,8 @@ pub fn generate_hyperparameter_diagnostics(
             if params > 0.0 && dataset_tokens > 0.0 {
                 const CHINCHILLA_TOKENS_PER_PARAM: f64 = 20.0;
                 let ratio = dataset_tokens / params;
-                if ratio < CHINCHILLA_TOKENS_PER_PARAM / 3.0
-                    || ratio > CHINCHILLA_TOKENS_PER_PARAM * 3.0
+                if !(CHINCHILLA_TOKENS_PER_PARAM / 3.0..=CHINCHILLA_TOKENS_PER_PARAM * 3.0)
+                    .contains(&ratio)
                 {
                     let verdict = if ratio < CHINCHILLA_TOKENS_PER_PARAM / 3.0 {
                         "under-trained for its size — more data would likely help more than a bigger model"
@@ -721,7 +721,7 @@ fn generate_diagnostics(metrics: &AllMetrics, memory: &MemoryIR) -> Vec<Diagnost
 
     // ── Model shape ──────────────────────────────────────────────────────
     if metrics.total_parameters > 0 && metrics.vocab_size > 0 && metrics.hidden_size > 0 {
-        let embedding = metrics.vocab_size as u64 * metrics.hidden_size as u64;
+        let embedding = metrics.vocab_size * metrics.hidden_size as u64;
         let share = embedding as f64 / metrics.total_parameters as f64;
         if share > 0.3 {
             diagnostics.push(Diagnostic {
@@ -987,7 +987,7 @@ fn build_gradient_memory_per_layer(
             }
         })
         .collect();
-    entries.sort_by(|a, b| b.backward.cmp(&a.backward));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.backward));
     entries
 }
 

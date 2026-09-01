@@ -225,7 +225,7 @@ fn test_c12_vram_params_formula() {
     let bytes_per_param = param_memory as f64 / total_params as f64;
 
     assert!(
-        bytes_per_param >= 2.0 && bytes_per_param <= 4.0,
+        (2.0..=4.0).contains(&bytes_per_param),
         "C12: bytes_per_param = {:.1} (expected 2-4)",
         bytes_per_param
     );
@@ -269,7 +269,7 @@ fn test_c14_fragmentation_included() {
 
     // Fragmentation devrait être 5-20%
     assert!(
-        frag >= 0.05 && frag <= 0.20,
+        (0.05..=0.20).contains(&frag),
         "C14: fragmentation = {:.1}% (expected 5-20%)",
         frag * 100.0
     );
@@ -489,7 +489,7 @@ fn test_c31_backward_ratio_range() {
         result.compute.metrics.backward_flops / result.compute.metrics.forward_flops;
 
     assert!(
-        backward_ratio >= 1.0 && backward_ratio <= 5.0,
+        (1.0..=5.0).contains(&backward_ratio),
         "C31: backward_ratio = {:.2} (expected [1.0, 5.0])",
         backward_ratio
     );
