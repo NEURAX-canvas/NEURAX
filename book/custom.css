@@ -237,8 +237,80 @@ h1 {
     margin: 0 0 1.4rem;
 }
 
+.showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+    margin: 2rem 0 1rem;
+}
+
+.showcase-grid figure {
+    margin: 0;
+}
+
+.showcase-grid img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    border: 1px solid #ece7ec;
+    box-shadow: 0 10px 30px -14px rgba(22, 18, 26, 0.28);
+}
+
+.showcase-grid figcaption {
+    margin-top: 0.5rem;
+    font-size: 0.82rem;
+    color: #6b6570;
+    text-align: center;
+}
+
+.market-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 1.5rem 0 1rem;
+    font-size: 0.92rem;
+    border: 1px solid #ece7ec;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.market-table th, .market-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #ece7ec;
+}
+
+.market-table th {
+    font-family: "Sora", sans-serif;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6b6570;
+    background: #faf8fb;
+}
+
+.market-table tr:last-child td {
+    border-bottom: none;
+}
+
+.market-table td.figure {
+    font-family: "Sora", sans-serif;
+    font-weight: 700;
+    color: var(--neurax-pink);
+    white-space: nowrap;
+}
+
+.market-note {
+    font-size: 0.82rem;
+    color: #6b6570;
+    margin-top: -0.5rem;
+}
+
 @media (max-width: 700px) {
     .stat-strip { grid-template-columns: repeat(2, 1fr); }
     .pillars { grid-template-columns: 1fr; }
     .audience-grid { grid-template-columns: 1fr; }
+    .showcase-grid { grid-template-columns: 1fr; }
+    .market-table { font-size: 0.82rem; }
 }

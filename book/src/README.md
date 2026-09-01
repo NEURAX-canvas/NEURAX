@@ -15,6 +15,27 @@
 <div><strong>100%</strong><span>runs on your machine</span></div>
 </div>
 
+One environment, the same canvas, on four real designs:
+
+<div class="showcase-grid">
+<figure>
+<img src="images/screenshot-cnn.png" alt="NEURAX canvas analyzing a CNN vision model, showing FLOPs and compute efficiency for a Dense FFN layer">
+<figcaption>A CNN, with live FLOPs and per-layer compute efficiency.</figcaption>
+</figure>
+<figure>
+<img src="images/screenshot-moe.png" alt="NEURAX canvas analyzing a Mixture-of-Experts model, showing 16 SwiGLU experts and estimated latency">
+<figcaption>A Mixture-of-Experts model — 16 SwiGLU experts, estimated latency included.</figcaption>
+</figure>
+<figure>
+<img src="images/screenshot-transformer.png" alt="NEURAX canvas analyzing a LLaMA-style transformer, showing hardware and cost: $181,129.24 training cost">
+<figcaption>A LLaMA-style transformer, with the full training-cost breakdown.</figcaption>
+</figure>
+<figure>
+<img src="images/screenshot-moe-pink.png" alt="NEURAX canvas analyzing another Mixture-of-Experts model, showing router softmax and multi-head attention">
+<figcaption>Another MoE design — router, attention heads, and compute efficiency together.</figcaption>
+</figure>
+</div>
+
 ## The problem
 
 Training an AI model today still means committing real money before you know if the design works. A team picks an architecture, rents the GPUs, and finds out hours or days later — mid-run, watching it crash out of memory, or worse, watching it finish and cost three times the budget.
@@ -22,6 +43,24 @@ Training an AI model today still means committing real money before you know if 
 The numbers back this up. Gartner reports that over half of generative AI projects are abandoned after proof-of-concept — and **escalating cost** is one of the top reasons cited, alongside unclear business value. The industry isn't short on ambition; it's short on a way to know, before spending, whether an idea can actually run.
 
 Global AI infrastructure spending is projected to reach **$497 billion in 2026** (IDC). Every dollar of that sits behind a decision someone made *before* seeing a single result — a decision usually made on intuition, spreadsheets, or last time's memory.
+
+## Part of a bigger wave
+
+"AI tooling that removes a costly blocker" has become one of the fastest-growing categories in software. Two examples, both real and publicly reported:
+
+<table class="market-table">
+<thead>
+<tr><th>Company</th><th>What it removes</th><th>Valuation</th><th>Revenue run rate</th></tr>
+</thead>
+<tbody>
+<tr><td>Cursor (Anysphere)</td><td>Writing code by hand</td><td class="figure">$50B</td><td class="figure">~$4B ARR</td></tr>
+<tr><td>Lovable</td><td>Needing a developer to ship an app</td><td class="figure">$13.3B</td><td class="figure">~$500–600M ARR</td></tr>
+</tbody>
+</table>
+
+<p class="market-note">Cursor: ~$50B valuation, ~$4B annualized revenue as of mid-2026 (TechCrunch, The Next Web). Lovable: $13.3B valuation following its August 2026 Series C, ~$500–600M ARR (TechCrunch).</p>
+
+NEURAX doesn't have a valuation to report — it's early, and that's not the point of showing these. What they demonstrate is real: the market pays enormous amounts to remove a single expensive blocker from a technical workflow. Cursor and Lovable removed the cost of *writing* software. NEURAX targets the blocker one level up — the **$497 billion** in AI infrastructure spending that sits behind every decision to train a model at all.
 
 ## The vision
 
