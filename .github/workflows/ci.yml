@@ -9,47 +9,22 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    # Only this job links against MLIR; the UI job has no use for the prefixes.
-    env:
-      LLVM_SYS_180_PREFIX: /usr/lib/llvm-18
-      MLIR_SYS_180_PREFIX: /usr/lib/llvm-18
     steps:
       - uses: actions/checkout@v4
-
-      # `ubuntu-latest` ships with Android SDK, .NET, GHC and a few other
-      # toolchains this workspace never touches — tens of GB gone before a
-      # single dependency is installed. Restoring the cargo cache below, then
-      # apt-installing the LLVM 18 + MLIR dev packages (themselves several
-      # GB), was enough to exceed what was left and fail the job with "No
-      # space left on device" partway through setup — a runner-disk problem,
-      # not a build one, but indistinguishable from one in the job log.
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
-            /usr/share/dotnet /usr/local/share/powershell /usr/local/share/chromium \
-            /usr/local/lib/node_modules /opt/hostedtoolcache/CodeQL
-          df -h /
-
-      - name: Install LLVM 18 / MLIR
-        run: |
-          # LLVM 18 + Polly come from the official apt.llvm.org repo
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-          echo "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main" | sudo tee /etc/apt/sources.list.d/llvm-18.list
-          sudo apt-get update
-          sudo apt-get install -y llvm-18 llvm-18-dev libmlir-18-dev mlir-18-tools libpolly-18-dev
-          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      # `target` used to be part of this cache too. It grew to 4+ GB over the
-      # life of the repository — on its own enough to tip the job into the
-      # "No space left on device" failure above once the LLVM/MLIR packages
-      # were also on disk. The registry and git caches below are what actually
-      # save time (skipping re-fetching every crate); losing the incremental
-      # `target` cache costs a slower rebuild, not a failed job.
+      # `target` used to be part of this cache too and grew to 4+ GB over the
+      # life of the repository, back when this job also apt-installed LLVM
+      # 18/MLIR to build `neurax-mlir` — enough to tip the runner into a
+      # "No space left on device" failure. `neurax-mlir` is no longer a
+      # workspace member (nothing in the workspace depends on it; see its
+      # own exclusion comment in the root Cargo.toml), so this job doesn't
+      # need LLVM at all anymore — the registry and git caches below are
+      # what actually save time (skipping re-fetching every crate).
       - name: Cache cargo
         uses: actions/cache@v4
         with:
@@ -60,8 +35,8 @@ jobs:
           # archive as the two paths above. Reusing that key here would have
           # restored the same 4+ GB regardless of the shorter `path` list.
           key: ${{ runner.os }}-cargo-v2-${{ hashFiles('**/Cargo.lock') }}
-          # Without a fallback, any Cargo.lock change misses the cache outright
-          # and rebuilds the whole workspace — MLIR included — from scratch.
+          # Without a fallback, any Cargo.lock change misses the cache
+          # outright and rebuilds the whole workspace from scratch.
           restore-keys: ${{ runner.os }}-cargo-v2-
 
       # `cargo test` compiles libs, bins and examples itself, so a preceding
