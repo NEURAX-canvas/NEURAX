@@ -2,7 +2,7 @@
 #
 # NEURAX installer — Linux and macOS.
 #
-#   curl -fsSL https://raw.githubusercontent.com/rustnew/neurax-releases/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/rustnew/NEURAX/main/install.sh | sh
 #
 # Installs the desktop application and makes `neurax` available in the shell.
 # Nothing is written outside your home directory unless you ask for it, and no
@@ -20,7 +20,11 @@
 
 set -eu
 
-REPO="rustnew/neurax-releases"
+# The releases (and the desktop-release.yml workflow that publishes them)
+# live in the main source repo, not a separate one — this was pointing at
+# rustnew/neurax-releases, a repository that doesn't exist, so every
+# `curl … | sh` install failed with a 404 misreported as "are you online?"
+REPO="NEURAX-canvas/NEURAX"
 API="https://api.github.com/repos/${REPO}"
 
 PREFIX="${NEURAX_PREFIX:-${HOME}/.local}"
