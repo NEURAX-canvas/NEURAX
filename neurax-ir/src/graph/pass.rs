@@ -7,6 +7,7 @@ use crate::traits::IrPass;
 use crate::NeuraxContext;
 use neurax_formulas::dtype_bytes;
 use petgraph::graph::NodeIndex;
+use petgraph::Direction;
 
 /// Graph pass implementation
 pub struct GraphPass;
@@ -90,6 +91,47 @@ impl IrPass for GraphPass {
                     graph.add_edge(prev, idx, edge);
                 }
                 prev_idx = Some(idx);
+            }
+        }
+
+        // A block dragged onto the canvas and never wired to anything else
+        // (zero incoming *and* zero outgoing edges) still gets its own
+        // params/FLOPs/memory counted in every downstream pass — inflating
+        // the design's cost for a block that contributes nothing to what
+        // the model actually computes. Only meaningful once there is more
+        // than one node: a single-layer model has no edges by definition
+        // and isn't "orphaned". Idea ported from LIFT's dead-code-
+        // elimination pass (`lift-opt::dce.rs`'s "never-consumed result"
+        // check), adapted here to flag rather than silently delete —
+        // NEURAX never rewrites a user's design.
+        if graph.dag.node_count() > 1 {
+            for idx in graph.dag.node_indices() {
+                let has_incoming = graph
+                    .dag
+                    .edges_directed(idx, Direction::Incoming)
+                    .next()
+                    .is_some();
+                let has_outgoing = graph
+                    .dag
+                    .edges_directed(idx, Direction::Outgoing)
+                    .next()
+                    .is_some();
+                if !has_incoming && !has_outgoing {
+                    let layer_id = graph.dag[idx].layer_id.clone();
+                    ctx.add_diagnostic(crate::Diagnostic {
+                        severity: crate::Severity::Warning,
+                        category: crate::DiagnosticCategory::ArchitectureInefficiency,
+                        code: crate::DiagnosticCode::W008,
+                        message: format!(
+                            "Layer '{layer_id}' is not connected to any other layer — its cost is still counted in every metric."
+                        ),
+                        layer_id: Some(layer_id),
+                        suggestion: Some(
+                            "Connect this block to the rest of the design, or remove it.".to_string(),
+                        ),
+                        precision_impact: 0.0,
+                    });
+                }
             }
         }
 
