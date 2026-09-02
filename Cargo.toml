@@ -4,6 +4,7 @@ members = [
     "neurax-parser",
     "neurax-ir",
     "neurax-formulas",
+    "neurax-opspec",
     "neurax-hardware-db",
     "neurax-tui",
     "neurax-service",

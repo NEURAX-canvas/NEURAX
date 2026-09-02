@@ -1723,6 +1723,7 @@ dependencies = [
  "itertools 0.13.0",
  "neurax-formulas",
  "neurax-hardware-db",
+ "neurax-opspec",
  "neurax-parser",
  "num_cpus",
  "once_cell",
@@ -1735,6 +1736,15 @@ dependencies = [
  "smallvec",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "neurax-opspec"
+version = "0.14.0"
+dependencies = [
+ "neurax-formulas",
+ "neurax-parser",
+ "serde_json",
 ]
 
 [[package]]

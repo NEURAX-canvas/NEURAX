@@ -7,7 +7,6 @@ use crate::tensor::Shape;
 use crate::tensor::TensorIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
-use neurax_formulas::{attention, cnn_blocks, conv, embedding, gnn, mlp, moe, normalization, rnn};
 use neurax_parser::LayerType;
 
 /// Reads a `usize` out of a `global_params.extra` map, falling back when the
@@ -166,1130 +165,126 @@ fn decompose_layer_to_ops(
 ) -> Vec<AtomOp> {
     let mut ops = Vec::new();
 
-    match layer.layer_type {
-        LayerType::Embedding => {
-            let vocab = layer.params.vocab_size.unwrap_or(50000);
-            let dim = layer
-                .params
-                .embedding_dim
-                .unwrap_or(layer.params.hidden_size.unwrap_or(512));
-            ops.push(AtomOp {
-                id: 0,
-                op_type: OpType::Embedding,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![crate::tensor::Shape::known(vec![batch, seq])],
-                output_shape: crate::tensor::Shape::known(vec![batch, seq, dim]),
-                flops: embedding::embedding_flops(batch, seq, dim),
-                param_count: (vocab * dim) as u64,
-                activation_memory: ((batch * seq * dim) as f64
-                    * neurax_formulas::dtype_bytes(dtype))
-                .round() as u64,
-                is_custom: false,
-            });
-        }
-        LayerType::Attention => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            // `.max(1)`: the parser rejects a zero head count, but this pass is
-            // reachable from the published crate API without going through it,
-            // and a zero here would be a division by zero below.
-            let heads = layer.params.num_heads.unwrap_or(8).max(1);
-            let kv_heads = layer.params.num_kv_heads.unwrap_or(heads).max(1);
-            let causal = layer.params.causal;
-            let head_dim = hidden / heads;
-
-            // A bounded receptive field (sliding window, block-sparse, or
-            // dilated) — sub-quadratic attention's whole efficiency argument
-            // (Mistral 7B, arXiv:2310.06825) is that a query attends to this
-            // many positions, not the full sequence. Every one of these
-            // patterns used to collapse into plain dense attention on the
-            // wire, so picking one changed nothing about the reported cost.
-            let kv_span = layer
-                .params
-                .window_size
-                .or(layer.params.block_size)
-                .or(layer.params.dilation.map(|d| (seq / d.max(1)).max(1)))
-                .unwrap_or(seq);
-
-            // Use GQA formula if kv_heads < heads (Multi-Query or Grouped-Query Attention)
-            let attn_flops = if kv_span < seq {
-                attention::windowed_attention_flops(batch, seq, kv_span, hidden, heads, causal)
-            } else if kv_heads < heads {
-                attention::gqa_flops(batch, seq, hidden, heads, kv_heads, causal)
-            } else {
-                attention::attention_flops(batch, seq, hidden, heads, causal)
-            };
-
-            // QKV projections (scaled for GQA)
-            let qkv_param_count = if kv_heads < heads {
-                let kv_dim = kv_heads * head_dim;
-                hidden * hidden + 2 * hidden * kv_dim + hidden * hidden // Q + K,V + O
-            } else {
-                4 * hidden * hidden // Standard: Q,K,V,O
-            };
-
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Attention,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![crate::tensor::Shape::known(vec![batch, seq, hidden])],
-                output_shape: crate::tensor::Shape::known(vec![batch, seq, hidden]),
-                flops: attn_flops,
-                param_count: qkv_param_count as u64,
-                activation_memory: ((batch * seq * hidden) as f64
-                    * neurax_formulas::dtype_bytes(dtype))
-                .round() as u64,
-                is_custom: false,
-            });
-
-            // Add RoPE FLOPs for transformer models (applied to Q and K)
-            let rope_flops = embedding::rope_flops(batch, seq, heads, head_dim);
+    // OpSpec-IR (`neurax-opspec`): a migrated layer type's FLOPs formula
+    // lives in exactly one place, alongside its params formula. Only
+    // `Custom` (permanently) falls through to the match below unchanged.
+    // `OpType` and activation-memory bytes are decided here, not by
+    // `neurax-opspec` — it owns no `neurax-ir` concept, see its own docs.
+    if let Some(spec) = neurax_opspec::op_spec(layer.layer_type) {
+        let parser_layer = to_parser_layer(layer);
+        let flops_ctx = neurax_opspec::FlopsContext {
+            global_params: &ctx.config.model.global_params,
+            image_channels: ctx.config.data.image_channels,
+            image_height: ctx.config.data.image_height,
+            image_width: ctx.config.data.image_width,
+        };
+        let flops = (spec.flops_fn)(&parser_layer, batch, seq, &flops_ctx);
+        let activation_memory = spec
+            .activation_memory_fn
+            .map(|f| f(&parser_layer, batch, seq, dtype))
+            .unwrap_or(0);
+        ops.push(AtomOp {
+            id: ops.len(),
+            op_type: op_type_for(&parser_layer),
+            layer_id: layer.id.clone(),
+            input_shapes: vec![],
+            output_shape: crate::tensor::Shape::default(),
+            flops,
+            param_count: layer.param_count,
+            activation_memory,
+            is_custom: false,
+        });
+        // `Attention` is the one migrated type that still decomposes into
+        // two ops: RoPE (applied to Q/K) is a second, real atomic operation
+        // — `neurax_opspec::attention_flops_fn` reports the main op's FLOPs
+        // only, precisely so this second op keeps existing. See
+        // `attention_rope_flops`'s own doc for why (kernel_launch_count
+        // counts real ops and feeds a real latency-overhead model).
+        if layer.layer_type == LayerType::Attention {
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Mul, // RoPE is element-wise rotation
                 layer_id: layer.id.clone(),
                 input_shapes: vec![],
-                output_shape: crate::tensor::Shape::known(vec![batch, seq, hidden]),
-                flops: rope_flops,
+                output_shape: crate::tensor::Shape::default(),
+                flops: neurax_opspec::attention_rope_flops(&parser_layer, batch, seq),
                 param_count: 0,
                 activation_memory: 0,
                 is_custom: false,
             });
         }
-        LayerType::Mlp => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            let activation = layer.params.activation.as_deref().unwrap_or("gelu");
+        return ops;
+    }
 
-            let flops = if crate::architecture::is_gated_mlp(&layer.params) {
-                mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation)
-            } else {
-                mlp::mlp_flops(batch, seq, hidden, intermediate, activation)
-            };
-
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![crate::tensor::Shape::known(vec![batch, seq, hidden])],
-                output_shape: crate::tensor::Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: ((batch * seq * intermediate) as f64
-                    * neurax_formulas::dtype_bytes(dtype))
-                .round() as u64,
-                is_custom: false,
-            });
-        }
-        LayerType::Dense => {
-            let in_f = layer
-                .params
-                .in_features
-                .or(layer.params.in_channels)
-                .or(layer.params.hidden_size)
-                .unwrap_or(512);
-            let out_f = layer
-                .params
-                .out_features
-                .or(layer.params.out_channels)
-                .or(layer.params.hidden_size)
-                .unwrap_or(512);
-            let outer_dims = layer
-                .input_shape
-                .iter()
-                .take(layer.input_shape.len().saturating_sub(1))
-                .copied()
-                .product::<usize>()
-                .max(1);
-            let output_elements = if layer.output_shape.is_empty() {
-                outer_dims * out_f
-            } else {
-                layer.output_shape.iter().copied().product::<usize>()
-            };
-
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::MatMul,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![crate::tensor::Shape::known(layer.input_shape.clone())],
-                output_shape: crate::tensor::Shape::known(layer.output_shape.clone()),
-                flops: 2.0 * outer_dims as f64 * in_f as f64 * out_f as f64,
-                param_count: layer.param_count,
-                activation_memory: (output_elements as f64 * neurax_formulas::dtype_bytes(dtype))
-                    .round() as u64,
-                is_custom: false,
-            });
-        }
-        LayerType::LoraLinear | LayerType::DoraLinear => {
-            let in_f = layer.params.in_features.unwrap_or(512);
-            let out_f = layer.params.out_features.unwrap_or(512);
-            let rank = layer.params.rank.unwrap_or(16);
-            let outer_dims = layer
-                .input_shape
-                .iter()
-                .take(layer.input_shape.len().saturating_sub(1))
-                .copied()
-                .product::<usize>()
-                .max(1);
-            let flops = if matches!(layer.layer_type, LayerType::DoraLinear) {
-                neurax_formulas::lora::dora_flops(outer_dims, in_f, out_f, rank)
-            } else {
-                neurax_formulas::lora::lora_flops(outer_dims, in_f, out_f, rank)
-            };
-            let output_elements = if layer.output_shape.is_empty() {
-                outer_dims * out_f
-            } else {
-                layer.output_shape.iter().copied().product::<usize>()
-            };
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::MatMul,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![crate::tensor::Shape::known(layer.input_shape.clone())],
-                output_shape: crate::tensor::Shape::known(layer.output_shape.clone()),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: (output_elements as f64 * neurax_formulas::dtype_bytes(dtype))
-                    .round() as u64,
-                is_custom: false,
-            });
-        }
-        LayerType::Normalization => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let is_rms = layer.params.activation.as_deref() == Some("rms");
-
-            let (op_type, flops) = if is_rms {
-                (
-                    OpType::RMSNorm,
-                    normalization::rms_norm_flops(batch, seq, hidden),
-                )
-            } else {
-                (
-                    OpType::LayerNorm,
-                    normalization::layer_norm_flops(batch, seq, hidden),
-                )
-            };
-
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![crate::tensor::Shape::known(vec![batch, seq, hidden])],
-                output_shape: crate::tensor::Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: if is_rms {
-                    hidden as u64
-                } else {
-                    2 * hidden as u64
-                },
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::Conv => {
-            // Conv2D FLOPs calculation
-            let in_ch = layer
-                .params
-                .in_channels
-                .or_else(|| ctx.config.data.image_channels)
-                .unwrap_or(3);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let kernel_h = layer.params.kernel_size.unwrap_or(3);
-            let kernel_w = layer.params.kernel_w.unwrap_or(kernel_h);
-            let stride = layer.params.stride.unwrap_or(1);
-            let padding = layer.params.padding.unwrap_or(0);
-            let groups = 1; // Standard convolution
-
-            // Calculate output dimensions from input_shape or data config
-            let (batch, in_h, in_w) = if layer.input_shape.len() >= 4 {
-                (
-                    layer.input_shape[0],
-                    layer.input_shape[2],
-                    layer.input_shape[3],
-                )
-            } else {
-                // Use data config for image dimensions
-                let h = ctx.config.data.image_height.unwrap_or(224);
-                let w = ctx.config.data.image_width.unwrap_or(224);
-                (ctx.config.training.batch_size, h, w)
-            };
-
-            let out_h = (in_h + 2 * padding - kernel_h + stride) / stride;
-            let out_w = (in_w + 2 * padding - kernel_w + stride) / stride;
-
-            let flops = super::formulas::conv2d_flops(
-                batch, out_h, out_w, out_ch, kernel_h, kernel_w, in_ch, groups,
-            );
-
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::Pooling => {
-            // Pooling FLOPs calculation
-            let kernel_size = layer.params.kernel_size.unwrap_or(2);
-
-            // Calculate output dimensions from input_shape
-            let (batch, channels, in_h, in_w) = if layer.input_shape.len() >= 4 {
-                (
-                    layer.input_shape[0],
-                    layer.input_shape[1],
-                    layer.input_shape[2],
-                    layer.input_shape[3],
-                )
-            } else {
-                (1, 64, 224, 224)
-            };
-
-            let stride = layer.params.stride.unwrap_or(2);
-            let out_h = in_h.div_ceil(stride);
-            let out_w = in_w.div_ceil(stride);
-
-            let flops = super::formulas::pooling_flops(batch, channels, out_h, out_w, kernel_size);
-
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Pooling(super::PoolingType::Max),
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: 0,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::MoE => {
-            // MoE: router + expert computation.
-            //
-            // `moe_flops`'s signature is `(batch, seq_len, hidden_size,
-            // num_experts, top_k, expert_flops)` — this used to pass
-            // `intermediate` where `num_experts` belongs, `num_experts`
-            // where `top_k` belongs, and `top_k as f64` (2.0, 6.0, ...)
-            // where `expert_flops` — the cost of one token through one
-            // expert, normally in the billions — belongs. Every argument
-            // after `hidden` was one position off; every one is `usize` or
-            // `f64` like its neighbour, so it type-checked and returned a
-            // number four to nine orders of magnitude too small without
-            // ever failing to compile.
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            let num_experts = layer.params.num_experts.unwrap_or(8);
-            let top_k = layer.params.top_k.unwrap_or(2);
-            let activation = layer.params.activation.as_deref().unwrap_or("silu");
-            // One token through one gated-MLP expert — matches
-            // `calculate_layer_params`'s `gated_mlp_params`, which is what
-            // this expert's own parameter count assumes it is.
-            let expert_flops = mlp::gated_mlp_flops(1, 1, hidden, intermediate, activation);
-            let flops = moe::moe_flops(batch, seq, hidden, num_experts, top_k, expert_flops);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::MoE,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // The router: a real but tiny cost (a `hidden → num_experts`
-        // projection plus a softmax), not an expert-sized one.
-        LayerType::MoeRouter => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let num_experts = layer.params.num_experts.unwrap_or(8);
-            let flops = moe::moe_router_flops(batch, seq, hidden, num_experts);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::MoE,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // Combining top-k experts' outputs by their routing weight: a
-        // weighted sum over `top_k` tensors per token, real but small next
-        // to routing an expert's full MLP.
-        LayerType::MoeCombine => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let top_k = layer.params.top_k.unwrap_or(2);
-            let flops = 2.0 * batch as f64 * seq as f64 * top_k as f64 * hidden as f64;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::MoE,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // A DeepSeek-style shared expert: always active for every token, no
-        // routing/top-k involved — every token pays its full cost, not a
-        // top_k-scaled fraction of it.
-        LayerType::MoeSharedExpert => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            let activation = layer.params.activation.as_deref().unwrap_or("silu");
-            let shared_experts = layer.params.num_experts.unwrap_or(0) as f64;
-            let per_expert_flops =
-                mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation);
-            let flops = shared_experts * per_expert_flops;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::MoE,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // ResNet's two real block shapes have real FLOPs formulas
-        // (`neurax_formulas::cnn_blocks`) — used here instead of the generic
-        // placeholder below. Nothing in this pass tracks a feature map's
-        // actual height/width as it shrinks through the network (no CNN
-        // layer type does), so `sqrt(seq)` stands in for a square spatial
-        // size, on the same assumption the reference templates already make
-        // (resnet50.json's `sequence_length: 196` is 14×14) — an
-        // approximation, not the exact per-layer resolution, but a real
-        // formula applied to it beats a formula with no structural relation
-        // to the block at all.
-        LayerType::ResidualBlock | LayerType::ResnetBottleneck => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(256);
-            let stride = layer.params.stride.unwrap_or(1);
-            let flops = if matches!(layer.layer_type, LayerType::ResnetBottleneck) {
-                let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
-                let cardinality = layer.params.cardinality.unwrap_or(1);
-                cnn_blocks::resnet_bottleneck_block_flops(
-                    batch,
-                    in_ch,
-                    mid_ch,
-                    out_ch,
-                    side,
-                    side,
-                    stride,
-                    cardinality,
-                )
-            } else {
-                cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, stride)
-            };
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // Each of these now uses its real per-block FLOPs formula from
-        // `neurax_formulas::cnn_blocks`, mirroring exactly the params-side
-        // formula already used for this layer type in `architecture/mod.rs`
-        // (same channel/kernel/stride reads). `sqrt(seq)` stands in for a
-        // square spatial size, the same assumption `ResidualBlock` above
-        // already makes — nothing in this pass tracks a feature map's real
-        // height/width as it shrinks through the network.
-        LayerType::Mbconv => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(32);
-            let out_ch = layer.params.out_channels.unwrap_or(16);
-            let expand = layer.params.expansion_factor.unwrap_or(6);
-            let kernel = layer.params.kernel_size.unwrap_or(3);
-            let stride = layer.params.stride.unwrap_or(1);
-            let se_reduction = layer.params.se_reduction_ratio.unwrap_or(4);
-            let flops = cnn_blocks::mbconv_flops(
-                batch,
-                in_ch,
-                out_ch,
-                side,
-                side,
-                expand,
-                kernel,
-                stride,
-                layer.params.se,
-                se_reduction,
-            );
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::Inception => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(288);
-            let out_1x1 = layer.params.out_channels.unwrap_or(64);
-            let flops = cnn_blocks::inception_module_flops(
-                batch,
-                side,
-                side,
-                in_ch,
-                out_1x1,
-                out_1x1 / 2,
-                out_1x1,
-                out_1x1 / 8,
-                out_1x1 / 2,
-                out_1x1,
-            );
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::DenseBlock => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let growth = layer.params.growth_rate.unwrap_or(32);
-            let num_layers = layer.params.num_layers.unwrap_or(4);
-            let flops =
-                cnn_blocks::dense_block_flops(batch, side, side, in_ch, growth, num_layers, 4);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::ConvnextBlock => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let channels = layer.params.hidden_size.unwrap_or(96);
-            let mlp_ratio = layer.params.mlp_ratio.unwrap_or(4.0);
-            let flops = cnn_blocks::convnext_block_flops(batch, side, side, channels, mlp_ratio);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::ShuffleUnit => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let groups = layer.params.groups.unwrap_or(2);
-            let stride = layer.params.stride.unwrap_or(1);
-            let flops =
-                cnn_blocks::shuffle_unit_flops(batch, side, side, in_ch, out_ch, groups, stride);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::C2f => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let num_bn = layer.params.num_bottlenecks.unwrap_or(3);
-            let flops = cnn_blocks::c2f_block_flops(batch, side, side, in_ch, out_ch, num_bn);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // Detection heads and transition layers are a simple conv
-        // (`architecture/mod.rs` prices their params the same way).
-        LayerType::Detection | LayerType::Transition => {
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let in_ch = layer.params.in_channels.unwrap_or(256);
-            let out_ch = layer.params.out_channels.unwrap_or(256);
-            let kernel = layer.params.kernel_size.unwrap_or(3);
-            let flops = conv::conv2d_flops(
-                batch,
-                in_ch,
-                out_ch,
-                side,
-                side,
-                kernel,
-                kernel,
-                1,
-                kernel / 2,
-                1,
-            );
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // S4/H3/StateSpace are non-selective: A/B/C are plain learned
-        // weights, not the output of Mamba's own input-dependent
-        // projections — `mamba_flops`'s `in_proj` term prices exactly that
-        // selectivity mechanism, which these three don't have. `s4_flops`/
-        // `h3_flops` already existed with the right shape (S4's FFT-based
-        // O(S log S) convolution instead of Mamba's O(S) selective scan,
-        // H3's two-SSM-layer structure) but were never called from
-        // anywhere in the live pipeline.
-        LayerType::S4Block | LayerType::StateSpace => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let state_dim = layer.params.state_dim.unwrap_or(16);
-            let flops = neurax_formulas::ssm::s4_flops(batch, seq, hidden, state_dim);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::H3Block => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let state_dim = layer.params.state_dim.unwrap_or(16);
-            let flops = neurax_formulas::ssm::h3_flops(batch, seq, hidden, state_dim);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // State Space Model layer types
-        LayerType::MambaBlock | LayerType::RwkvBlock | LayerType::RetentionBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let state_dim = layer.params.state_dim.unwrap_or(16);
-            let expand = layer.params.expansion_factor.unwrap_or(2);
-
-            // Use proper Mamba FLOPs formula from neurax_formulas
-            let flops = neurax_formulas::ssm::mamba_flops(batch, seq, hidden, state_dim, expand);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // GAN layer types — real formulas per block, matching the shape each
-        // already uses on the params side (`architecture/mod.rs`). These used to
-        // share one placeholder (`batch*seq*hidden^2`) across all seven kinds —
-        // costing a per-channel affine (StyleMod) the same as a full convolution,
-        // and a self-attention block by a formula with no relation to attention
-        // at all.
-        LayerType::GeneratorBlock | LayerType::DiscriminatorBlock | LayerType::ProgressiveBlock => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let kh = layer.params.kernel_size.unwrap_or(3);
-            let stride = layer.params.stride.unwrap_or(1);
-            let padding = layer.params.padding.unwrap_or(0);
-            // No per-layer spatial (H, W) tracking exists for GAN blocks — same
-            // sqrt(seq) stand-in for a square feature-map side that
-            // ResidualBlock/ResnetBottleneck already use for the same reason.
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops =
-                conv::conv2d_flops(batch, in_ch, out_ch, side, side, kh, kh, stride, padding, 1);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::SelfAttention => {
-            let channels = layer.params.out_channels.unwrap_or(512);
-            // Same head count `SelfAttention`'s own param formula assumes.
-            let heads = (channels / 64).max(1);
-            let flops = attention::attention_flops(batch, seq, channels, heads, false);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Attention,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
-                output_shape: Shape::known(vec![batch, seq, channels]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::StyleMod => {
-            // A per-channel scale and bias — exactly the two elementwise ops its
-            // own param formula (`channels * 2`) counts, not a convolution's cost.
-            let channels = layer.params.out_channels.unwrap_or(512);
-            let flops = 2.0 * batch as f64 * seq as f64 * channels as f64;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
-                output_shape: Shape::known(vec![batch, seq, channels]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::AdaIN
-        | LayerType::PixelNorm
+    match layer.layer_type {
+        // Migrated to OpSpec-IR (`neurax-opspec`) — the early-return above
+        // already returns for every one of these before the match runs, so
+        // reaching this arm would mean `op_spec()` and this match disagree
+        // about which types are migrated. Every real `LayerType` except
+        // `Custom` is migrated.
+        LayerType::Embedding
+        | LayerType::Attention
+        | LayerType::Mlp
+        | LayerType::Conv
+        | LayerType::Dense
+        | LayerType::LoraLinear
+        | LayerType::DoraLinear
+        | LayerType::Normalization
+        | LayerType::Pooling
+        | LayerType::MoE
+        | LayerType::MoeRouter
+        | LayerType::MoeCombine
+        | LayerType::MoeSharedExpert
+        | LayerType::ResidualBlock
+        | LayerType::ResnetBottleneck
+        | LayerType::Mbconv
+        | LayerType::Inception
+        | LayerType::DenseBlock
+        | LayerType::ConvnextBlock
+        | LayerType::ShuffleUnit
+        | LayerType::C2f
+        | LayerType::Detection
+        | LayerType::Transition
+        | LayerType::MambaBlock
+        | LayerType::S4Block
+        | LayerType::StateSpace
+        | LayerType::H3Block
+        | LayerType::RwkvBlock
+        | LayerType::RetentionBlock
+        | LayerType::GeneratorBlock
+        | LayerType::DiscriminatorBlock
+        | LayerType::StyleMod
+        | LayerType::AdaIN
         | LayerType::MinibatchStd
-        | LayerType::SpectralNorm => {
-            // Normalization-weight cost (~RMSNorm's own 3-ops-per-element), not a
-            // full layer's worth of compute — none of these four carry a weight
-            // matrix of their own.
-            let channels = layer.params.out_channels.unwrap_or(512);
-            let flops = 3.0 * batch as f64 * seq as f64 * channels as f64;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
-                output_shape: Shape::known(vec![batch, seq, channels]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // LSTM/RNN layer types — real per-cell formulas
-        // (`neurax_formulas::rnn`) using the same input_size/stacking/
-        // bidirectional logic as the param formula (architecture/mod.rs),
-        // not `hidden*hidden*gates*stack`: that placeholder assumed a
-        // layer's input is always exactly `hidden` wide, which undercounts
-        // (or overcounts) a real LSTM/GRU whenever `hidden_size`
-        // (input_size) differs from `rnn_hidden_size` — the common case for
-        // layer 1 of any stack fed by an embedding of its own width — and
-        // ignored bidirectional concatenation into layer 2+ entirely,
-        // disagreeing with the param count computed for the exact same
-        // layer.
-        LayerType::LstmBlock => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
-            let rest_input_size = hidden * bidir_mult as usize;
-            let first = rnn::lstm_flops(batch, seq, hidden, input_size);
-            let rest = rnn::lstm_flops(batch, seq, hidden, rest_input_size) * (stack - 1) as f64;
-            let flops = (first + rest) * bidir_mult as f64;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::GruBlock => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
-            let rest_input_size = hidden * bidir_mult as usize;
-            let first = rnn::gru_flops(batch, seq, hidden, input_size);
-            let rest = rnn::gru_flops(batch, seq, hidden, rest_input_size) * (stack - 1) as f64;
-            let flops = (first + rest) * bidir_mult as f64;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::RnnCell => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
-            let first = rnn::rnn_flops(batch, seq, hidden, input_size);
-            let rest = rnn::rnn_flops(batch, seq, hidden, hidden) * (stack - 1) as f64;
-            let flops = first + rest;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::Bidirectional => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let flops = rnn::bidirectional_flops(batch, seq, hidden, input_size, "lstm");
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::EncoderBlock | LayerType::DecoderBlock => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let flops = rnn::lstm_flops(batch, seq, hidden, input_size);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // Diffusion layer types — real formulas per block, matching the shape
-        // each already uses on the params side. These used to share one
-        // placeholder (`batch*seq*hidden^2*4`) across a U-Net ResNet block, a
-        // cross-attention block and a time-embedding MLP alike — three
-        // structurally different operations costed identically.
-        LayerType::UnetBlock
-        | LayerType::ResnetBlock
+        | LayerType::PixelNorm
+        | LayerType::SelfAttention
+        | LayerType::SpectralNorm
+        | LayerType::ProgressiveBlock
+        | LayerType::LstmBlock
+        | LayerType::GruBlock
+        | LayerType::RnnCell
+        | LayerType::Bidirectional
+        | LayerType::EncoderBlock
+        | LayerType::DecoderBlock
+        | LayerType::UnetBlock
+        | LayerType::TimeEmbedding
+        | LayerType::CrossAttention
         | LayerType::DownBlock
         | LayerType::UpBlock
-        | LayerType::MidBlock => {
-            // Same hidden_size fallback and layers_per_block repeat as the
-            // param formula (architecture/mod.rs) — no real template sets
-            // in_channels/in_channels_diff on these nodes, and each node
-            // represents `layers_per_block` real ResNet blocks, not one.
-            let block_repeat = layer.params.layers_per_block.unwrap_or(1).max(1) as f64;
-            // Same sqrt(seq) spatial-side stand-in the CNN ResidualBlock arm
-            // above uses — no per-layer (H, W) tracking exists for diffusion
-            // U-Net blocks either.
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops = match layer
-                .params
-                .block_out_channels
-                .as_ref()
-                .filter(|c| !c.is_empty())
-            {
-                // Same per-stage channel list handled on the param side
-                // (architecture/mod.rs) — one FLOPs term per consecutive
-                // width transition instead of a single flat in/out pair.
-                Some(channels) => {
-                    let entry = layer.params.in_channels_diff.unwrap_or(
-                        layer
-                            .params
-                            .in_channels
-                            .unwrap_or(layer.params.hidden_size.unwrap_or(channels[0])),
-                    );
-                    let mut widths = Vec::with_capacity(channels.len() + 1);
-                    widths.push(entry);
-                    widths.extend(channels.iter().copied());
-                    // Same first-block-only channel-change shape as the
-                    // param formula (architecture/mod.rs).
-                    widths
-                        .windows(2)
-                        .map(|w| {
-                            let (win, wout) = (w[0], w[1]);
-                            let first = cnn_blocks::resnet_basic_block_flops(
-                                batch, win, wout, side, side, 1,
-                            );
-                            let rest = cnn_blocks::resnet_basic_block_flops(
-                                batch, wout, wout, side, side, 1,
-                            ) * (block_repeat - 1.0);
-                            first + rest
-                        })
-                        .sum()
-                }
-                None => {
-                    let in_ch = layer.params.in_channels_diff.unwrap_or(
-                        layer
-                            .params
-                            .in_channels
-                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-                    );
-                    let out_ch = layer.params.out_channels_diff.unwrap_or(
-                        layer
-                            .params
-                            .out_channels
-                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-                    );
-                    cnn_blocks::resnet_basic_block_flops(batch, in_ch, out_ch, side, side, 1)
-                        * block_repeat
-                }
-            };
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::TimeEmbedding | LayerType::TimestepBlock => {
-            // Linear + SiLU + Linear — exactly what this type's own param
-            // formula (`mlp_params(channels, channels*4, true)`) already assumes.
-            let channels = layer.params.hidden_size.unwrap_or(320);
-            let flops = mlp::mlp_flops(batch, seq, channels, channels * 4, "silu");
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, channels])],
-                output_shape: Shape::known(vec![batch, seq, channels]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::ConditionBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(320);
-            let flops = mlp::mlp_flops(batch, seq, hidden, hidden * 4, "gelu");
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::CrossAttention => {
-            let hidden = layer.params.hidden_size.unwrap_or(320);
-            let heads = layer.params.num_heads.unwrap_or(8);
-            // Q from the image features, K/V from the conditioning sequence —
-            // approximated here as self-attention over the image sequence
-            // (K/V's real, usually much shorter, conditioning length isn't
-            // tracked as a separate dimension anywhere in this pass yet).
-            // `transformer_layers_per_block` still applies on top of that
-            // approximation: SDXL's deepest stage stacks 10 of these per
-            // node, same repeat this type's param formula now applies.
-            let block_repeat = layer.params.transformer_layers_per_block.unwrap_or(1) as f64;
-            let flops = attention::attention_flops(batch, seq, hidden, heads, false) * block_repeat;
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Attention,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
-                output_shape: Shape::known(vec![batch, seq, hidden]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::NoisePredictor => {
-            // Final conv to predict noise — same kernel=3, groups=1 shape as
-            // this type's own param formula (`conv2d_params(channels, channels,
-            // 3, 3, 1, false)`), with padding=1 to preserve spatial size.
-            let channels = layer.params.out_channels_diff.unwrap_or(4);
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops = conv::conv2d_flops(batch, channels, channels, side, side, 3, 3, 1, 1, 1);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::VaeEncoder | LayerType::VaeDecoder => {
-            let in_ch = layer.params.in_channels.unwrap_or(3);
-            let out_ch = layer.params.out_channels_diff.unwrap_or(4);
-            let side = (seq as f64).sqrt().round().max(1.0) as usize;
-            let flops = conv::conv2d_flops(batch, in_ch, out_ch, side, side, 3, 3, 1, 1, 1);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Conv2D,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![],
-                output_shape: crate::tensor::Shape::default(),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // Graph Neural Networks — real FLOPs (`neurax-formulas::gnn`), reading
-        // the graph size from `global_params.extra` (`num_nodes`/`num_edges`),
-        // the same map `GlobalResolutionContext` reads for the params side.
-        // Falls back to the Cora citation-graph benchmark's real size — the
-        // same default this analyser's own hyperparameter panel already
-        // assumes for a GNN design with no explicit graph size — rather than
-        // an arbitrary round number.
-        LayerType::GraphConvNet => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
-            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
-            let flops = gnn::gcn_flops(num_nodes, in_features, out_features, num_edges);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
-                output_shape: Shape::known(vec![num_nodes, out_features]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        // GraphSAGE/GIN-style — real per-layer FLOPs (`message_passing_flops`)
-        // instead of reusing GCN's, matching the params side's doubled-input
-        // transform.
-        LayerType::MessagePassing => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
-            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
-            let flops = gnn::message_passing_flops(num_nodes, in_features, out_features, num_edges);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
-                output_shape: Shape::known(vec![num_nodes, out_features]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::GraphAttentionNet => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            let num_heads = layer.params.num_heads.unwrap_or(8);
-            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
-            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
-            let flops = gnn::gat_flops(num_nodes, in_features, out_features, num_edges, num_heads);
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
-                output_shape: Shape::known(vec![num_nodes, out_features]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
-        LayerType::RgcnConv => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            let num_relations = layer.params.num_relations.unwrap_or(1);
-            let num_nodes = extra_usize(&ctx.config.model.global_params.extra, "num_nodes", 2708);
-            let num_edges = extra_usize(&ctx.config.model.global_params.extra, "num_edges", 10556);
-            let flops = gnn::rgcn_flops(
-                num_nodes,
-                in_features,
-                out_features,
-                num_edges,
-                num_relations,
-            );
-            ops.push(AtomOp {
-                id: ops.len(),
-                op_type: OpType::Linear,
-                layer_id: layer.id.clone(),
-                input_shapes: vec![Shape::known(vec![num_nodes, in_features])],
-                output_shape: Shape::known(vec![num_nodes, out_features]),
-                flops,
-                param_count: layer.param_count,
-                activation_memory: 0,
-                is_custom: false,
-            });
-        }
+        | LayerType::MidBlock
+        | LayerType::ResnetBlock
+        | LayerType::TimestepBlock
+        | LayerType::ConditionBlock
+        | LayerType::NoisePredictor
+        | LayerType::VaeEncoder
+        | LayerType::VaeDecoder
+        | LayerType::GraphConvNet
+        | LayerType::MessagePassing
+        | LayerType::GraphAttentionNet
+        | LayerType::RgcnConv => unreachable!(
+            "{:?} is registered in OpSpec-IR (neurax-opspec); the early return above must have handled it",
+            layer.layer_type
+        ),
         // Custom layer - use custom equations if provided
         LayerType::Custom => {
             let hidden = layer.params.hidden_size.unwrap_or(512);
@@ -1390,6 +385,39 @@ pub fn layer_flops(
         .iter()
         .map(|op| op.flops)
         .sum()
+}
+
+/// Chooses the `OpType` a migrated layer's single `AtomOp` should carry — a
+/// decision this pass makes, not `neurax-opspec` (which owns no `neurax-ir`
+/// concept). Matches exactly what each type's own pre-migration arm set,
+/// with one runtime branch (`Normalization`'s RMS vs LayerNorm) that can't
+/// be a static per-`LayerType` table entry.
+fn op_type_for(layer: &neurax_parser::Layer) -> OpType {
+    use neurax_parser::LayerType::*;
+    match layer.layer_type {
+        Embedding => OpType::Embedding,
+        Attention | SelfAttention | CrossAttention => OpType::Attention,
+        Normalization => {
+            if layer.params.activation.as_deref() == Some("rms") {
+                OpType::RMSNorm
+            } else {
+                OpType::LayerNorm
+            }
+        }
+        Pooling => OpType::Pooling(super::PoolingType::Max),
+        MoE | MoeRouter | MoeCombine | MoeSharedExpert => OpType::MoE,
+        Dense | LoraLinear | DoraLinear => OpType::MatMul,
+        Mlp | MambaBlock | S4Block | StateSpace | H3Block | RwkvBlock | RetentionBlock
+        | StyleMod | AdaIN | PixelNorm | MinibatchStd | SpectralNorm | LstmBlock | GruBlock
+        | RnnCell | Bidirectional | EncoderBlock | DecoderBlock | TimeEmbedding | TimestepBlock
+        | ConditionBlock | GraphConvNet | MessagePassing | GraphAttentionNet | RgcnConv => {
+            OpType::Linear
+        }
+        // CNN blocks, GAN conv-like blocks, diffusion conv/U-Net blocks, and
+        // `Conv` itself — every one of these emitted `Conv2D` before
+        // migrating.
+        _ => OpType::Conv2D,
+    }
 }
 
 /// Adapt an IR layer back to the parser type the shared helpers expect.

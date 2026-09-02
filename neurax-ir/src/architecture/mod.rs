@@ -13,529 +13,82 @@ use neurax_parser::{Layer, LayerType};
 
 /// Calculate parameters for a single layer
 pub fn calculate_layer_params(layer: &Layer) -> u64 {
+    // OpSpec-IR (`neurax-opspec`): a migrated layer type's params formula
+    // lives in exactly one place, alongside its FLOPs formula. Anything not
+    // yet migrated falls through to the match below unchanged.
+    if let Some(spec) = neurax_opspec::op_spec(layer.layer_type) {
+        return (spec.params_fn)(layer);
+    }
+
     match layer.layer_type {
-        LayerType::Embedding => {
-            let vocab = layer.params.vocab_size.unwrap_or(50000);
-            let dim = layer
-                .params
-                .embedding_dim
-                .unwrap_or(layer.params.hidden_size.unwrap_or(512));
-            embedding::embedding_params(vocab, dim)
-        }
-        LayerType::Attention => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let heads = layer.params.num_heads.unwrap_or(8);
-            let kv_heads = layer.params.num_kv_heads.unwrap_or(heads);
-            if kv_heads == heads {
-                attention::attention_params(hidden, heads, layer.params.bias)
-            } else {
-                attention::gqa_params(hidden, heads, kv_heads, layer.params.bias)
-            }
-        }
-        LayerType::Mlp => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            if is_gated_mlp(&layer.params) {
-                mlp::gated_mlp_params(hidden, intermediate, layer.params.bias)
-            } else {
-                mlp::mlp_params(hidden, intermediate, layer.params.bias)
-            }
-        }
-        LayerType::Dense => {
-            let in_features = layer
-                .params
-                .in_features
-                .or(layer.params.in_channels)
-                .or(layer.params.hidden_size)
-                .unwrap_or(512);
-            let out_features = layer
-                .params
-                .out_features
-                .or(layer.params.out_channels)
-                .or(layer.params.hidden_size)
-                .unwrap_or(512);
-            let bias = if layer.params.bias { out_features } else { 0 };
-            (in_features * out_features + bias) as u64
-        }
-        LayerType::LoraLinear | LayerType::DoraLinear => {
-            let in_features = layer.params.in_features.unwrap_or(512);
-            let out_features = layer.params.out_features.unwrap_or(512);
-            // The rank is the whole point of LoRA — defaulting it to
-            // something in the tens (not `in_features`, which would just
-            // reproduce a full dense layer's cost) when unset.
-            let rank = layer.params.rank.unwrap_or(16);
-            if layer.layer_type == LayerType::DoraLinear {
-                lora::dora_params(in_features, out_features, rank)
-            } else {
-                lora::lora_params(in_features, out_features, rank)
-            }
-        }
-        LayerType::Conv => {
-            let in_ch = layer.params.in_channels.unwrap_or(3);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let kh = layer
-                .params
-                .kernel_h
-                .unwrap_or(layer.params.kernel_size.unwrap_or(3));
-            let kw = layer
-                .params
-                .kernel_w
-                .unwrap_or(layer.params.kernel_size.unwrap_or(3));
-            let groups = layer.params.groups.unwrap_or(1);
-            conv::conv2d_params(in_ch, out_ch, kh, kw, groups, layer.params.bias)
-        }
-        LayerType::Normalization => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            // Check if it's RMSNorm or LayerNorm
-            if layer.params.activation.as_deref() == Some("rms") {
-                normalization::rms_norm_params(hidden)
-            } else {
-                normalization::layer_norm_params(hidden, true)
-            }
-        }
-        LayerType::Pooling => 0,
-        LayerType::MoE => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            let num_experts = layer.params.num_experts.unwrap_or(8);
-            // No shared expert unless the config states one. Defaulting to 1
-            // added an expert to every mixture that did not mention them —
-            // Mixtral has none, and it was being counted with nine.
-            let shared_experts = layer.params.shared_experts.unwrap_or(0);
-            // Each expert is a gated MLP: gate, up and down projections.
-            let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
-            // Router + all experts + shared experts. A block diagram that
-            // gives the router its own `MoeRouter` node (see below) pays for
-            // that router's `hidden × num_experts` gating matrix twice —
-            // once here, once there — which is a few thousand parameters
-            // against a real model's billions, negligible enough not to be
-            // worth threading graph context into a per-node function for.
-            moe::moe_params_with_shared(
-                hidden,
-                intermediate,
-                num_experts,
-                shared_experts,
-                expert_params,
-            )
-        }
-        // The router's own weights: a `hidden × num_experts` gating matrix,
-        // nothing else — no expert-sized cost belongs here. Folding this
-        // into `MoE`'s formula (treating the router as if it were
-        // `num_experts` full experts) is the bug this variant exists to fix.
-        LayerType::MoeRouter => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let num_experts = layer.params.num_experts.unwrap_or(8);
-            moe::moe_router_params(hidden, num_experts)
-        }
-        // Combining the top-k experts' outputs by their routing weight is a
-        // weighted sum — no weights of its own to store.
-        LayerType::MoeCombine => 0,
-        // A DeepSeek-style shared expert: always active, never routed. Read
-        // off this node's own `num_experts` (how many shared experts, the
-        // name the importer and the reference templates give that count on
-        // this specific node type — not the `shared_experts` field, which
-        // belongs to a self-contained single-node `MoE` layer instead).
-        // Passed through `moe_params_with_shared` with zero routed experts
-        // so it contributes no router term of its own — the router is
-        // whatever `MoeRouter` node sits beside it in the same layer.
-        LayerType::MoeSharedExpert => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-            let shared_experts = layer.params.num_experts.unwrap_or(0);
-            let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
-            moe::moe_params_with_shared(hidden, intermediate, 0, shared_experts, expert_params)
-        }
-        // CNN layer types - use dedicated formulas
-        LayerType::ResidualBlock => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let stride = layer.params.stride.unwrap_or(1);
-            cnn_blocks::resnet_basic_block_params(in_ch, out_ch, stride, layer.params.bias)
-        }
-        LayerType::ResnetBottleneck => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            // The classic ResNet-50 expansion factor: the bottleneck's
-            // middle width is a quarter of its output width, unless the
-            // config says otherwise.
-            let out_ch = layer.params.out_channels.unwrap_or(256);
-            let mid_ch = layer.params.mid_channels.unwrap_or(out_ch / 4);
-            let stride = layer.params.stride.unwrap_or(1);
-            // ResNeXt's defining difference from a plain ResNet bottleneck is
-            // exactly this: the middle 3x3 conv split into `cardinality`
-            // groups. Declared in the schema (`LayerParams::cardinality`,
-            // "ResNeXt groups") but never read anywhere until now — a real
-            // ResNeXt config's grouping had zero effect on its parameter count.
-            let cardinality = layer.params.cardinality.unwrap_or(1);
-            cnn_blocks::resnet_bottleneck_block_params(
-                in_ch,
-                mid_ch,
-                out_ch,
-                stride,
-                cardinality,
-                layer.params.bias,
-            )
-        }
-        LayerType::Mbconv => {
-            let in_ch = layer.params.in_channels.unwrap_or(32);
-            let out_ch = layer.params.out_channels.unwrap_or(16);
-            let expand = layer.params.expansion_factor.unwrap_or(6);
-            let kernel = layer.params.kernel_size.unwrap_or(3);
-            let stride = layer.params.stride.unwrap_or(1);
-            let se_reduction = layer.params.se_reduction_ratio.unwrap_or(4);
-            cnn_blocks::mbconv_params(
-                in_ch,
-                out_ch,
-                expand,
-                kernel,
-                stride,
-                layer.params.se,
-                se_reduction,
-                layer.params.bias,
-            )
-        }
-        LayerType::Inception => {
-            let in_ch = layer.params.in_channels.unwrap_or(288);
-            let out_1x1 = layer.params.out_channels.unwrap_or(64);
-            cnn_blocks::inception_module_params(
-                in_ch,
-                out_1x1,
-                out_1x1 / 2,
-                out_1x1, // 3x3 branch
-                out_1x1 / 8,
-                out_1x1 / 2, // 5x5 branch
-                out_1x1,     // pool branch
-                layer.params.bias,
-            )
-        }
-        LayerType::DenseBlock => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let growth = layer.params.growth_rate.unwrap_or(32);
-            let num_layers = layer.params.num_layers.unwrap_or(4);
-            cnn_blocks::dense_block_params(in_ch, growth, num_layers, 4, layer.params.bias)
-        }
-        LayerType::ConvnextBlock => {
-            let channels = layer.params.hidden_size.unwrap_or(96);
-            let mlp_ratio = layer.params.mlp_ratio.unwrap_or(4.0);
-            cnn_blocks::convnext_block_params(channels, mlp_ratio, layer.params.bias)
-        }
-        LayerType::ShuffleUnit => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let groups = layer.params.groups.unwrap_or(2);
-            let stride = layer.params.stride.unwrap_or(1);
-            cnn_blocks::shuffle_unit_params(in_ch, out_ch, groups, stride, layer.params.bias)
-        }
-        LayerType::C2f => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let num_bn = layer.params.num_bottlenecks.unwrap_or(3);
-            cnn_blocks::c2f_block_params(in_ch, out_ch, num_bn, true, layer.params.bias)
-        }
-        LayerType::Detection | LayerType::Transition => {
-            // Detection heads and transition layers are typically simple convs
-            let in_ch = layer.params.in_channels.unwrap_or(256);
-            let out_ch = layer.params.out_channels.unwrap_or(256);
-            let kernel = layer.params.kernel_size.unwrap_or(3);
-            conv::conv2d_params(in_ch, out_ch, kernel, kernel, 1, layer.params.bias)
-        }
-        // State Space Model layer types - use dedicated formulas
-        LayerType::MambaBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let state_dim = layer.params.state_dim.unwrap_or(16);
-            let expansion = layer.params.expansion_factor.unwrap_or(2);
-            ssm::mamba_params(hidden, state_dim, expansion)
-        }
-        // S4/StateSpace lack Mamba's selective (input-dependent) B/C/Δ
-        // projections and gating conv, so `s4_params` mirrors `s4_flops`'s
-        // own shape (full-width in/out projections around a per-channel
-        // A/B/C/D state) instead of reusing Mamba's formula.
-        LayerType::S4Block | LayerType::StateSpace => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let state_dim = layer.params.state_dim.unwrap_or(16);
-            ssm::s4_params(hidden, state_dim)
-        }
-        // H3 stacks two SSM layers between one pair of projections —
-        // `h3_params` mirrors `h3_flops`'s own shape the same way.
-        LayerType::H3Block => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            let state_dim = layer.params.state_dim.unwrap_or(16);
-            ssm::h3_params(hidden, state_dim)
-        }
-        // RWKV and RetNet are not state-space models. Costing them with
-        // Mamba's formula put RWKV-7B at 3.4B against a published 7.5B.
-        LayerType::RwkvBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            ssm::rwkv_params(hidden, layer.params.intermediate_size)
-        }
-        LayerType::RetentionBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(512);
-            ssm::retention_params(hidden, layer.params.intermediate_size)
-        }
-        // GAN layer types
-        LayerType::GeneratorBlock | LayerType::DiscriminatorBlock => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let kh = layer.params.kernel_size.unwrap_or(3);
-            conv::conv2d_params(in_ch, out_ch, kh, kh, 1, layer.params.bias)
-        }
-        LayerType::StyleMod => {
-            // Style modulation: affine transform per channel
-            let channels = layer.params.out_channels.unwrap_or(512);
-            (channels * 2) as u64 // scale + bias per channel
-        }
-        LayerType::AdaIN => {
-            // Adaptive Instance Norm: no params, uses style input
-            0
-        }
-        LayerType::MinibatchStd => 0, // No params
-        LayerType::PixelNorm => 0,    // No params
-        LayerType::SelfAttention => {
-            let channels = layer.params.out_channels.unwrap_or(512);
-            attention::attention_params(channels, channels / 64, false)
-        }
-        LayerType::SpectralNorm => {
-            // Spectral norm adds one vector per weight matrix
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            (in_ch * out_ch / out_ch) as u64 // u vector
-        }
-        LayerType::ProgressiveBlock => {
-            let in_ch = layer.params.in_channels.unwrap_or(64);
-            let out_ch = layer.params.out_channels.unwrap_or(64);
-            let kh = layer.params.kernel_size.unwrap_or(3);
-            conv::conv2d_params(in_ch, out_ch, kh, kh, 1, layer.params.bias)
-        }
-        // LSTM/RNN layer types - use dedicated formulas
-        LayerType::LstmBlock => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
-            // `num_rnn_layers` was already parsed from JSON and read nowhere
-            // — a node stating "4-layer LSTM" was costed as a single cell,
-            // since a stacked RNN's layers 2..N each have `hidden` as their
-            // own input size (they consume the previous layer's output),
-            // not the original `input_size`.
-            //
-            // When also bidirectional, layer 2..N consume the *concatenated*
-            // forward+backward output of the previous layer
-            // (`hidden * bidir_mult` wide), not just `hidden` — real
-            // `nn.LSTM`'s own behavior for a stacked bidirectional stack. No
-            // current template combines num_layers>1 with bidirectional, so
-            // this was previously unverified in practice rather than
-            // deliberately simplified.
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
-            let rest_input_size = hidden * bidir_mult as usize;
-            let first = rnn::lstm_params(hidden, input_size, true);
-            let rest = rnn::lstm_params(hidden, rest_input_size, true) * (stack - 1);
-            (first + rest) * bidir_mult
-        }
-        LayerType::GruBlock => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
-            let rest_input_size = hidden * bidir_mult as usize;
-            let first = rnn::gru_params(hidden, input_size, true);
-            let rest = rnn::gru_params(hidden, rest_input_size, true) * (stack - 1);
-            (first + rest) * bidir_mult
-        }
-        LayerType::RnnCell => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
-            let first = rnn::rnn_params(hidden, input_size, true);
-            let rest = rnn::rnn_params(hidden, hidden, true) * (stack - 1);
-            first + rest
-        }
-        LayerType::Bidirectional => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            rnn::lstm_params(hidden, input_size, true) * 2
-        }
-        LayerType::EncoderBlock | LayerType::DecoderBlock => {
-            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            let input_size = layer.params.hidden_size.unwrap_or(hidden);
-            rnn::lstm_params(hidden, input_size, true)
-        }
-        // Diffusion layer types - use dedicated formulas
-        LayerType::UnetBlock | LayerType::ResnetBlock => {
-            // `in_channels_diff`/`in_channels` take priority when a config
-            // states them explicitly, but every real U-Net template (SDXL,
-            // SD1.5) only sets `hidden_size` on these blocks — falling back
-            // straight to the 320 default meant every down/mid/up stage was
-            // costed identically regardless of its real width, and SDXL and
-            // SD1.5 (whose stage widths and only-real difference here are
-            // otherwise the same JSON shape) produced the exact same total.
-            let in_ch = layer.params.in_channels_diff.unwrap_or(
-                layer
-                    .params
-                    .in_channels
-                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-            );
-            let out_ch = layer.params.out_channels_diff.unwrap_or(
-                layer
-                    .params
-                    .out_channels
-                    .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-            );
-            // UNet ResNet block: 2 convs + 2 norms + skip. A U-Net node in
-            // these templates represents one *stage* (e.g. SD1.5's 320-
-            // channel stage), not one block — real U-Nets repeat
-            // `layers_per_block` ResNet blocks per stage (2, for both SD1.5
-            // and SDXL). The field was already parsed from JSON and never
-            // read anywhere, so every stage was silently costed as if it
-            // held a single block regardless of the config's own stated
-            // depth.
-            let block_repeat = layer.params.layers_per_block.unwrap_or(1) as u64;
-            cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
-                * block_repeat
-        }
-        LayerType::TimeEmbedding | LayerType::TimestepBlock => {
-            let channels = layer.params.hidden_size.unwrap_or(320);
-            // Time embedding: Linear + SiLU + Linear
-            mlp::mlp_params(channels, channels * 4, true)
-        }
-        LayerType::CrossAttention => {
-            let hidden = layer.params.hidden_size.unwrap_or(320);
-            // K/V are projected from the conditioning sequence's own width
-            // (the text encoder's output dimension) — SDXL's OpenCLIP text
-            // encoder is 2048-wide, SD1.5's CLIP is 768-wide, while both
-            // operate their U-Net blocks at the same 320-1280 hidden sizes.
-            // Treating K/V as `hidden_size`-wide (this arm's previous
-            // behavior) made that real difference invisible.
-            let context_dim = layer.params.cross_attention_dim.unwrap_or(hidden);
-            // A cross-attention node represents one *stage*'s attention,
-            // which real U-Nets apply as `transformer_layers_per_block`
-            // stacked transformer blocks — 1 almost everywhere in SD1.5,
-            // but SDXL's deepest stage stacks 10 (its real width comes from
-            // this, not just from `cross_attention_dim`). Same
-            // parsed-but-never-read field as `layers_per_block` above.
-            let block_repeat = layer.params.transformer_layers_per_block.unwrap_or(1) as u64;
-            attention::cross_attention_params(hidden, context_dim, true) * block_repeat
-        }
-        LayerType::DownBlock | LayerType::UpBlock | LayerType::MidBlock => {
-            let block_repeat = layer.params.layers_per_block.unwrap_or(1).max(1) as u64;
-            match layer
-                .params
-                .block_out_channels
-                .as_ref()
-                .filter(|c| !c.is_empty())
-            {
-                // A per-stage channel list (`unet_encoder`/`unet_decoder`
-                // templates: e.g. in=3, channels=[128,256,256]) describes a
-                // widening/narrowing block that a single flat in/out pair
-                // can't represent — treating it as one uniform block (the
-                // arm below) silently dropped every intermediate width.
-                // Cost one stage transition per consecutive pair, each
-                // repeated `layers_per_block`/`num_res_blocks` times, the
-                // same way a real U-Net stage is built.
-                Some(channels) => {
-                    let entry = layer.params.in_channels_diff.unwrap_or(
-                        layer
-                            .params
-                            .in_channels
-                            .unwrap_or(layer.params.hidden_size.unwrap_or(channels[0])),
-                    );
-                    let mut widths = Vec::with_capacity(channels.len() + 1);
-                    widths.push(entry);
-                    widths.extend(channels.iter().copied());
-                    // Only the first block of a stage changes channel count
-                    // (and so is the only one carrying the projection
-                    // shortcut `resnet_basic_block_params` adds whenever
-                    // in != out); repeating that same in!=out pair
-                    // `block_repeat` times — the first attempt at this —
-                    // double-charged the shortcut for every stage.
-                    widths
-                        .windows(2)
-                        .map(|w| {
-                            let (win, wout) = (w[0], w[1]);
-                            let first = cnn_blocks::resnet_basic_block_params(
-                                win,
-                                wout,
-                                1,
-                                layer.params.bias,
-                            );
-                            let rest = cnn_blocks::resnet_basic_block_params(
-                                wout,
-                                wout,
-                                1,
-                                layer.params.bias,
-                            ) * (block_repeat - 1);
-                            first + rest
-                        })
-                        .sum()
-                }
-                None => {
-                    let in_ch = layer.params.in_channels_diff.unwrap_or(
-                        layer
-                            .params
-                            .in_channels
-                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-                    );
-                    let out_ch = layer.params.out_channels_diff.unwrap_or(
-                        layer
-                            .params
-                            .out_channels
-                            .unwrap_or(layer.params.hidden_size.unwrap_or(320)),
-                    );
-                    cnn_blocks::resnet_basic_block_params(in_ch, out_ch, 1, layer.params.bias)
-                        * block_repeat
-                }
-            }
-        }
-        LayerType::ConditionBlock => {
-            let hidden = layer.params.hidden_size.unwrap_or(320);
-            mlp::mlp_params(hidden, hidden * 4, true)
-        }
-        LayerType::NoisePredictor => {
-            let channels = layer.params.out_channels_diff.unwrap_or(4);
-            // Final conv to predict noise
-            conv::conv2d_params(channels, channels, 3, 3, 1, false)
-        }
-        LayerType::VaeEncoder | LayerType::VaeDecoder => {
-            let in_ch = layer.params.in_channels.unwrap_or(3);
-            let out_ch = layer.params.out_channels_diff.unwrap_or(4);
-            // VAE encoder/decoder: multiple convs (simplified)
-            conv::conv2d_params(in_ch, out_ch, 3, 3, 1, false)
-        }
-        // Graph Neural Networks — real formulas (`neurax-formulas::gnn`),
-        // wired here for the first time: these three used to fall through to
-        // `Custom` with no `param_count` supplied, costing 0 regardless of
-        // the design. RGCN gets its own arm below: a shared single matrix
-        // understates it badly once there's more than a couple of relation
-        // types (real knowledge graphs: hundreds).
-        LayerType::GraphConvNet => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            gnn::gcn_params(in_features, out_features, layer.params.bias)
-        }
-        // GraphSAGE/GIN-style: the transform's real input is the
-        // concatenation of a node's own features with its aggregated
-        // neighbors, not GCN's shared-adjacency mix — `message_passing_params`
-        // prices that doubled input width instead of reusing `gcn_params`.
-        LayerType::MessagePassing => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            gnn::message_passing_params(in_features, out_features, layer.params.bias)
-        }
-        LayerType::GraphAttentionNet => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            let num_heads = layer.params.num_heads.unwrap_or(8);
-            gnn::gat_params(in_features, out_features, num_heads, layer.params.bias)
-        }
-        LayerType::RgcnConv => {
-            let in_features = layer.params.in_features.unwrap_or(64);
-            let out_features = layer.params.out_features.unwrap_or(64);
-            let num_relations = layer.params.num_relations.unwrap_or(1);
-            gnn::rgcn_params(
-                in_features,
-                out_features,
-                num_relations,
-                layer.params.num_bases,
-                layer.params.bias,
-            )
-        }
+        // Migrated to OpSpec-IR (`neurax-opspec`) — the early-return above
+        // already returns for every one of these before the match runs, so
+        // reaching this arm would mean `op_spec()` and this match disagree
+        // about which types are migrated. Every real `LayerType` except
+        // `Custom` is migrated.
+        LayerType::Embedding
+        | LayerType::Attention
+        | LayerType::Mlp
+        | LayerType::Conv
+        | LayerType::Dense
+        | LayerType::LoraLinear
+        | LayerType::DoraLinear
+        | LayerType::Normalization
+        | LayerType::Pooling
+        | LayerType::MoE
+        | LayerType::MoeRouter
+        | LayerType::MoeCombine
+        | LayerType::MoeSharedExpert
+        | LayerType::ResidualBlock
+        | LayerType::ResnetBottleneck
+        | LayerType::Mbconv
+        | LayerType::Inception
+        | LayerType::DenseBlock
+        | LayerType::ConvnextBlock
+        | LayerType::ShuffleUnit
+        | LayerType::C2f
+        | LayerType::Detection
+        | LayerType::Transition
+        | LayerType::MambaBlock
+        | LayerType::S4Block
+        | LayerType::StateSpace
+        | LayerType::H3Block
+        | LayerType::RwkvBlock
+        | LayerType::RetentionBlock
+        | LayerType::GeneratorBlock
+        | LayerType::DiscriminatorBlock
+        | LayerType::StyleMod
+        | LayerType::AdaIN
+        | LayerType::MinibatchStd
+        | LayerType::PixelNorm
+        | LayerType::SelfAttention
+        | LayerType::SpectralNorm
+        | LayerType::ProgressiveBlock
+        | LayerType::LstmBlock
+        | LayerType::GruBlock
+        | LayerType::RnnCell
+        | LayerType::Bidirectional
+        | LayerType::EncoderBlock
+        | LayerType::DecoderBlock
+        | LayerType::UnetBlock
+        | LayerType::TimeEmbedding
+        | LayerType::CrossAttention
+        | LayerType::DownBlock
+        | LayerType::UpBlock
+        | LayerType::MidBlock
+        | LayerType::ResnetBlock
+        | LayerType::TimestepBlock
+        | LayerType::ConditionBlock
+        | LayerType::NoisePredictor
+        | LayerType::VaeEncoder
+        | LayerType::VaeDecoder
+        | LayerType::GraphConvNet
+        | LayerType::MessagePassing
+        | LayerType::GraphAttentionNet
+        | LayerType::RgcnConv => unreachable!(
+            "{:?} is registered in OpSpec-IR (neurax-opspec); the early return above must have handled it",
+            layer.layer_type
+        ),
         // Custom layer - use param_count if provided, else estimate from shapes
         LayerType::Custom => {
             // An explicit count wins; otherwise evaluate a `params` equation if

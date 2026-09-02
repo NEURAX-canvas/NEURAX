@@ -90,6 +90,10 @@ pub trait IrPass: Send + Sync {
 
 Passes emit structured diagnostics (`Diagnostic` with `Severity`, `DiagnosticCode`, `DiagnosticCategory`) into the shared `NeuraxContext` — warnings about missing fields, confidence scores, and coherence issues surface here.
 
+## OpSpec-IR
+
+Every `LayerType`'s parameter-count and FLOPs formulas — except `Custom` — live in one place, [`neurax-opspec`](../neurax-opspec), not duplicated across `architecture/mod.rs` and `operator/pass.rs`. `ArchitecturePass` and `OperatorPass` both consult `neurax_opspec::op_spec(layer_type)` before falling back to their own (now `Custom`-only) logic. See that crate's README for the full design rationale.
+
 ## Using it in the pipeline
 
 For end-to-end analysis use [`neurax-core`](../neurax-core), which orchestrates all 10 passes (with parallelism via rayon) and produces the final report:
@@ -103,4 +107,4 @@ println!("{}", result.report_markdown);
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.
