@@ -166,9 +166,17 @@ fn test_thread_safety() {
         "│ {:<30} │ {:<60} │",
         "Thread Safety", "✓ All threads completed successfully"
     );
+    // `analyze_json` builds its own `NeuraxContext` internally
+    // (`NeuraxContext::new` inside `run_analysis`) — each of the 4 threads
+    // above gets its own, unshared `Arc<Mutex<...>>` instances. Nothing in
+    // this test exercises the same `Mutex` from two threads at once, so a
+    // clean run here says "4 independent analyses don't corrupt each
+    // other's state" (embarrassingly parallel), not "the shared Arc<Mutex>
+    // fields survived real contention" — that would need one `NeuraxContext`
+    // actually shared across the threads.
     println!(
         "│ {:<30} │ {:<60} │",
-        "Data Races", "✓ None detected (Arc<Mutex> protection)"
+        "Data Races", "✓ None observed (no shared mutable state in this test)"
     );
     println!("└─────────────────────────────────────────────────────────────────────────────────────────────────┘\n");
 }
