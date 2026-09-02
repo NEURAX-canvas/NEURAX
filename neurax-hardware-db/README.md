@@ -93,4 +93,4 @@ Pure lookups + closed-form math. Same query → same answer. No I/O, no randomne
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.

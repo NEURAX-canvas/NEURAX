@@ -3,7 +3,10 @@ name = "neurax-core"
 version = "0.14.0"
 edition = "2021"
 description = "Core pipeline and orchestration for NEURAX"
-license = "MIT"
+# Proprietary — closed-source, commercial. publish = false blocks an
+# accidental cargo publish to crates.io.
+license = "UNLICENSED"
+publish = false
 repository = "https://github.com/rustnew/NEURAX"
 homepage = "https://neurax-canvas.github.io/NEURAX/"
 readme = "README.md"

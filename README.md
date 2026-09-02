@@ -6,7 +6,7 @@ The usual way to find out an architecture doesn't fit is to launch the training 
 
 [![CI](https://github.com/rustnew/NEURAX/actions/workflows/ci.yml/badge.svg)](https://github.com/rustnew/NEURAX/actions)
 [![Release](https://img.shields.io/github/v/release/rustnew/NEURAX?style=flat-square&color=blue)](https://github.com/rustnew/NEURAX/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-lightgrey?style=flat-square)]()
 
 <p align="center">
  <img width="1914" height="1053" alt="Capture d’écran du 2026-08-27 12-31-58" src="https://github.com/user-attachments/assets/0c69964a-a954-4cc7-b5fa-a8b4fc2bd7af" />
@@ -100,7 +100,7 @@ Four of these were wrong before that test existed — one by +122%. That's why t
 
 The one-liner above is the reference way to run NEURAX — the desktop app, with the compiler embedded. For everything else — Windows and web builds, Docker, running it as a Rust library, the full architecture, the API reference — see the **[documentation](https://neurax-canvas.github.io/NEURAX/)**.
 
-[Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md) · [Security](SECURITY.md) · [License: MIT](LICENSE)
+[Security](SECURITY.md) · License: Proprietary, all rights reserved
 
 ---
 

@@ -29,7 +29,7 @@
     "category": "DeveloperTool",
     "shortDescription": "Analytical compiler for neural network architectures",
     "longDescription": "NEURAX analyses a neural network architecture before it is trained: parameters, FLOPs, memory, latency, cost, energy and carbon, across a database of accelerators. The desktop build runs the whole compiler on your machine \u2014 no account, no upload, no network.",
-    "copyright": "MIT",
+    "copyright": "Copyright © 2024–2026 Martial. All rights reserved.",
     "linux": {
       "deb": {
         "depends": [

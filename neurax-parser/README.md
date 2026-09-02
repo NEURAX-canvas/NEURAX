@@ -118,4 +118,4 @@ let result = analyze_json(MODEL_JSON)?; // parse → validate → 10-pass IR →
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.

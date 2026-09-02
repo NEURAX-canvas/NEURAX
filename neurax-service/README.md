@@ -19,4 +19,4 @@ cargo run -p neurax-service
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.

@@ -20,12 +20,10 @@ NEURAX helps ML engineers and researchers:
 
 ### Key Features
 
-- **11 architecture families** - Transformer, MoE, CNN, SSM, Diffusion, and more
-- **680+ configurable blocks** - Drag-and-drop visual canvas
-- **88 reference templates** - GPT-4, LLaMA 3, Stable Diffusion, Mamba
+- **8 architecture families** - Transformer, MoE, CNN, SSM, Diffusion, RNN, GNN, GAN
+- **150 configurable blocks** - Drag-and-drop visual canvas
 - **<50ms analysis** - Full 10-pass IR pipeline
-- **99%+ accuracy** - Validated against real training runs
-- **Open source** - MIT license
+- **Commercial software** - closed-source, all rights reserved
 
 ### Quick Links
 
@@ -37,7 +35,6 @@ NEURAX helps ML engineers and researchers:
 | Component | Technology |
 |-----------|------------|
 | Core Engine | Rust |
-| Compiler Backend | MLIR / LLVM 18 |
 | Frontend | React 18 + TypeScript |
 | AI Agent | FastAPI + LangChain |
 | API | Actix-Web (Rust) |
@@ -53,18 +50,6 @@ cd NEURAX
 # Or use Docker
 docker compose up -d
 ```
-
-### Sponsorship
-
-NEURAX is open source and community-driven. Support development:
-
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub-Sponsors-blue)](https://github.com/sponsors/rustnew)
-
-### Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-[![Good First Issues](https://img.shields.io/badge/GitHub-Good%20First%20Issues-green)](https://github.com/rustnew/NEURAX/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 
 ---
 

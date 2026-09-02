@@ -93,4 +93,4 @@ Same input → same output. Always. Formulas are pure functions: no randomness, 
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.

@@ -148,4 +148,4 @@ to reach any of them from outside a checkout.
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.

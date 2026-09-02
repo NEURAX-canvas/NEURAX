@@ -98,4 +98,4 @@ let compiled = compiler.compile(&mlir_module, target)?;
 
 ## License
 
-MIT — see the [NEURAX repository](https://github.com/rustnew/NEURAX) for details.
+Proprietary — closed-source, commercial software. All rights reserved.
