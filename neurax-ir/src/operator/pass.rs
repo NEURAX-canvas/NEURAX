@@ -7,7 +7,7 @@ use crate::tensor::Shape;
 use crate::tensor::TensorIR;
 use crate::traits::IrPass;
 use crate::NeuraxContext;
-use neurax_formulas::{attention, cnn_blocks, conv, embedding, gnn, mlp, moe, normalization};
+use neurax_formulas::{attention, cnn_blocks, conv, embedding, gnn, mlp, moe, normalization, rnn};
 use neurax_parser::LayerType;
 
 /// Reads a `usize` out of a `global_params.extra` map, falling back when the
@@ -921,25 +921,98 @@ fn decompose_layer_to_ops(
                 is_custom: false,
             });
         }
-        // LSTM/RNN layer types
-        LayerType::LstmBlock
-        | LayerType::GruBlock
-        | LayerType::RnnCell
-        | LayerType::Bidirectional
-        | LayerType::EncoderBlock
-        | LayerType::DecoderBlock => {
+        // LSTM/RNN layer types — real per-cell formulas
+        // (`neurax_formulas::rnn`) using the same input_size/stacking/
+        // bidirectional logic as the param formula (architecture/mod.rs),
+        // not `hidden*hidden*gates*stack`: that placeholder assumed a
+        // layer's input is always exactly `hidden` wide, which undercounts
+        // (or overcounts) a real LSTM/GRU whenever `hidden_size`
+        // (input_size) differs from `rnn_hidden_size` — the common case for
+        // layer 1 of any stack fed by an embedding of its own width — and
+        // ignored bidirectional concatenation into layer 2+ entirely,
+        // disagreeing with the param count computed for the exact same
+        // layer.
+        LayerType::LstmBlock => {
             let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
-            // LSTM: 4 gates, GRU: 3 gates
-            let gates = if matches!(layer.layer_type, LayerType::GruBlock) {
-                3
-            } else {
-                4
-            };
-            // Same stacking multiplier as the param formula
-            // (architecture/mod.rs) — a stacked RNN's FLOPs scale with its
-            // real layer count, not just its width.
-            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as f64;
-            let flops = (batch * seq * hidden * hidden * gates) as f64 * stack;
+            let input_size = layer.params.hidden_size.unwrap_or(hidden);
+            let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let rest_input_size = hidden * bidir_mult as usize;
+            let first = rnn::lstm_flops(batch, seq, hidden, input_size);
+            let rest = rnn::lstm_flops(batch, seq, hidden, rest_input_size) * (stack - 1) as f64;
+            let flops = (first + rest) * bidir_mult as f64;
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::GruBlock => {
+            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
+            let input_size = layer.params.hidden_size.unwrap_or(hidden);
+            let bidir_mult = if layer.params.bidirectional_rnn { 2 } else { 1 };
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let rest_input_size = hidden * bidir_mult as usize;
+            let first = rnn::gru_flops(batch, seq, hidden, input_size);
+            let rest = rnn::gru_flops(batch, seq, hidden, rest_input_size) * (stack - 1) as f64;
+            let flops = (first + rest) * bidir_mult as f64;
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::RnnCell => {
+            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
+            let input_size = layer.params.hidden_size.unwrap_or(hidden);
+            let stack = layer.params.num_rnn_layers.unwrap_or(1).max(1) as u64;
+            let first = rnn::rnn_flops(batch, seq, hidden, input_size);
+            let rest = rnn::rnn_flops(batch, seq, hidden, hidden) * (stack - 1) as f64;
+            let flops = first + rest;
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::Bidirectional => {
+            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
+            let input_size = layer.params.hidden_size.unwrap_or(hidden);
+            let flops = rnn::bidirectional_flops(batch, seq, hidden, input_size, "lstm");
+            ops.push(AtomOp {
+                id: ops.len(),
+                op_type: OpType::Linear,
+                layer_id: layer.id.clone(),
+                input_shapes: vec![Shape::known(vec![batch, seq, hidden])],
+                output_shape: Shape::known(vec![batch, seq, hidden]),
+                flops,
+                param_count: layer.param_count,
+                activation_memory: 0,
+                is_custom: false,
+            });
+        }
+        LayerType::EncoderBlock | LayerType::DecoderBlock => {
+            let hidden = layer.params.rnn_hidden_size.unwrap_or(512);
+            let input_size = layer.params.hidden_size.unwrap_or(hidden);
+            let flops = rnn::lstm_flops(batch, seq, hidden, input_size);
             ops.push(AtomOp {
                 id: ops.len(),
                 op_type: OpType::Linear,

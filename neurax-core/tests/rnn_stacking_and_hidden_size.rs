@@ -102,3 +102,45 @@ fn a_bidirectional_stack_feeds_layer_two_the_concatenated_width() {
          (hidden*2)-wide input, not plain hidden — got {measured}, expected {expected}"
     );
 }
+
+/// A third bug in the same family, on the FLOPs side rather than params:
+/// `operator/pass.rs` costed every LSTM/GRU/RNN cell as a flat
+/// `batch*seq*hidden*hidden*gates*stack`, ignoring `input_size` entirely —
+/// correct only by coincidence when a layer's input happens to be exactly
+/// `hidden` wide. A real LSTM whose input (e.g. an embedding) is narrower
+/// or wider than its recurrent state gets a wrong FLOPs figure that
+/// disagrees with the param count computed for the very same layer.
+#[test]
+fn lstm_flops_use_the_real_input_size_not_hidden_squared() {
+    let json = r#"{
+        "schema_version": "1.0",
+        "model": {
+            "name": "rnn-flops-input-size-test",
+            "type": "rnn",
+            "global_params": { "num_layers": 1, "sequence_length": 64, "hidden_size": 128 },
+            "layers": [
+                {"id": "emb", "layer_type": "embedding", "params": {"vocab_size": 1000, "embedding_dim": 128}},
+                {"id": "rnn", "layer_type": "lstm_block", "params": {"rnn_hidden_size": 512, "hidden_size": 128}}
+            ]
+        },
+        "training": {"batch_size": 2, "max_steps": 100},
+        "hardware": {"gpus": [{"name": "A100-SXM", "count": 1}]}
+    }"#;
+    let result = neurax_core::analyze_json(json).expect("analysis should succeed");
+    let measured = result.compute.metrics.forward_flops;
+
+    // The embedding lookup itself contributes ~0 FLOPs (a gather), so the
+    // total forward FLOPs should be dominated by the LSTM cell alone.
+    let naive_wrong = (2 * 64 * 512 * 512 * 4) as f64; // old hidden*hidden*gates*stack
+    let real = neurax_formulas::rnn::lstm_flops(2, 64, 512, 128); // real input_size=128
+
+    assert!(
+        (measured - real).abs() / real < 0.05,
+        "expected forward FLOPs close to the real per-cell formula ({real:.3e}), got {measured:.3e}"
+    );
+    assert!(
+        (measured - naive_wrong).abs() / naive_wrong > 0.05,
+        "forward FLOPs ({measured:.3e}) should differ meaningfully from the old \
+         input-size-blind formula ({naive_wrong:.3e}) once input_size != hidden"
+    );
+}
