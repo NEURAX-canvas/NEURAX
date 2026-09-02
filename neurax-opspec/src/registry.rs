@@ -407,14 +407,31 @@ fn embedding_activation_memory(layer: &Layer, batch: usize, seq: usize, dtype: &
         as u64
 }
 
+/// The real per-head width, when a model states one independently of
+/// `hidden_size`/`num_heads` (GLM-4.5, HuggingFace-verified:
+/// `hidden_size=5120, num_heads=96, head_dim=128` — `96*128=12288 != 5120`,
+/// a real widened projection, not a rounding artifact). Falls back to the
+/// derived `hidden/heads` otherwise, which is what every model without an
+/// explicit `head_dim` already assumes.
+fn resolved_head_dim(layer: &Layer) -> usize {
+    let hidden = layer.params.hidden_size.unwrap_or(512);
+    let heads = layer.params.num_heads.unwrap_or(8).max(1);
+    layer.params.head_dim.unwrap_or(hidden / heads)
+}
+
 fn attention_params_fn(layer: &Layer) -> u64 {
     let hidden = layer.params.hidden_size.unwrap_or(512);
     let heads = layer.params.num_heads.unwrap_or(8);
     let kv_heads = layer.params.num_kv_heads.unwrap_or(heads);
+    let head_dim = resolved_head_dim(layer);
     if kv_heads == heads {
-        attention::attention_params(hidden, heads, layer.params.bias)
+        attention::attention_params_with_head_dim(
+            hidden,
+            heads.max(1) * head_dim,
+            layer.params.bias,
+        )
     } else {
-        attention::gqa_params(hidden, heads, kv_heads, layer.params.bias)
+        attention::gqa_params_with_head_dim(hidden, heads, kv_heads, head_dim, layer.params.bias)
     }
 }
 
@@ -430,6 +447,7 @@ fn attention_flops_fn(layer: &Layer, batch: usize, seq: usize, _ctx: &FlopsConte
     let hidden = layer.params.hidden_size.unwrap_or(512);
     let heads = layer.params.num_heads.unwrap_or(8).max(1);
     let kv_heads = layer.params.num_kv_heads.unwrap_or(heads).max(1);
+    let head_dim = resolved_head_dim(layer);
     let causal = layer.params.causal;
     let kv_span = layer
         .params
@@ -438,11 +456,13 @@ fn attention_flops_fn(layer: &Layer, batch: usize, seq: usize, _ctx: &FlopsConte
         .or(layer.params.dilation.map(|d| (seq / d.max(1)).max(1)))
         .unwrap_or(seq);
     if kv_span < seq {
-        attention::windowed_attention_flops(batch, seq, kv_span, hidden, heads, causal)
+        attention::windowed_attention_flops_with_head_dim(
+            batch, seq, kv_span, hidden, heads, head_dim, causal,
+        )
     } else if kv_heads < heads {
-        attention::gqa_flops(batch, seq, hidden, heads, kv_heads, causal)
+        attention::gqa_flops_with_head_dim(batch, seq, hidden, heads, kv_heads, head_dim, causal)
     } else {
-        attention::attention_flops(batch, seq, hidden, heads, causal)
+        attention::attention_flops_with_head_dim(batch, seq, hidden, heads, head_dim, causal)
     }
 }
 
@@ -451,10 +471,8 @@ fn attention_flops_fn(layer: &Layer, batch: usize, seq: usize, _ctx: &FlopsConte
 /// one `FlopsFn` per type. See [`attention_flops_fn`] for why this stays a
 /// separate op instead of being folded into that total.
 pub fn attention_rope_flops(layer: &Layer, batch: usize, seq: usize) -> f64 {
-    let hidden = layer.params.hidden_size.unwrap_or(512);
     let heads = layer.params.num_heads.unwrap_or(8).max(1);
-    let head_dim = hidden / heads;
-    embedding::rope_flops(batch, seq, heads, head_dim)
+    embedding::rope_flops(batch, seq, heads, resolved_head_dim(layer))
 }
 
 fn attention_activation_memory(layer: &Layer, batch: usize, seq: usize, dtype: &str) -> u64 {
@@ -724,12 +742,68 @@ static MOE_SPECS: &[OpSpec] = &[
     ),
 ];
 
+/// Whether a MoE layer's experts use a gated (SwiGLU: gate+up+down, 3
+/// matrices) shape or a plain (up+down, 2 matrices) one.
+///
+/// Unlike the plain `Mlp` type (whose own default, `gelu`, is *not*
+/// gated), a MoE layer with no stated `activation` defaults to **gated**:
+/// every reference MoE fixture in this project (Mixtral 8x7B, DeepSeek-V3)
+/// states no explicit `activation`/`gated` field and relies on exactly
+/// this default, matching real SwiGLU experts. An explicitly-stated,
+/// recognizably non-gated activation (e.g. `"gelu"`) opts a MoE layer out
+/// of the gated shape — Grok-1 (314B published, xAI's own public `run.py`)
+/// is exactly this real case: its experts are a plain 2-matrix MLP.
+/// Calling `gated_mlp_params` unconditionally (the bug this function
+/// fixes) overcounted it at 470.3B (+49.8%) — exactly the 3-matrix/
+/// 2-matrix ratio — while every gated MoE tested (Mixtral, DeepSeek-V3,
+/// Kimi K2, DBRX, Arctic, Qwen3, GLM-4.5) was already accurate, which is
+/// exactly why this went unnoticed until a real non-gated model was
+/// tested.
+fn moe_expert_is_gated(params: &neurax_parser::LayerParams) -> bool {
+    if params.gated {
+        return true;
+    }
+    match params.activation.as_deref() {
+        None => true,
+        Some(name) => {
+            neurax_formulas::activation::is_gated_activation(name)
+                || name.eq_ignore_ascii_case("silu")
+                || name.eq_ignore_ascii_case("swish")
+        }
+    }
+}
+
+fn moe_expert_params(hidden: usize, intermediate: usize, layer: &Layer) -> u64 {
+    if moe_expert_is_gated(&layer.params) {
+        mlp::gated_mlp_params(hidden, intermediate, layer.params.bias)
+    } else {
+        mlp::mlp_params(hidden, intermediate, layer.params.bias)
+    }
+}
+
+/// One expert's forward FLOPs — same gated/plain split as
+/// [`moe_expert_params`], for the same reason.
+fn moe_expert_flops(
+    batch: usize,
+    seq: usize,
+    hidden: usize,
+    intermediate: usize,
+    layer: &Layer,
+) -> f64 {
+    let activation = layer.params.activation.as_deref().unwrap_or("silu");
+    if moe_expert_is_gated(&layer.params) {
+        mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation)
+    } else {
+        mlp::mlp_flops(batch, seq, hidden, intermediate, activation)
+    }
+}
+
 fn moe_params_fn(layer: &Layer) -> u64 {
     let hidden = layer.params.hidden_size.unwrap_or(512);
     let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
     let num_experts = layer.params.num_experts.unwrap_or(8);
     let shared_experts = layer.params.shared_experts.unwrap_or(0);
-    let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
+    let expert_params = moe_expert_params(hidden, intermediate, layer);
     moe::moe_params_with_shared(
         hidden,
         intermediate,
@@ -744,8 +818,10 @@ fn moe_flops_fn(layer: &Layer, batch: usize, seq: usize, _ctx: &FlopsContext) ->
     let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
     let num_experts = layer.params.num_experts.unwrap_or(8);
     let top_k = layer.params.top_k.unwrap_or(2);
-    let activation = layer.params.activation.as_deref().unwrap_or("silu");
-    let expert_flops = mlp::gated_mlp_flops(1, 1, hidden, intermediate, activation);
+    // One token through one expert (batch=1, seq=1) — matches
+    // `moe_expert_params`'s own per-expert shape, scaled by real
+    // batch/seq/top_k in `moe::moe_flops` below.
+    let expert_flops = moe_expert_flops(1, 1, hidden, intermediate, layer);
     moe::moe_flops(batch, seq, hidden, num_experts, top_k, expert_flops)
 }
 
@@ -775,16 +851,15 @@ fn moe_shared_expert_params_fn(layer: &Layer) -> u64 {
     let hidden = layer.params.hidden_size.unwrap_or(512);
     let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
     let shared_experts = layer.params.num_experts.unwrap_or(0);
-    let expert_params = mlp::gated_mlp_params(hidden, intermediate, layer.params.bias);
+    let expert_params = moe_expert_params(hidden, intermediate, layer);
     moe::moe_params_with_shared(hidden, intermediate, 0, shared_experts, expert_params)
 }
 
 fn moe_shared_expert_flops_fn(layer: &Layer, batch: usize, seq: usize, _ctx: &FlopsContext) -> f64 {
     let hidden = layer.params.hidden_size.unwrap_or(512);
     let intermediate = layer.params.intermediate_size.unwrap_or(4 * hidden);
-    let activation = layer.params.activation.as_deref().unwrap_or("silu");
     let shared_experts = layer.params.num_experts.unwrap_or(0) as f64;
-    shared_experts * mlp::gated_mlp_flops(batch, seq, hidden, intermediate, activation)
+    shared_experts * moe_expert_flops(batch, seq, hidden, intermediate, layer)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1688,5 +1763,107 @@ mod tests {
                 "{lt:?} shouldn't track activation memory — it didn't before migrating"
             );
         }
+    }
+
+    #[test]
+    fn moe_defaults_to_gated_experts_when_activation_is_unstated() {
+        // Mixtral 8x7B's and DeepSeek-V3's own reference JSON fixtures
+        // (examples/models/{mixtral_8x7b,deepseek_v3}.json) state no
+        // `activation`/`gated` field on their MoE layer at all — this
+        // default is what makes those still resolve as real SwiGLU experts.
+        let layer = bare_layer(LayerType::MoE);
+        assert!(moe_expert_is_gated(&layer.params));
+    }
+
+    #[test]
+    fn moe_experts_can_opt_out_of_gating_grok1_style() {
+        // Real bug found auditing 100B+ models: Grok-1 (314B published,
+        // xAI's own public run.py) uses a plain 2-matrix expert MLP, not
+        // SwiGLU — this used to be overcounted at 470.3B (+49.8%) because
+        // the gated (3-matrix) formula ran unconditionally. An explicit,
+        // recognizably non-gated activation now opts a MoE layer out.
+        let base = LayerParams {
+            hidden_size: Some(6144),
+            intermediate_size: Some(16384),
+            num_experts: Some(8),
+            top_k: Some(2),
+            ..Default::default()
+        };
+        let non_gated_params = LayerParams {
+            activation: Some("gelu".to_string()),
+            ..base.clone()
+        };
+        assert!(!moe_expert_is_gated(&non_gated_params));
+        assert!(moe_expert_is_gated(&base));
+
+        let gated_layer = Layer {
+            id: "gated".to_string(),
+            layer_type: LayerType::MoE,
+            input_shape: vec![],
+            output_shape: vec![],
+            params: base,
+            custom_equations: None,
+        };
+        let non_gated_layer = Layer {
+            id: "non_gated".to_string(),
+            layer_type: LayerType::MoE,
+            input_shape: vec![],
+            output_shape: vec![],
+            params: non_gated_params,
+            custom_equations: None,
+        };
+
+        let spec = op_spec(LayerType::MoE).unwrap();
+        let gated_params = (spec.params_fn)(&gated_layer);
+        let non_gated_params = (spec.params_fn)(&non_gated_layer);
+        // Gated experts have exactly 3/2 the weights of plain ones (gate,
+        // up, down vs. just up, down) — the same ratio that produced
+        // Grok-1's +49.8% before this fix.
+        assert!(
+            gated_params > non_gated_params,
+            "gated MoE params ({gated_params}) should exceed non-gated ({non_gated_params})"
+        );
+    }
+
+    #[test]
+    fn glm4_5_shaped_attention_uses_the_real_head_dim() {
+        // GLM-4.5, HuggingFace-verified (zai-org/GLM-4.5 config.json):
+        // hidden_size=5120, num_attention_heads=96, num_key_value_heads=8,
+        // head_dim=128. 96*128=12288 != 5120 — the validator used to reject
+        // this outright ("hidden_size must be divisible by num_heads");
+        // the formulas must now use the real, wider head_dim instead of
+        // silently deriving (and truncating) one from hidden_size/num_heads.
+        let layer = Layer {
+            id: "glm".to_string(),
+            layer_type: LayerType::Attention,
+            input_shape: vec![],
+            output_shape: vec![],
+            params: LayerParams {
+                hidden_size: Some(5120),
+                num_heads: Some(96),
+                num_kv_heads: Some(8),
+                head_dim: Some(128),
+                ..Default::default()
+            },
+            custom_equations: None,
+        };
+        let global_params = GlobalParams::default();
+        let ctx = default_ctx(&global_params);
+        let spec = op_spec(LayerType::Attention).unwrap();
+
+        let params_with_real_head_dim = (spec.params_fn)(&layer);
+        let flops_with_real_head_dim = (spec.flops_fn)(&layer, 1, 4096, &ctx);
+        assert!(params_with_real_head_dim > 0);
+        assert!(flops_with_real_head_dim > 0.0 && flops_with_real_head_dim.is_finite());
+
+        // Without the real head_dim, the derived one (5120/96, truncated)
+        // would compute a narrower — and wrong — Q/output projection.
+        let mut without_head_dim = layer.clone();
+        without_head_dim.params.head_dim = None;
+        let params_without = (spec.params_fn)(&without_head_dim);
+        assert_ne!(
+            params_with_real_head_dim, params_without,
+            "an explicit head_dim that doesn't derive from hidden_size/num_heads must change the result"
+        );
     }
 }

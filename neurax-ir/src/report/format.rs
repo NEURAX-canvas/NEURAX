@@ -179,31 +179,44 @@ pub fn format_markdown(report: &ReportIR) -> String {
     safe_writeln!(output, "## Cost Metrics");
     safe_writeln!(output, "| Metric | Value |");
     safe_writeln!(output, "|--------|-------|");
-    safe_writeln!(
-        output,
-        "| Training Cost | {} |",
-        format_cost(report.metrics.training_cost_usd)
-    );
-    safe_writeln!(
-        output,
-        "| Training Time | {:.1} hours |",
-        report.metrics.training_time_hours
-    );
-    safe_writeln!(
-        output,
-        "| Energy Consumption | {} |",
-        format_energy(report.metrics.energy_kwh)
-    );
-    safe_writeln!(
-        output,
-        "| CO₂ Emissions | {} |",
-        format_co2(report.metrics.co2_kg)
-    );
-    safe_writeln!(
-        output,
-        "| Cost per Million Tokens | ${:.2} |",
-        report.metrics.cost_per_million_tokens_usd
-    );
+    if report.metrics.training_budget_stated {
+        safe_writeln!(
+            output,
+            "| Training Cost | {} |",
+            format_cost(report.metrics.training_cost_usd)
+        );
+        safe_writeln!(
+            output,
+            "| Training Time | {:.1} hours |",
+            report.metrics.training_time_hours
+        );
+        safe_writeln!(
+            output,
+            "| Energy Consumption | {} |",
+            format_energy(report.metrics.energy_kwh)
+        );
+        safe_writeln!(
+            output,
+            "| CO₂ Emissions | {} |",
+            format_co2(report.metrics.co2_kg)
+        );
+        safe_writeln!(
+            output,
+            "| Cost per Million Tokens | ${:.2} |",
+            report.metrics.cost_per_million_tokens_usd
+        );
+    } else {
+        // No `training.max_steps` and no `training.num_epochs` +
+        // `data.dataset_size` to derive one from — showing "$0.00" here
+        // would read as a computed answer instead of an absent one.
+        let na = "N/A — no training budget stated (set `training.max_steps`, \
+                   or `training.num_epochs` + `data.dataset_size`)";
+        safe_writeln!(output, "| Training Cost | {na} |");
+        safe_writeln!(output, "| Training Time | {na} |");
+        safe_writeln!(output, "| Energy Consumption | {na} |");
+        safe_writeln!(output, "| CO₂ Emissions | {na} |");
+        safe_writeln!(output, "| Cost per Million Tokens | {na} |");
+    }
     safe_writeln!(output);
 
     // Diagnostics

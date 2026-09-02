@@ -13,6 +13,12 @@ pub struct ParallelismIR {
     pub parameter_bytes: u64,
     pub gradient_bytes: u64,
     pub optimizer_bytes: u64,
+    /// The real minimum GPU count this model needs to fit at all
+    /// (`ceil(peak_vram_bytes / one_gpu_vram_bytes)`), parked here for the
+    /// same reason as the three fields above. `compute_metrics()` uses this
+    /// to make sure `optimal_gpu_count` never reports fewer GPUs than the
+    /// model actually needs, regardless of how few the caller configured.
+    pub minimum_gpus_to_fit: u32,
 }
 
 /// Parallel strategy

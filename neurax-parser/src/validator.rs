@@ -154,8 +154,14 @@ fn validate_global_dimensions(config: &ModelConfig) -> Result<(), ParserError> {
 /// Validate attention head counts.
 ///
 /// `head_dim` is computed as `hidden_size / num_heads` in the operator and
-/// formula crates, so a zero head count is a division by zero and a head count
-/// that does not divide the hidden size silently truncates the head dimension.
+/// formula crates when the layer doesn't state its own — so a zero head
+/// count is a division by zero, and (absent an explicit `head_dim`) a head
+/// count that does not divide the hidden size would silently truncate the
+/// head dimension. A layer that states `head_dim` directly (GLM-4.5,
+/// HuggingFace-verified: `hidden_size=5120, num_heads=96, head_dim=128` —
+/// `96*128=12288 != 5120`, a real widened Q/output projection, not a
+/// rounding artifact) is exempt from the divisibility check: the formulas
+/// read that real value instead of deriving one.
 fn validate_attention_heads(layer: &crate::model_config::Layer) -> Result<(), ParserError> {
     let Some(num_heads) = layer.params.num_heads else {
         return Ok(());
@@ -170,11 +176,13 @@ fn validate_attention_heads(layer: &crate::model_config::Layer) -> Result<(), Pa
     check_dimension(num_heads, format!("layers.{}.params.num_heads", layer.id))?;
 
     if let Some(hidden_size) = layer.params.hidden_size {
-        if hidden_size % num_heads != 0 {
+        if layer.params.head_dim.is_none() && hidden_size % num_heads != 0 {
             return Err(ParserError::InvalidValue {
                 field: format!("layers.{}.params.num_heads", layer.id),
                 reason: format!(
-                    "hidden_size ({}) must be divisible by num_heads ({})",
+                    "hidden_size ({}) must be divisible by num_heads ({}); \
+                     state an explicit `head_dim` if this model's Q/output \
+                     projection is genuinely wider or narrower than hidden_size",
                     hidden_size, num_heads
                 ),
             });

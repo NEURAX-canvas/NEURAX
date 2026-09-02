@@ -50,10 +50,23 @@ impl IrPass for ParallelismPass {
             efficiency: dp_efficiency,
         });
 
+        // The real minimum GPU count this model needs to fit at all — real
+        // bug found auditing 100B+ models: `optimal_gpu_count` used to just
+        // echo the configured GPU count back (`num_gpus`), so a 405B model
+        // configured with 1 GPU reported "1 GPU is optimal" in the same
+        // breath as `oom_risk: Overflow`. This was already computed here
+        // and thrown away (`_num_splits`) — now it's kept and actually used
+        // in `compute_metrics()` below.
+        parallel_ir.minimum_gpus_to_fit = if gpu_vram > 0 {
+            (memory_ir.metrics.peak_vram_bytes as f64 / gpu_vram as f64)
+                .ceil()
+                .max(1.0) as u32
+        } else {
+            num_gpus.max(1)
+        };
+
         // Model parallel if model doesn't fit on one GPU
         if memory_ir.metrics.peak_vram_bytes > gpu_vram {
-            let _num_splits =
-                (memory_ir.metrics.peak_vram_bytes as f64 / gpu_vram as f64).ceil() as u32;
             parallel_ir
                 .strategies
                 .push(ParallelStrategy::ModelParallel {
@@ -191,7 +204,10 @@ impl IrPass for ParallelismPass {
             model_parallel_feasible: output.metrics.model_parallel_feasible,
             pipeline_stages: output.metrics.pipeline_stages,
             communication_overhead,
-            optimal_gpu_count: num_gpus,
+            // Never recommend fewer GPUs than the model actually needs to
+            // fit, even if that's more than the caller configured — see
+            // `minimum_gpus_to_fit`'s own doc for the bug this fixes.
+            optimal_gpu_count: num_gpus.max(output.minimum_gpus_to_fit),
             memory_per_gpu_bytes: memory_per_gpu,
             scaling_efficiency_curve,
             allreduce_time_ms,

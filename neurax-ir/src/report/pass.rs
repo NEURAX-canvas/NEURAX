@@ -294,6 +294,7 @@ impl<'a> ReportPassTrait<'a> for ReportPass {
             } else {
                 0.0
             },
+            training_budget_stated: groups.cost && input.cost.effective_steps > 0,
 
             // === Tensor Metrics (Tensor IR) ===
             activation_memory_bytes_tensor: input.tensor.metrics.activation_memory_bytes,

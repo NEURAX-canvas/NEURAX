@@ -31,12 +31,38 @@ pub fn attention_flops(
     num_heads: usize,
     causal: bool,
 ) -> f64 {
-    let head_dim = head_dim_of(hidden_size, num_heads);
+    attention_flops_with_head_dim(
+        batch,
+        seq_len,
+        hidden_size,
+        num_heads,
+        head_dim_of(hidden_size, num_heads),
+        causal,
+    )
+}
 
-    // Q, K, V projections: 3 × (B × S × H × H) matmuls
-    // Each matmul: 2 × B × S × H × H
+/// Same as [`attention_flops`], for a model that states its own `head_dim`
+/// independently of `hidden_size / num_heads` — real and increasingly
+/// common (GLM-4.5: `hidden_size=5120, num_heads=96, head_dim=128`; note
+/// `96 × 128 = 12288 ≠ 5120`, so the Q/output projection width is genuinely
+/// wider than `hidden_size`, not just a rounding artifact of the divide).
+/// When `head_dim * num_heads == hidden_size` (the derived case every
+/// existing caller already uses) this is byte-identical to
+/// [`attention_flops`].
+#[inline(always)]
+pub fn attention_flops_with_head_dim(
+    batch: usize,
+    seq_len: usize,
+    hidden_size: usize,
+    num_heads: usize,
+    head_dim: usize,
+    causal: bool,
+) -> f64 {
+    let qk_width = num_heads * head_dim;
+
+    // Q, K, V projections: 3 × (B × S × H × qk_width) matmuls
     let qkv_flops =
-        3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64);
+        3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * qk_width as f64);
 
     // QK^T attention scores: B × heads × S × S × head_dim
     // Matmul: [B, heads, S, head_dim] × [B, heads, head_dim, S] → [B, heads, S, S]
@@ -47,9 +73,8 @@ pub fn attention_flops(
     let attn_v_flops =
         2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
 
-    // Output projection: [B, S, H] × [H, H] → [B, S, H]
-    let out_proj_flops =
-        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+    // Output projection: [B, S, qk_width] × [qk_width, H] → [B, S, H]
+    let out_proj_flops = 2.0 * batch as f64 * seq_len as f64 * qk_width as f64 * hidden_size as f64;
 
     // Softmax: ~5 × B × heads × S × S (exp, sum, div per position)
     let softmax_flops = 5.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64;
@@ -82,17 +107,40 @@ pub fn windowed_attention_flops(
     num_heads: usize,
     causal: bool,
 ) -> f64 {
-    let head_dim = head_dim_of(hidden_size, num_heads);
+    windowed_attention_flops_with_head_dim(
+        batch,
+        seq_len,
+        kv_len,
+        hidden_size,
+        num_heads,
+        head_dim_of(hidden_size, num_heads),
+        causal,
+    )
+}
+
+/// Same as [`windowed_attention_flops`], for an independent `head_dim` —
+/// see [`attention_flops_with_head_dim`] for why this exists.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub fn windowed_attention_flops_with_head_dim(
+    batch: usize,
+    seq_len: usize,
+    kv_len: usize,
+    hidden_size: usize,
+    num_heads: usize,
+    head_dim: usize,
+    causal: bool,
+) -> f64 {
+    let qk_width = num_heads * head_dim;
     let kv_len = kv_len.min(seq_len).max(1);
 
     let qkv_flops =
-        3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64);
+        3.0 * (2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * qk_width as f64);
     let attn_scores_flops =
         2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * kv_len as f64 * head_dim as f64;
     let attn_v_flops =
         2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * kv_len as f64 * head_dim as f64;
-    let out_proj_flops =
-        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+    let out_proj_flops = 2.0 * batch as f64 * seq_len as f64 * qk_width as f64 * hidden_size as f64;
     let softmax_flops = 5.0 * batch as f64 * num_heads as f64 * seq_len as f64 * kv_len as f64;
     let causal_factor = if causal { 0.5 } else { 1.0 };
 
@@ -122,14 +170,40 @@ pub fn gqa_flops(
     num_kv_heads: usize,
     causal: bool,
 ) -> f64 {
-    let head_dim = head_dim_of(hidden_size, num_heads);
+    gqa_flops_with_head_dim(
+        batch,
+        seq_len,
+        hidden_size,
+        num_heads,
+        num_kv_heads,
+        head_dim_of(hidden_size, num_heads),
+        causal,
+    )
+}
+
+/// Same as [`gqa_flops`], for an independent `head_dim` — see
+/// [`attention_flops_with_head_dim`] for why this exists. GLM-4.5 is
+/// exactly this case: GQA (`num_kv_heads=8 < num_heads=96`) *and* a
+/// `head_dim=128` that doesn't derive from `hidden_size/num_heads`.
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+pub fn gqa_flops_with_head_dim(
+    batch: usize,
+    seq_len: usize,
+    hidden_size: usize,
+    num_heads: usize,
+    num_kv_heads: usize,
+    head_dim: usize,
+    causal: bool,
+) -> f64 {
+    let q_width = num_heads * head_dim;
+    let kv_width = num_kv_heads * head_dim;
 
     // Q projection (full heads)
-    let q_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+    let q_flops = 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * q_width as f64;
 
     // K, V projections (reduced heads)
-    let kv_dim = num_kv_heads * head_dim;
-    let kv_flops = 2.0 * 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * kv_dim as f64;
+    let kv_flops = 2.0 * 2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * kv_width as f64;
 
     // Attention computation
     let attn_scores_flops =
@@ -138,8 +212,7 @@ pub fn gqa_flops(
         2.0 * batch as f64 * num_heads as f64 * seq_len as f64 * seq_len as f64 * head_dim as f64;
 
     // Output projection
-    let out_proj_flops =
-        2.0 * batch as f64 * seq_len as f64 * hidden_size as f64 * hidden_size as f64;
+    let out_proj_flops = 2.0 * batch as f64 * seq_len as f64 * q_width as f64 * hidden_size as f64;
 
     let causal_factor = if causal { 0.5 } else { 1.0 };
 
@@ -148,21 +221,34 @@ pub fn gqa_flops(
 
 /// Compute parameters for attention layer
 #[inline(always)]
-pub fn attention_params(hidden_size: usize, _num_heads: usize, bias: bool) -> u64 {
+pub fn attention_params(hidden_size: usize, num_heads: usize, bias: bool) -> u64 {
+    let qk_width = num_heads.max(1) * head_dim_of(hidden_size, num_heads);
+    attention_params_with_head_dim(hidden_size, qk_width, bias)
+}
+
+/// Same as [`attention_params`], for an independent `head_dim` — see
+/// [`attention_flops_with_head_dim`] for why this exists. Takes `qk_width`
+/// (`num_heads * head_dim`) directly rather than `num_heads`/`head_dim`
+/// separately, since that's the only quantity these params actually need.
+/// When `qk_width == hidden_size` (the derived case every existing caller
+/// already uses) this is byte-identical to [`attention_params`].
+#[inline(always)]
+pub fn attention_params_with_head_dim(hidden_size: usize, qk_width: usize, bias: bool) -> u64 {
     // Accumulate in u64 and saturate: on 32-bit targets, and for oversized
     // dimensions generally, `usize` products wrap silently and would report a
     // plausible-looking but badly wrong parameter count.
     let hidden_size = hidden_size as u64;
+    let qk_width = qk_width as u64;
 
-    // Q, K, V projections: 3 × (H × H) weights
-    let qkv_params = hidden_size.saturating_mul(hidden_size).saturating_mul(3);
+    // Q, K, V projections: hidden_size -> qk_width each
+    let qkv_params = hidden_size.saturating_mul(qk_width).saturating_mul(3);
 
-    // Output projection: H × H
-    let out_params = hidden_size.saturating_mul(hidden_size);
+    // Output projection: qk_width -> hidden_size
+    let out_params = qk_width.saturating_mul(hidden_size);
 
     // Biases (optional)
     let bias_params = if bias {
-        hidden_size.saturating_mul(4) // Q, K, V, Out biases
+        qk_width.saturating_mul(3).saturating_add(hidden_size) // Q, K, V, Out biases
     } else {
         0
     };
@@ -206,23 +292,42 @@ pub fn cross_attention_params(hidden_size: usize, context_dim: usize, bias: bool
 /// Compute parameters for GQA/MQA
 #[inline(always)]
 pub fn gqa_params(hidden_size: usize, num_heads: usize, num_kv_heads: usize, bias: bool) -> u64 {
-    let head_dim = head_dim_of(hidden_size, num_heads) as u64;
+    let head_dim = head_dim_of(hidden_size, num_heads);
+    gqa_params_with_head_dim(hidden_size, num_heads, num_kv_heads, head_dim, bias)
+}
+
+/// Same as [`gqa_params`], for an independent `head_dim` — see
+/// [`attention_flops_with_head_dim`] for why this exists. GLM-4.5 is
+/// exactly this case: GQA (`num_kv_heads=8 < num_heads=96`) *and* a
+/// `head_dim=128` that doesn't derive from `hidden_size/num_heads` (5120/96
+/// isn't even an integer). When `num_heads * head_dim == hidden_size` (the
+/// derived case every existing caller already uses) this is byte-identical
+/// to [`gqa_params`].
+#[inline(always)]
+pub fn gqa_params_with_head_dim(
+    hidden_size: usize,
+    num_heads: usize,
+    num_kv_heads: usize,
+    head_dim: usize,
+    bias: bool,
+) -> u64 {
+    let q_width = (num_heads.max(1) as u64).saturating_mul(head_dim as u64);
+    let kv_width = (num_kv_heads as u64).saturating_mul(head_dim as u64);
     let hidden_size = hidden_size as u64;
 
-    // Q projection
-    let q_params = hidden_size.saturating_mul(hidden_size);
+    // Q projection: hidden_size -> q_width
+    let q_params = hidden_size.saturating_mul(q_width);
 
-    // K, V projections (reduced)
-    let kv_dim = (num_kv_heads as u64).saturating_mul(head_dim);
-    let kv_params = hidden_size.saturating_mul(kv_dim).saturating_mul(2);
+    // K, V projections (reduced): hidden_size -> kv_width each
+    let kv_params = hidden_size.saturating_mul(kv_width).saturating_mul(2);
 
-    // Output projection
-    let out_params = hidden_size.saturating_mul(hidden_size);
+    // Output projection: q_width -> hidden_size
+    let out_params = q_width.saturating_mul(hidden_size);
 
     let bias_params = if bias {
-        hidden_size
+        q_width
             .saturating_mul(2)
-            .saturating_add(kv_dim.saturating_mul(2))
+            .saturating_add(kv_width.saturating_mul(2))
     } else {
         0
     };
@@ -274,5 +379,52 @@ mod tests {
         let params = attention_params(768, 12, true);
         // 4 × 768² + 4 × 768 = 2,359,296 + 3,072 = 2,362,368
         assert_eq!(params, 2_362_368);
+    }
+
+    // GLM-4.5's real, HuggingFace-verified shape (zai-org/GLM-4.5
+    // config.json): hidden_size=5120, num_attention_heads=96,
+    // num_key_value_heads=8, head_dim=128. `96 * 128 = 12288 != 5120` — the
+    // Q/output projection is genuinely wider than hidden_size, not a
+    // rounding artifact. These are the exact real numbers a real config
+    // produces, not synthetic edge values.
+
+    #[test]
+    fn glm4_5_shaped_head_dim_widens_the_qk_projection_past_hidden_size() {
+        let derived_from_hidden_size = gqa_params(5120, 96, 8, false);
+        let with_real_head_dim = gqa_params_with_head_dim(5120, 96, 8, 128, false);
+        assert_ne!(
+            derived_from_hidden_size, with_real_head_dim,
+            "a head_dim that doesn't derive from hidden_size/num_heads must change the result"
+        );
+
+        // Q: 5120 -> 12288, K+V: 5120 -> 1024 each, O: 12288 -> 5120.
+        let expected = 5120u64 * 12288  // Q
+            + 2 * 5120 * 1024           // K + V
+            + 12288 * 5120; // O
+        assert_eq!(with_real_head_dim, expected);
+    }
+
+    #[test]
+    fn gqa_with_head_dim_matches_gqa_when_head_dim_is_the_derived_one() {
+        // The whole point of the `_with_head_dim` variants: passing the
+        // derived head_dim back in must reproduce the original formula
+        // exactly, for every existing caller that never states one.
+        let derived = head_dim_of(4096, 32);
+        assert_eq!(
+            gqa_params(4096, 32, 8, true),
+            gqa_params_with_head_dim(4096, 32, 8, derived, true)
+        );
+        assert_eq!(
+            gqa_flops(2, 2048, 4096, 32, 8, true),
+            gqa_flops_with_head_dim(2, 2048, 4096, 32, 8, derived, true)
+        );
+    }
+
+    #[test]
+    fn glm4_5_shaped_head_dim_changes_flops_too() {
+        let derived = gqa_flops(1, 4096, 5120, 96, 8, true);
+        let real = gqa_flops_with_head_dim(1, 4096, 5120, 96, 8, 128, true);
+        assert_ne!(derived, real);
+        assert!(real > 0.0 && real.is_finite());
     }
 }

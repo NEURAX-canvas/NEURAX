@@ -166,6 +166,13 @@ pub struct AllMetrics {
     pub energy_kwh: f64,
     pub co2_kg: f64,
     pub cost_per_million_tokens_usd: f64,
+    /// Whether a real training budget (`training.max_steps`, or
+    /// `training.num_epochs` + `data.dataset_size`) was actually resolvable.
+    /// `false` means the cost/energy/CO2 fields above are `0.0` because
+    /// nothing to compute a real run length from was ever stated — not
+    /// because the run genuinely costs nothing. A renderer must check this
+    /// before presenting those zeros as a real answer.
+    pub training_budget_stated: bool,
 
     // === Confidence & Quality (41-43) ===
     pub confidence_score: f64,

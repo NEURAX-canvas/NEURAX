@@ -289,8 +289,17 @@ impl IrPass for HardwarePass {
         // serialized as a bare JSON `null` for gpu_utilization — read by the
         // UI as "no hardware data", contradicting the VRAM/GPU numbers sitting
         // right next to it, which come from a different, unaffected path.
-        // With nothing recognized to weight, there is nothing to derate by
-        // — 1.0 (no efficiency penalty) is the neutral answer, not a guess.
+        //
+        // With nothing recognized to weight, the safe answer isn't "no
+        // efficiency penalty" (`1.0`) either — no real GPU runs SSM, RNN,
+        // GNN, or GAN kernels at 100% of peak throughput, and reporting one
+        // that does under-estimates compute time (and everything latency
+        // and cost derive from it) for entire families NEURAX supports.
+        // `conv_efficiency` is the lowest of this table's three tiers, and
+        // the one with a real published calibration point (NVIDIA's own
+        // ResNet-50 mixed-precision number) — using it here biases the
+        // unknown case toward reporting *more* compute time than an
+        // unverified family might really take, not less.
         let recognized_layers = attention_count + mlp_count + conv_count + mlp_shaped_count;
         let gpu_efficiency = if recognized_layers > 0 {
             (attention_count as f64 * attention_efficiency
@@ -298,7 +307,7 @@ impl IrPass for HardwarePass {
                 + conv_count as f64 * conv_efficiency)
                 / recognized_layers as f64
         } else {
-            1.0
+            conv_efficiency
         };
 
         // Attention layer ids — scopes FlashAttention's memory reduction to

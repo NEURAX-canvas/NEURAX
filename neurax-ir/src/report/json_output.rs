@@ -188,6 +188,12 @@ pub struct CostMetricsOutput {
     pub cost_per_million_tokens_usd: f64,
     pub gpu_hours: f64,
     pub provider: String,
+    /// `false` means no `training.max_steps` (nor `training.num_epochs` +
+    /// `data.dataset_size`) was stated, so the numeric fields above are all
+    /// `0.0` because nothing to compute a real run length from was ever
+    /// given — not because the run genuinely costs nothing. A consumer of
+    /// this API must check this before presenting those zeros as an answer.
+    pub training_budget_stated: bool,
 }
 
 /// Hardware metrics (5 metrics)
@@ -554,6 +560,7 @@ impl MetricsOutput {
                 cost_per_million_tokens_usd: metrics.cost_per_million_tokens_usd,
                 gpu_hours: 0.0,
                 provider: "unknown".to_string(),
+                training_budget_stated: metrics.training_budget_stated,
             },
             hardware: HardwareMetricsOutput {
                 gpu_name: metrics.gpu_name.clone(),
