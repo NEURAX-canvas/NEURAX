@@ -10,33 +10,20 @@ import {
 } from '@/components/ui/dropdown-menu.tsx';
 
 const LABELS: Record<Theme, string> = {
-  light: 'Light — Rose',
-  dark: 'Dark — Pink',
-  molten: 'Molten Core',
-  signal: 'Signal & Static',
-  amber: 'Web & Amber',
-  slate: 'Slate & Ember',
-  nord: 'Nord',
-  onedark: 'One Dark',
-  kanagawa: 'Kanagawa',
-  catppuccin: 'Catppuccin',
-  tokyonight: 'Tokyo Night',
-  everforest: 'Everforest',
-  dracula: 'Dracula',
-  nightfox: 'Nightfox',
-  'rose-pine': 'Rosé Pine',
-  'solarized-dark': 'Solarized Dark',
+  light: 'Light — Gold',
+  dark: 'Dark — Gold',
+  'signal-light': 'Signal & Static — Light',
+  signal: 'Signal & Static — Dark',
 };
 
-// Exactly the 6 NEURAX palettes — every semantic color slot filled
-// explicitly for each (see index.css). The other themes index.css defines
-// (nord, onedark, kanagawa, catppuccin, tokyonight, everforest, dracula,
-// nightfox, rose-pine, solarized-dark) are left out of this list on
-// purpose: several only define background/card/primary/border/sidebar/
-// canvas and fall back to `.dark`'s destructive/warning/success/info/
-// chart-* otherwise — a real inconsistency once actually selected, and
-// not one this change is fixing.
-const ORDERED_THEMES: Theme[] = ['light', 'dark', 'molten', 'signal', 'amber', 'slate'];
+// Exactly 4 — two identities (the brand's gold-yellow, and Signal &
+// Static's instrument-panel graphite/phosphor-green) each in light and
+// dark. Every semantic color slot is filled explicitly for each (see
+// index.css); the 13 themes this list used to also carry (10 incomplete
+// third-party ports, Molten Core and Web & Amber redundant with each other
+// in tone, and a fifth accent, Light — Red, tried and dropped) are gone
+// from index.css entirely, not just hidden here.
+const ORDERED_THEMES: Theme[] = ['light', 'signal-light', 'dark', 'signal'];
 
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();

@@ -14,22 +14,16 @@ keywords = ["tui", "terminal", "ml", "compiler", "visualization"]
 categories = ["command-line-utilities", "visualization"]
 
 [dependencies]
+# neurax-ir, neurax-parser, tokio, serde, serde_json, chrono, unicode-width,
+# and uuid were declared here but never referenced anywhere in src/ — this
+# crate reaches the compiler entirely through neurax_core::analyze_json, it
+# never needs the IR/parser crates directly. Confirmed unused via
+# `grep -rl` before removing, not just `cargo machete`'s say-so.
 neurax-core = { version = "0.14.0", path = "../neurax-core" }
-neurax-ir = { version = "0.14.0", path = "../neurax-ir" }
-neurax-parser = { version = "0.14.0", path = "../neurax-parser" }
 
 ratatui = { workspace = true }
 crossterm = { workspace = true }
-tokio = { workspace = true }
 color-eyre = { workspace = true }
-unicode-width = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-chrono = { workspace = true }
-
-[dependencies.uuid]
-version = "1.0"
-features = ["v4"]
 
 [[bin]]
 name = "neurax-tui"

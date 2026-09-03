@@ -138,13 +138,15 @@ Passes 7 & 8 run concurrently (rayon), and the whole pipeline is deterministic.
 |-------|------|
 | [`neurax-parser`](../neurax-parser) | JSON → validated `ModelConfig` |
 | [`neurax-ir`](../neurax-ir) | The 10-pass IR pipeline |
+| [`neurax-opspec`](../neurax-opspec) | One params+FLOPs definition per operation, consulted by `neurax-ir` |
 | [`neurax-formulas`](../neurax-formulas) | Analytical FLOPs/memory formulas |
 | [`neurax-hardware-db`](../neurax-hardware-db) | GPU/CPU/interconnect specs |
 | **neurax-core** | **The unified engine (this crate)** |
-| [`neurax-mlir`](../neurax-mlir) | MLIR-style lowering |
 
 These are workspace crates in this repository — use a path or git dependency
-to reach any of them from outside a checkout.
+to reach any of them from outside a checkout. `neurax-mlir` exists in the
+repository but is excluded from this workspace and has no consumers — see
+its own README for why.
 
 ## License
 

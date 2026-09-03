@@ -131,7 +131,44 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
     };
     let num_dense_layers = config.model.global_params.num_dense_layers.unwrap_or(0) as usize;
 
-    let count_of = |pred: &dyn Fn(&Layer) -> bool| layers.iter().filter(|l| pred(l)).count();
+    // An encoder-decoder model (T5, BART, Pegasus...) lists an encoder's and
+    // a decoder's representative blocks side by side in the same flat list,
+    // each tagged `encoder_decoder_role` on its `params`. Plain models never
+    // set this — `is_decoder` is `false` for every layer on every one of
+    // them, `depth` falls straight through to `global_num_layers`, and
+    // `count_of` counts exactly what it always counted, so this is a no-op
+    // for every model this function already handled correctly.
+    let is_decoder_role = |l: &Layer| l.params.encoder_decoder_role.as_deref() == Some("decoder");
+    let is_decoder = is_decoder_role(layer);
+    let depth = if is_decoder {
+        config
+            .model
+            .global_params
+            .num_decoder_layers
+            .map(|n| n as usize)
+            .unwrap_or(global_num_layers)
+    } else {
+        global_num_layers
+    };
+
+    // A Jamba-style hybrid's representative `Attention` and `MambaBlock`
+    // each stand for their own share of `depth`, not all of it —
+    // `ai21labs/Jamba-v0.1` runs attention on 4 of its 32 layers
+    // (`attn_layer_period: 8`) and Mamba on the other 28; without this,
+    // both blocks would scale to the model's full 32 layers each,
+    // double-counting every layer as if it ran both sublayers at once.
+    // Absent (every non-hybrid model) leaves `depth` untouched.
+    let depth = match layer.params.repeat_fraction {
+        Some(fraction) => ((depth as f64) * fraction).round() as usize,
+        None => depth,
+    };
+
+    let count_of = |pred: &dyn Fn(&Layer) -> bool| {
+        layers
+            .iter()
+            .filter(|l| pred(l) && is_decoder_role(l) == is_decoder)
+            .count()
+    };
     let json_moe_count = count_of(&|l: &Layer| l.layer_type == LayerType::MoE);
     let json_attention_count = count_of(&|l: &Layer| l.layer_type == LayerType::Attention);
     let json_ssm_count = count_of(&|l: &Layer| {
@@ -163,7 +200,17 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
             // num_layers: 3" was read as a single layer.
             | LayerType::LstmBlock
             | LayerType::GruBlock
-    );
+    ) || (layer.layer_type == LayerType::CrossAttention && is_decoder);
+    // `CrossAttention` is deliberately excluded from the `matches!` above: a
+    // diffusion U-Net's cross-attention already scales itself through its
+    // own `transformer_layers_per_block` field (see
+    // `neurax-opspec::cross_attention_params_fn`) — repeat-scaling it again
+    // here would double-count every image-conditioning block (verified
+    // against `examples/models/sdxl_1.0.json`, which lists 3 real
+    // `cross_attention` nodes under `global_params.num_layers: 50`). Only an
+    // encoder-decoder text model's decoder cross-attention — reachable only
+    // via `encoder_decoder_role`, a marker no diffusion config sets — is
+    // meant to repeat by depth the way every other repeatable kind does.
     if !is_repeatable {
         return 1.0;
     }
@@ -187,7 +234,7 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
                 | LayerType::MoeSharedExpert
         );
         if is_moe_role {
-            let num_moe_layers = global_num_layers.saturating_sub(num_dense_layers);
+            let num_moe_layers = depth.saturating_sub(num_dense_layers);
             return num_moe_layers as f64 / json_moe_count.max(1) as f64;
         }
         if layer.layer_type == LayerType::Mlp {
@@ -225,8 +272,8 @@ pub fn repeat_scale_for(config: &neurax_parser::ModelConfig, layer: &Layer) -> f
     // representative block; a kind listed as many times as the depth is already
     // spelled out and must not be multiplied again.
     let listed = listed_of_this_kind.max(1);
-    if global_num_layers > listed {
-        global_num_layers as f64 / listed as f64
+    if depth > listed {
+        depth as f64 / listed as f64
     } else {
         1.0
     }
@@ -469,6 +516,106 @@ mod moe_decomposed_tests {
         assert_eq!(repeat_scale_for(&config, dense_layer), 1.0);
         // The routed experts run in the other 27.
         assert_eq!(repeat_scale_for(&config, moe_layer), 27.0);
+    }
+
+    #[test]
+    fn an_encoder_decoder_models_two_stacks_scale_independently() {
+        // T5-shaped: a 6-layer encoder and a 6-layer decoder, each listed as
+        // one representative block per sublayer. The bug this guards: before
+        // `encoder_decoder_role` existed, T5 had no way to be told apart from
+        // a plain decoder-only model, so its single listed `attention` block
+        // absorbed both the encoder's and the decoder's self-attention counts
+        // into one bucket and its decoder had no cross-attention at all.
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "T5Test",
+                "type": "transformer",
+                "global_params": { "num_layers": 6, "num_decoder_layers": 6 },
+                "layers": [
+                    {"id": "enc_attn", "layer_type": "attention", "params": {"hidden_size": 512, "num_heads": 8, "causal": false}},
+                    {"id": "enc_mlp", "layer_type": "mlp", "params": {"hidden_size": 512, "intermediate_size": 2048}},
+                    {"id": "dec_self_attn", "layer_type": "attention", "params": {"hidden_size": 512, "num_heads": 8, "causal": true, "encoder_decoder_role": "decoder"}},
+                    {"id": "dec_cross_attn", "layer_type": "cross_attention", "params": {"hidden_size": 512, "num_heads": 8, "encoder_decoder_role": "decoder"}},
+                    {"id": "dec_mlp", "layer_type": "mlp", "params": {"hidden_size": 512, "intermediate_size": 2048, "encoder_decoder_role": "decoder"}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+        let find = |id: &str| config.model.layers.iter().find(|l| l.id == id).unwrap();
+
+        // Every one of the five representative blocks stands for its own
+        // real 6 layers — not 3 (two same-typed decoder blocks splitting one
+        // shared count) and not 12 (the two stacks' depths merged into one).
+        assert_eq!(repeat_scale_for(&config, find("enc_attn")), 6.0);
+        assert_eq!(repeat_scale_for(&config, find("enc_mlp")), 6.0);
+        assert_eq!(repeat_scale_for(&config, find("dec_self_attn")), 6.0);
+        assert_eq!(repeat_scale_for(&config, find("dec_cross_attn")), 6.0);
+        assert_eq!(repeat_scale_for(&config, find("dec_mlp")), 6.0);
+    }
+
+    #[test]
+    fn a_diffusion_unets_cross_attention_is_not_repeat_scaled() {
+        // The regression this guards against directly: adding
+        // `CrossAttention` to the repeatable set for T5 must not start
+        // repeat-scaling a diffusion U-Net's cross-attention too — it
+        // already scales itself via `transformer_layers_per_block` inside
+        // its own opspec formula. No `encoder_decoder_role` is set here,
+        // exactly like every real diffusion config on the Hub.
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "UnetCrossAttnTest",
+                "type": "diffusion",
+                "global_params": { "num_layers": 50 },
+                "layers": [
+                    {"id": "cross_attn", "layer_type": "cross_attention", "params": {"hidden_size": 320, "num_heads": 8, "transformer_layers_per_block": 2}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+        let cross_attn = &config.model.layers[0];
+
+        assert_eq!(repeat_scale_for(&config, cross_attn), 1.0);
+    }
+
+    #[test]
+    fn a_jamba_style_hybrid_splits_attention_and_mamba_by_repeat_fraction() {
+        // Real structure, read from `ai21labs/Jamba-v0.1`'s own config.json:
+        // 32 layers total, `attn_layer_period: 8` / `attn_layer_offset: 4`
+        // puts attention on layers 4, 12, 20, 28 — 4 of 32 — and Mamba on
+        // the other 28. (Its `expert_layer_period`/`expert_layer_offset`
+        // MoE interleaving is a second, independent axis this block does
+        // not model — out of scope for the canvas "Hybrid SSM+Attention"
+        // block, which only ever had a single `mix_ratio` knob.)
+        //
+        // The bug this guards: before `repeat_fraction` existed, a
+        // representative `Attention` and a representative `MambaBlock`
+        // both scaled to the model's full depth (32 each) — as if every
+        // layer ran both sublayers at once, rather than one or the other.
+        let json = r#"{
+            "schema_version": "1.0",
+            "model": {
+                "name": "JambaHybridTest",
+                "type": "ssm",
+                "global_params": { "num_layers": 32 },
+                "layers": [
+                    {"id": "attn", "layer_type": "attention", "params": {"hidden_size": 4096, "num_heads": 32, "num_kv_heads": 8, "causal": true, "repeat_fraction": 0.125}},
+                    {"id": "mamba", "layer_type": "mamba_block", "params": {"hidden_size": 4096, "state_dim": 16, "expansion_factor": 2, "repeat_fraction": 0.875}}
+                ]
+            },
+            "training": {"batch_size": 1},
+            "hardware": {"gpus": [{"name": "A100", "count": 1}]}
+        }"#;
+        let config = parse_model_config(json).unwrap();
+        let find = |id: &str| config.model.layers.iter().find(|l| l.id == id).unwrap();
+
+        assert_eq!(repeat_scale_for(&config, find("attn")), 4.0);
+        assert_eq!(repeat_scale_for(&config, find("mamba")), 28.0);
     }
 
     #[test]

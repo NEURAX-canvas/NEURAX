@@ -126,6 +126,31 @@ const MODELS = [
     },
   },
   {
+    // Real gap this closed: T5 has no `is_encoder_decoder`-aware path before
+    // this fix, so it fell through to the decoder-only branch and got built
+    // as one causal stack reading `num_layers` (T5's own field for the
+    // *encoder's* depth alone) as the whole model's depth, with no decoder
+    // cross-attention sublayer at all — 35.6M measured against a published
+    // 60.5M, a real ~41% miss. See `parseEncoderDecoderConfig` and
+    // `repeat_scale_for` (`neurax-ir/src/architecture/mod.rs`).
+    name: 'T5-small',
+    published: 60_506_880,
+    config: {
+      architectures: ['T5ForConditionalGeneration'],
+      model_type: 't5',
+      is_encoder_decoder: true,
+      d_model: 512,
+      d_ff: 2048,
+      d_kv: 64,
+      num_heads: 8,
+      num_layers: 6,
+      relative_attention_num_buckets: 32,
+      layer_norm_epsilon: 1e-6,
+      vocab_size: 32128,
+      n_positions: 512,
+    },
+  },
+  {
     name: 'Mixtral 8x7B',
     published: 46.7e9,
     config: {

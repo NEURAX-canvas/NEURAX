@@ -131,6 +131,9 @@ export interface HardwareConfig {
    * routing) before it switches to routed experts — `first_k_dense_replace`
    * in a HuggingFace config. */
   numDenseLayers?: number;
+  /** An encoder-decoder model's (T5, BART, Pegasus...) decoder depth, when
+   * it differs from `numLayers` (the encoder's). */
+  numDecoderLayers?: number;
 
   // RL
   actionDim: number;

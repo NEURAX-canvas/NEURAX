@@ -8,35 +8,35 @@
 
 @layer base {
   :root {
-    /* ── White + pink, not white + blue ──
-     * First pass whitened the background but kept a blue accent — asked
-     * for explicitly at the time, then reversed: the dark theme moved to
-     * pink instead of blue, and light was asked to follow so the pair
-     * reads as one family. Neutrals now carry a faint rose tint (hue 340,
-     * low saturation, so they stay clean/white rather than visibly pink)
-     * and the accent is a refined rose (336 70% 48%, lower saturation than
-     * the dark theme's 330 81% 48%, so it reads as professional on white
-     * instead of candy-bright), applied everywhere
-     * the old blue appeared. Semantic status colors are untouched. */
+    /* ── White + yellow, not white + pink ──
+     * The brand accent moved a second time: blue, then rose/pink, now a
+     * warm gold-yellow (hue 45) — asked for explicitly, pink retired
+     * entirely rather than kept as a second option. Neutrals carry a
+     * faint warm tint (hue 45, low saturation, so they stay clean/white
+     * rather than visibly yellow) and the accent itself is a deep amber-
+     * gold (45 90% 40%) rather than a bright/pale yellow — pale yellow
+     * cannot carry white foreground text at AA contrast the way this
+     * accent needs to everywhere it appears (buttons, rings, canvas
+     * connections). Semantic status colors are untouched. */
     --background: 0 0% 100%;
-    --foreground: 340 8% 18%;
+    --foreground: 45 8% 18%;
 
     --card: 0 0% 100%;
-    --card-foreground: 340 8% 18%;
+    --card-foreground: 45 8% 18%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 340 8% 18%;
+    --popover-foreground: 45 8% 18%;
 
-    --primary: 336 70% 48%;
+    --primary: 45 90% 40%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 340 25% 96%;
-    --secondary-foreground: 340 8% 18%;
+    --secondary: 45 25% 96%;
+    --secondary-foreground: 45 8% 18%;
 
-    --muted: 340 25% 96%;
-    --muted-foreground: 340 8% 40%;
+    --muted: 45 25% 96%;
+    --muted-foreground: 45 8% 40%;
 
-    --accent: 336 70% 48%;
+    --accent: 45 90% 40%;
     --accent-foreground: 0 0% 100%;
 
     --destructive: 358 100% 31%;
@@ -51,77 +51,82 @@
     --info: 190 89% 25%;
     --info-foreground: 0 0% 100%;
 
-    --border: 340 20% 90%;
-    --input: 340 25% 96%;
-    --ring: 336 70% 48%;
+    --border: 45 20% 90%;
+    --input: 45 25% 96%;
+    --ring: 45 90% 40%;
 
     --radius: 0.5rem;
 
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 340 8% 18%;
-    --sidebar-primary: 336 70% 48%;
+    --sidebar-foreground: 45 8% 18%;
+    --sidebar-primary: 45 90% 40%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 340 25% 96%;
-    --sidebar-accent-foreground: 340 8% 18%;
-    --sidebar-border: 340 20% 90%;
-    --sidebar-ring: 336 70% 48%;
+    --sidebar-accent: 45 25% 96%;
+    --sidebar-accent-foreground: 45 8% 18%;
+    --sidebar-border: 45 20% 90%;
+    --sidebar-ring: 45 90% 40%;
 
     /* Canvas specific */
     --canvas-bg: 0 0% 100%;
-    --canvas-grid: 340 20% 90%;
+    --canvas-grid: 45 20% 90%;
     --canvas-node: 0 0% 100%;
-    --canvas-node-border: 340 20% 90%;
-    --canvas-connection: 336 70% 48%;
+    --canvas-node-border: 45 20% 90%;
+    --canvas-connection: 45 90% 40%;
 
     /* Panel specific */
     --panel-header: 0 0% 100%;
 
-    /* Chart colors — Gruvbox's own accent set, not a separate palette */
-    --chart-1: 37 80% 39%;
-    --chart-2: 57 79% 26%;
-    --chart-3: 19 97% 35%;
+    /* Chart colors — a real 8-hue qualitative set spanning the wheel
+     * (gold, teal, green, red, violet, rust, blue, neutral) so adjacent
+     * data series stay distinguishable, not a re-tint of Gruvbox (the old
+     * set, kept unchanged through two brand-accent changes until now). Chart
+     * 1 is the brand gold itself; 4 reuses `destructive` deliberately —
+     * "red" reads as red in a chart the same way it does as a status color. */
+    --chart-1: 45 90% 40%;
+    --chart-2: 190 89% 30%;
+    --chart-3: 150 55% 32%;
     --chart-4: 358 100% 31%;
-    --chart-5: 322 39% 40%;
-    --chart-6: 143 30% 37%;
-    --chart-7: 190 89% 25%;
-    --chart-8: 28 11% 44%;
+    --chart-5: 265 45% 45%;
+    --chart-6: 20 70% 40%;
+    --chart-7: 210 60% 40%;
+    --chart-8: 45 8% 45%;
   }
 
   .dark {
-    /* ── Dark + pink, not Gruvbox ──
-     * The old dark theme was Gruvbox Dark's exact conversions: an olive
-     * background (0 0% 16%) with tan/beige text (43 59% 81%, the same
-     * warm family the light theme was just fixed to stop using) and a
-     * gold/burnt-orange accent pair. Replaced with a true dark neutral
-     * (subtle pink undertone at hue 330, low saturation, so the accent
-     * feels native rather than dropped on top) and one clean pink accent
-     * (330 81% 48% — darker than the light theme's rose, so white button
-     * text clears WCAG AA at normal size) carried through every primary/
-     * ring/sidebar/canvas accent slot below. Semantic status colors
+    /* ── Dark + yellow, not dark + pink ──
+     * Pink retired for the same warm gold-yellow (hue 45) as the light
+     * theme, a true dark neutral with a faint warm undertone (hue 45, low
+     * saturation) so the accent feels native rather than dropped on top.
+     * Unlike the light theme's darkened accent, this one stays bright
+     * (45 95% 55%) for real pop against the dark background — which means
+     * it needs *dark* foreground text, not white: yellow reads far
+     * brighter than pink or blue at the same HSL lightness, so the white-
+     * text-on-accent pattern the old pink used would fail contrast here.
+     * Carried through every primary/ring/sidebar/canvas accent slot below,
+     * matching how `warning`/`success` already pair a bright background
+     * with dark text in this same theme. Semantic status colors
      * (destructive/warning/success/info) and the multi-hue chart palette
-     * are untouched, aside from darkening destructive-foreground from 16%
-     * to 10% — the old value read at 4.18:1 against its background, just
-     * under the 4.5:1 AA-normal floor. */
-    --background: 330 15% 9%;
-    --foreground: 330 10% 92%;
+     * are untouched. */
+    --background: 45 15% 9%;
+    --foreground: 45 10% 92%;
 
-    --card: 330 14% 12%;
-    --card-foreground: 330 10% 92%;
+    --card: 45 14% 12%;
+    --card-foreground: 45 10% 92%;
 
-    --popover: 330 14% 14%;
-    --popover-foreground: 330 10% 92%;
+    --popover: 45 14% 14%;
+    --popover-foreground: 45 10% 92%;
 
-    --primary: 330 81% 48%;
-    --primary-foreground: 0 0% 100%;
+    --primary: 45 95% 55%;
+    --primary-foreground: 45 15% 12%;
 
-    --secondary: 330 12% 18%;
-    --secondary-foreground: 330 10% 92%;
+    --secondary: 45 12% 18%;
+    --secondary-foreground: 45 10% 92%;
 
-    --muted: 330 12% 18%;
-    --muted-foreground: 330 8% 65%;
+    --muted: 45 12% 18%;
+    --muted-foreground: 45 8% 65%;
 
-    --accent: 330 81% 48%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 45 95% 55%;
+    --accent-foreground: 45 15% 12%;
 
     --destructive: 6 96% 59%;
     --destructive-foreground: 0 0% 10%;
@@ -135,26 +140,26 @@
     --info: 157 16% 58%;
     --info-foreground: 0 0% 16%;
 
-    --border: 330 12% 24%;
-    --input: 330 12% 18%;
-    --ring: 330 81% 48%;
+    --border: 45 12% 24%;
+    --input: 45 12% 18%;
+    --ring: 45 95% 55%;
 
-    --sidebar-background: 330 14% 12%;
-    --sidebar-foreground: 330 10% 92%;
-    --sidebar-primary: 330 81% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 330 12% 18%;
-    --sidebar-accent-foreground: 330 10% 92%;
-    --sidebar-border: 330 12% 24%;
-    --sidebar-ring: 330 81% 48%;
+    --sidebar-background: 45 14% 12%;
+    --sidebar-foreground: 45 10% 92%;
+    --sidebar-primary: 45 95% 55%;
+    --sidebar-primary-foreground: 45 15% 12%;
+    --sidebar-accent: 45 12% 18%;
+    --sidebar-accent-foreground: 45 10% 92%;
+    --sidebar-border: 45 12% 24%;
+    --sidebar-ring: 45 95% 55%;
 
-    --canvas-bg: 330 16% 7%;
-    --canvas-grid: 330 12% 24%;
-    --canvas-node: 330 14% 12%;
-    --canvas-node-border: 330 12% 24%;
-    --canvas-connection: 330 81% 48%;
+    --canvas-bg: 45 16% 7%;
+    --canvas-grid: 45 12% 24%;
+    --canvas-node: 45 14% 12%;
+    --canvas-node-border: 45 12% 24%;
+    --canvas-connection: 45 95% 55%;
 
-    --panel-header: 330 14% 14%;
+    --panel-header: 45 14% 14%;
 
     /* Chart colors — Gruvbox's bright accent set */
     --chart-1: 42 95% 58%;
@@ -165,367 +170,6 @@
     --chart-6: 104 35% 62%;
     --chart-7: 157 16% 58%;
     --chart-8: 35 17% 59%;
-  }
-
-  .dark.theme-nord {
-    --background: 220 16% 8%;
-    --foreground: 218 27% 92%;
-
-    --card: 220 16% 10%;
-    --card-foreground: 218 27% 92%;
-
-    --popover: 220 16% 11%;
-    --popover-foreground: 218 27% 92%;
-
-    --primary: 193 56% 68%;
-    --primary-foreground: 220 16% 8%;
-
-    --secondary: 220 14% 14%;
-    --secondary-foreground: 218 27% 92%;
-
-    --muted: 220 14% 14%;
-    --muted-foreground: 219 12% 65%;
-
-    --accent: 213 32% 52%;
-    --accent-foreground: 218 27% 92%;
-
-    --border: 220 14% 18%;
-    --input: 220 14% 14%;
-    --ring: 193 56% 68%;
-
-    --sidebar-background: 220 16% 9%;
-    --sidebar-foreground: 218 27% 92%;
-    --sidebar-primary: 193 56% 68%;
-    --sidebar-primary-foreground: 220 16% 8%;
-    --sidebar-accent: 220 14% 14%;
-    --sidebar-accent-foreground: 218 27% 92%;
-    --sidebar-border: 220 14% 18%;
-    --sidebar-ring: 193 56% 68%;
-
-    --canvas-bg: 220 16% 7%;
-    --canvas-grid: 220 14% 14%;
-    --canvas-node: 220 16% 11%;
-    --canvas-node-border: 220 14% 20%;
-    --canvas-connection: 193 30% 70%;
-
-    --panel-header: 220 16% 11%;
-  }
-
-  .dark.theme-onedark {
-    --background: 220 15% 8%;
-    --foreground: 220 17% 92%;
-
-    --card: 220 15% 10%;
-    --card-foreground: 220 17% 92%;
-
-    --popover: 220 15% 11%;
-    --popover-foreground: 220 17% 92%;
-
-    --primary: 207 82% 66%;
-    --primary-foreground: 220 15% 8%;
-
-    --secondary: 220 14% 14%;
-    --secondary-foreground: 220 17% 92%;
-
-    --muted: 220 14% 14%;
-    --muted-foreground: 220 10% 62%;
-
-    --accent: 286 60% 70%;
-    --accent-foreground: 220 15% 8%;
-
-    --border: 220 14% 18%;
-    --input: 220 14% 14%;
-    --ring: 207 82% 66%;
-
-    --sidebar-background: 220 15% 9%;
-    --sidebar-foreground: 220 17% 92%;
-    --sidebar-primary: 207 82% 66%;
-    --sidebar-primary-foreground: 220 15% 8%;
-    --sidebar-accent: 220 14% 14%;
-    --sidebar-accent-foreground: 220 17% 92%;
-    --sidebar-border: 220 14% 18%;
-    --sidebar-ring: 207 82% 66%;
-
-    --canvas-bg: 220 15% 7%;
-    --canvas-grid: 220 14% 14%;
-    --canvas-node: 220 15% 11%;
-    --canvas-node-border: 220 14% 20%;
-    --canvas-connection: 207 35% 70%;
-
-    --panel-header: 220 15% 11%;
-  }
-
-  /* Kanagawa Theme */
-  .dark.theme-kanagawa {
-    --background: 240 13% 14%;
-    --foreground: 50 31% 80%;
-    --card: 240 13% 16%;
-    --card-foreground: 50 31% 80%;
-    --popover: 240 13% 18%;
-    --popover-foreground: 50 31% 80%;
-    --primary: 39 41% 59%;
-    --primary-foreground: 240 13% 14%;
-    --secondary: 240 10% 22%;
-    --secondary-foreground: 50 31% 85%;
-    --muted: 240 10% 22%;
-    --muted-foreground: 50 15% 60%;
-    --accent: 175 25% 45%;
-    --accent-foreground: 240 13% 14%;
-    --border: 240 10% 25%;
-    --input: 240 10% 22%;
-    --ring: 39 41% 59%;
-    --canvas-bg: 240 13% 12%;
-    --canvas-grid: 240 10% 20%;
-    --canvas-node: 240 13% 16%;
-    --canvas-node-border: 240 10% 25%;
-    --canvas-connection: 39 20% 60%;
-    --panel-header: 240 13% 16%;
-  }
-
-  /* Catppuccin Macchiato */
-  .dark.theme-catppuccin {
-    --background: 234 24% 19%;
-    --foreground: 227 70% 87%;
-    --card: 234 24% 22%;
-    --card-foreground: 227 70% 87%;
-    --popover: 234 24% 24%;
-    --popover-foreground: 227 70% 87%;
-    --primary: 221 82% 75%;
-    --primary-foreground: 234 24% 19%;
-    --secondary: 233 18% 25%;
-    --secondary-foreground: 226 64% 88%;
-    --muted: 233 18% 25%;
-    --muted-foreground: 231 23% 70%;
-    --accent: 316 73% 84%;
-    --accent-foreground: 234 24% 19%;
-    --border: 235 21% 28%;
-    --input: 233 18% 25%;
-    --ring: 221 82% 75%;
-    --canvas-bg: 234 24% 17%;
-    --canvas-grid: 235 21% 24%;
-    --canvas-node: 234 24% 22%;
-    --canvas-node-border: 235 21% 32%;
-    --canvas-connection: 221 50% 70%;
-    --panel-header: 234 24% 22%;
-  }
-
-  /* Tokyonight Storm */
-  .dark.theme-tokyonight {
-    --background: 233 24% 19%;
-    --foreground: 228 72% 86%;
-    --card: 233 24% 22%;
-    --card-foreground: 228 72% 86%;
-    --popover: 233 24% 24%;
-    --popover-foreground: 228 72% 86%;
-    --primary: 221 90% 72%;
-    --primary-foreground: 233 24% 19%;
-    --secondary: 232 18% 26%;
-    --secondary-foreground: 228 70% 88%;
-    --muted: 232 18% 26%;
-    --muted-foreground: 227 30% 70%;
-    --accent: 288 60% 75%;
-    --accent-foreground: 233 24% 19%;
-    --border: 233 20% 30%;
-    --input: 232 18% 26%;
-    --ring: 221 90% 72%;
-    --canvas-bg: 233 24% 17%;
-    --canvas-grid: 233 20% 25%;
-    --canvas-node: 233 24% 22%;
-    --canvas-node-border: 233 20% 35%;
-    --canvas-connection: 221 60% 70%;
-    --panel-header: 233 24% 22%;
-  }
-
-  /* Everforest */
-  .dark.theme-everforest {
-    --background: 204 14% 21%;
-    --foreground: 43 30% 75%;
-    --card: 204 14% 23%;
-    --card-foreground: 43 30% 75%;
-    --popover: 204 14% 25%;
-    --popover-foreground: 43 30% 75%;
-    --primary: 83 33% 63%;
-    --primary-foreground: 204 14% 21%;
-    --secondary: 200 12% 28%;
-    --secondary-foreground: 43 25% 80%;
-    --muted: 200 12% 28%;
-    --muted-foreground: 43 15% 60%;
-    --accent: 14 55% 68%;
-    --accent-foreground: 204 14% 21%;
-    --border: 200 12% 32%;
-    --input: 200 12% 28%;
-    --ring: 83 33% 63%;
-    --canvas-bg: 204 14% 19%;
-    --canvas-grid: 200 12% 25%;
-    --canvas-node: 204 14% 23%;
-    --canvas-node-border: 200 12% 35%;
-    --canvas-connection: 83 25% 60%;
-    --panel-header: 204 14% 23%;
-  }
-
-  /* Dracula */
-  .dark.theme-dracula {
-    --background: 231 15% 18%;
-    --foreground: 60 30% 96%;
-    --card: 231 15% 21%;
-    --card-foreground: 60 30% 96%;
-    --popover: 231 15% 24%;
-    --popover-foreground: 60 30% 96%;
-    --primary: 265 89% 78%;
-    --primary-foreground: 231 15% 18%;
-    --secondary: 231 15% 30%;
-    --secondary-foreground: 60 30% 90%;
-    --muted: 231 15% 30%;
-    --muted-foreground: 231 10% 70%;
-    --accent: 326 100% 74%;
-    --accent-foreground: 231 15% 18%;
-    --border: 231 15% 35%;
-    --input: 231 15% 30%;
-    --ring: 265 89% 78%;
-    --canvas-bg: 231 15% 16%;
-    --canvas-grid: 231 15% 25%;
-    --canvas-node: 231 15% 21%;
-    --canvas-node-border: 231 15% 40%;
-    --canvas-connection: 265 50% 75%;
-    --panel-header: 231 15% 21%;
-  }
-
-  /* Nightfox */
-  .dark.theme-nightfox {
-    --background: 214 32% 14%;
-    --foreground: 240 2% 87%;
-    --card: 214 32% 17%;
-    --card-foreground: 240 2% 87%;
-    --popover: 214 32% 20%;
-    --popover-foreground: 240 2% 87%;
-    --primary: 215 57% 64%;
-    --primary-foreground: 214 32% 14%;
-    --secondary: 214 25% 25%;
-    --secondary-foreground: 240 2% 90%;
-    --muted: 214 25% 25%;
-    --muted-foreground: 214 10% 65%;
-    --accent: 178 30% 60%;
-    --accent-foreground: 214 32% 14%;
-    --border: 214 20% 30%;
-    --input: 214 25% 25%;
-    --ring: 215 57% 64%;
-    --canvas-bg: 214 32% 12%;
-    --canvas-grid: 214 20% 25%;
-    --canvas-node: 214 32% 17%;
-    --canvas-node-border: 214 20% 35%;
-    --canvas-connection: 215 40% 65%;
-    --panel-header: 214 32% 17%;
-  }
-
-  /* Rose Pine */
-  .dark.theme-rose-pine {
-    --background: 249 22% 12%;
-    --foreground: 247 44% 91%;
-    --card: 249 22% 15%;
-    --card-foreground: 247 44% 91%;
-    --popover: 249 22% 18%;
-    --popover-foreground: 247 44% 91%;
-    --primary: 343 76% 68%;
-    --primary-foreground: 249 22% 12%;
-    --secondary: 249 15% 25%;
-    --secondary-foreground: 247 40% 95%;
-    --muted: 249 15% 25%;
-    --muted-foreground: 249 10% 70%;
-    --accent: 260 44% 78%;
-    --accent-foreground: 249 22% 12%;
-    --border: 249 15% 30%;
-    --input: 249 15% 25%;
-    --ring: 343 76% 68%;
-    --canvas-bg: 249 22% 10%;
-    --canvas-grid: 249 15% 22%;
-    --canvas-node: 249 22% 15%;
-    --canvas-node-border: 249 15% 35%;
-    --canvas-connection: 343 50% 70%;
-    --panel-header: 249 22% 15%;
-  }
-
-  /* Solarized Dark */
-  .dark.theme-solarized-dark {
-    --background: 192 100% 11%;
-    --foreground: 190 8% 55%;
-    --card: 192 100% 14%;
-    --card-foreground: 190 8% 55%;
-    --popover: 192 100% 16%;
-    --popover-foreground: 190 8% 55%;
-    --primary: 205 69% 49%;
-    --primary-foreground: 192 100% 11%;
-    --secondary: 192 40% 20%;
-    --secondary-foreground: 190 8% 65%;
-    --muted: 192 40% 20%;
-    --muted-foreground: 190 5% 45%;
-    --accent: 175 44% 45%;
-    --accent-foreground: 192 100% 11%;
-    --border: 192 30% 25%;
-    --input: 192 40% 20%;
-    --ring: 205 69% 49%;
-    --canvas-bg: 192 100% 9%;
-    --canvas-grid: 192 30% 20%;
-    --canvas-node: 192 100% 14%;
-    --canvas-node-border: 192 30% 30%;
-    --canvas-connection: 205 50% 60%;
-    --panel-header: 192 100% 14%;
-  }
-
-  /* Molten Core — heat as the point: NEURAX exists to stop you burning
-   * GPU-hours, so the palette runs orange-to-red with one deliberate cool
-   * accent (a muted teal) reserved for "safe" states, never spent on
-   * anything else. Every semantic slot below is filled explicitly — the
-   * pre-existing theme blocks above this one leave destructive/warning/
-   * success/info/chart-* unset and silently inherit `.dark`'s, which this
-   * repo's own Gruvbox fix (see history) exists specifically to avoid. */
-  .dark.theme-molten {
-    --background: 30 11% 7%;
-    --foreground: 32 38% 92%;
-    --card: 26 12% 11%;
-    --card-foreground: 32 38% 92%;
-    --popover: 33 9% 19%;
-    --popover-foreground: 32 38% 92%;
-    --primary: 27 99% 55%;
-    --primary-foreground: 30 11% 7%;
-    --secondary: 33 9% 19%;
-    --secondary-foreground: 32 38% 92%;
-    --muted: 33 9% 19%;
-    --muted-foreground: 29 11% 56%;
-    --accent: 6 96% 59%;
-    --accent-foreground: 30 11% 7%;
-    --destructive: 6 96% 59%;
-    --destructive-foreground: 30 11% 7%;
-    --warning: 40 73% 49%;
-    --warning-foreground: 30 11% 7%;
-    --success: 157 16% 58%;
-    --success-foreground: 30 11% 7%;
-    --info: 157 16% 58%;
-    --info-foreground: 30 11% 7%;
-    --border: 33 9% 19%;
-    --input: 33 9% 19%;
-    --ring: 27 99% 55%;
-    --sidebar-background: 26 12% 11%;
-    --sidebar-foreground: 32 38% 92%;
-    --sidebar-primary: 27 99% 55%;
-    --sidebar-primary-foreground: 30 11% 7%;
-    --sidebar-accent: 33 9% 19%;
-    --sidebar-accent-foreground: 32 38% 92%;
-    --sidebar-border: 33 9% 19%;
-    --sidebar-ring: 27 99% 55%;
-    --canvas-bg: 20 13% 5%;
-    --canvas-grid: 33 9% 19%;
-    --canvas-node: 26 12% 11%;
-    --canvas-node-border: 33 9% 19%;
-    --canvas-connection: 27 99% 55%;
-    --panel-header: 33 9% 19%;
-    --chart-1: 27 99% 55%;
-    --chart-2: 6 96% 59%;
-    --chart-3: 40 73% 49%;
-    --chart-4: 157 16% 58%;
-    --chart-5: 27 99% 45%;
-    --chart-6: 6 96% 49%;
-    --chart-7: 40 73% 39%;
-    --chart-8: 29 11% 56%;
   }
 
   /* Signal & Static — instrument-panel restraint: near-monochrome graphite,
@@ -582,110 +226,60 @@
     --chart-8: 47 50% 45%;
   }
 
-  /* Web & Amber — spider silk caught in light, the literal read of the
-   * mark: amber and honey tones, a muted teal reserved for "verified". */
-  .dark.theme-amber {
-    --background: 24 13% 8%;
-    --foreground: 36 47% 90%;
-    --card: 27 15% 12%;
-    --card-foreground: 36 47% 90%;
-    --popover: 30 18% 19%;
-    --popover-foreground: 36 47% 90%;
-    --primary: 42 93% 46%;
-    --primary-foreground: 24 13% 8%;
-    --secondary: 30 18% 19%;
-    --secondary-foreground: 36 47% 90%;
-    --muted: 30 18% 19%;
-    --muted-foreground: 33 20% 58%;
-    --accent: 37 86% 39%;
-    --accent-foreground: 24 13% 8%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 24 13% 8%;
-    --warning: 41 98% 40%;
-    --warning-foreground: 24 13% 8%;
-    --success: 167 22% 40%;
-    --success-foreground: 24 13% 8%;
-    --info: 167 22% 40%;
-    --info-foreground: 24 13% 8%;
-    --border: 30 18% 19%;
-    --input: 30 18% 19%;
-    --ring: 42 93% 46%;
-    --sidebar-background: 27 15% 12%;
-    --sidebar-foreground: 36 47% 90%;
-    --sidebar-primary: 42 93% 46%;
-    --sidebar-primary-foreground: 24 13% 8%;
-    --sidebar-accent: 30 18% 19%;
-    --sidebar-accent-foreground: 36 47% 90%;
-    --sidebar-border: 30 18% 19%;
-    --sidebar-ring: 42 93% 46%;
-    --canvas-bg: 24 19% 5%;
-    --canvas-grid: 30 18% 19%;
-    --canvas-node: 27 15% 12%;
-    --canvas-node-border: 30 18% 19%;
-    --canvas-connection: 42 93% 46%;
-    --panel-header: 30 18% 19%;
-    --chart-1: 42 93% 46%;
-    --chart-2: 37 86% 39%;
-    --chart-3: 41 98% 40%;
-    --chart-4: 0 72% 51%;
-    --chart-5: 167 22% 40%;
-    --chart-6: 42 60% 60%;
-    --chart-7: 37 50% 30%;
-    --chart-8: 33 20% 58%;
-  }
-
-  /* Slate & Ember — the neutral graphite most dev tools already ship,
-   * plus one brand color spent with care, and normal cool semantics
-   * (a real blue for info) since this theme doesn't restrict itself to
-   * the warm family the way the other three do. */
-  .dark.theme-slate {
-    --background: 225 7% 11%;
-    --foreground: 240 6% 90%;
-    --card: 225 5% 15%;
-    --card-foreground: 240 6% 90%;
-    --popover: 220 5% 22%;
-    --popover-foreground: 240 6% 90%;
-    --primary: 40 73% 49%;
-    --primary-foreground: 225 7% 11%;
-    --secondary: 220 5% 22%;
-    --secondary-foreground: 240 6% 90%;
-    --muted: 220 5% 22%;
-    --muted-foreground: 225 4% 56%;
-    --accent: 198 93% 60%;
-    --accent-foreground: 225 7% 11%;
-    --destructive: 0 91% 71%;
-    --destructive-foreground: 225 7% 11%;
-    --warning: 43 96% 56%;
-    --warning-foreground: 225 7% 11%;
-    --success: 142 69% 58%;
-    --success-foreground: 225 7% 11%;
-    --info: 198 93% 60%;
-    --info-foreground: 225 7% 11%;
-    --border: 220 5% 22%;
-    --input: 220 5% 22%;
-    --ring: 40 73% 49%;
-    --sidebar-background: 225 5% 15%;
-    --sidebar-foreground: 240 6% 90%;
-    --sidebar-primary: 40 73% 49%;
-    --sidebar-primary-foreground: 225 7% 11%;
-    --sidebar-accent: 220 5% 22%;
-    --sidebar-accent-foreground: 240 6% 90%;
-    --sidebar-border: 220 5% 22%;
-    --sidebar-ring: 40 73% 49%;
-    --canvas-bg: 225 9% 9%;
-    --canvas-grid: 220 5% 22%;
-    --canvas-node: 225 5% 15%;
-    --canvas-node-border: 220 5% 22%;
-    --canvas-connection: 40 73% 49%;
-    --panel-header: 220 5% 22%;
-    --chart-1: 40 73% 49%;
-    --chart-2: 198 93% 60%;
-    --chart-3: 142 69% 58%;
-    --chart-4: 0 91% 71%;
-    --chart-5: 43 96% 56%;
-    --chart-6: 198 60% 40%;
-    --chart-7: 40 40% 30%;
-    --chart-8: 225 4% 56%;
+  /* Signal & Static — Light: the same instrument-panel restraint and
+   * phosphor-green identity as the dark variant above, on paper instead of
+   * graphite. Card lifted pure white off a faintly cool-tinted background
+   * (the same relationship the brand Light theme uses); every accent
+   * darkened from the dark variant's lightness for AA contrast on white,
+   * not just inverted — an inverted light theme reads washed out. */
+  .theme-signal {
+    --background: 200 20% 97%;
+    --foreground: 206 20% 14%;
+    --card: 0 0% 100%;
+    --card-foreground: 206 20% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 206 20% 14%;
+    --primary: 154 60% 32%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 15% 93%;
+    --secondary-foreground: 206 20% 14%;
+    --muted: 200 15% 93%;
+    --muted-foreground: 206 8% 42%;
+    --accent: 151 55% 30%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 1 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --warning: 42 85% 35%;
+    --warning-foreground: 0 0% 100%;
+    --success: 154 60% 30%;
+    --success-foreground: 0 0% 100%;
+    --info: 151 55% 32%;
+    --info-foreground: 0 0% 100%;
+    --border: 200 15% 87%;
+    --input: 200 15% 93%;
+    --ring: 154 60% 32%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 206 20% 14%;
+    --sidebar-primary: 154 60% 32%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 200 15% 93%;
+    --sidebar-accent-foreground: 206 20% 14%;
+    --sidebar-border: 200 15% 87%;
+    --sidebar-ring: 154 60% 32%;
+    --canvas-bg: 0 0% 100%;
+    --canvas-grid: 200 15% 87%;
+    --canvas-node: 0 0% 100%;
+    --canvas-node-border: 200 15% 87%;
+    --canvas-connection: 154 60% 32%;
+    --panel-header: 0 0% 100%;
+    --chart-1: 154 60% 32%;
+    --chart-2: 151 55% 30%;
+    --chart-3: 42 85% 35%;
+    --chart-4: 1 70% 45%;
+    --chart-5: 154 35% 45%;
+    --chart-6: 206 8% 42%;
+    --chart-7: 151 55% 24%;
+    --chart-8: 42 50% 40%;
   }
 }
 

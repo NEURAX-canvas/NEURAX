@@ -2,7 +2,11 @@
   "name": "neurax-ui",
   "version": "0.1.0",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "vite --port 8081",
     "dev:full": "concurrently -n service,ui -c blue,green \"cd .. && cargo run -p neurax-service\" \"vite --port 8080\"",

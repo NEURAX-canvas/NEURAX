@@ -21,6 +21,8 @@ export interface NeuraxGlobalParams {
   num_layers?: number;
   /** How many of `num_layers` are dense (no MoE routing) — see `numDenseLayers`. */
   num_dense_layers?: number;
+  /** An encoder-decoder model's decoder depth, when it differs from `num_layers` (the encoder's). */
+  num_decoder_layers?: number;
   vocab_size?: number;
   sequence_length?: number;
   num_heads?: number;
@@ -1089,6 +1091,72 @@ function normalizeLayerTypeKey(value: string): string {
 }
 
 /**
+ * FLOPs-per-element and gated-ness for one activation, ported verbatim from
+ * `neurax-formulas::activation::activation_spec` (the Rust source of truth
+ * every backend formula reads from) so this one code path can't drift from
+ * it the way it already had: this table used to hardcode `gated ? 4 : 8`
+ * and treat plain `silu`/`swish` as gated (they aren't — only `swiglu`/
+ * `geglu`/`glu`/`reglu` are), which double-counted a plain SiLU MLP as
+ * SwiGLU and used the wrong per-element cost for every other activation
+ * (a plain `gelu` MLP got charged 8, not the real, calibrated 10).
+ * Unrecognised names fall back to `{ flops: 5, gated: false }`, matching
+ * `activation_flops_per_element`'s own unknown-name fallback.
+ */
+const ACTIVATION_SPECS: Record<string, { flops: number; gated: boolean }> = {
+  none: { flops: 0, gated: false },
+  linear: { flops: 0, gated: false },
+  identity: { flops: 0, gated: false },
+  relu: { flops: 1, gated: false },
+  leaky_relu: { flops: 2, gated: false },
+  leakyrelu: { flops: 2, gated: false },
+  relu6: { flops: 2, gated: false },
+  sigmoid: { flops: 4, gated: false },
+  logistic: { flops: 4, gated: false },
+  tanh: { flops: 6, gated: false },
+  silu: { flops: 4, gated: false },
+  swish: { flops: 4, gated: false },
+  hard_sigmoid: { flops: 2, gated: false },
+  hardsigmoid: { flops: 2, gated: false },
+  hard_swish: { flops: 3, gated: false },
+  hardswish: { flops: 3, gated: false },
+  h_swish: { flops: 3, gated: false },
+  gelu: { flops: 10, gated: false },
+  gelu_erf: { flops: 10, gated: false },
+  gelu_tanh: { flops: 8, gated: false },
+  gelu_new: { flops: 8, gated: false },
+  gelu_approx: { flops: 8, gated: false },
+  softplus: { flops: 7, gated: false },
+  mish: { flops: 12, gated: false },
+  elu: { flops: 4, gated: false },
+  selu: { flops: 5, gated: false },
+  glu: { flops: 4, gated: true },
+  swiglu: { flops: 4, gated: true },
+  silu_glu: { flops: 4, gated: true },
+  swish_glu: { flops: 4, gated: true },
+  geglu: { flops: 10, gated: true },
+  gelu_glu: { flops: 10, gated: true },
+  reglu: { flops: 1, gated: true },
+  relu_glu: { flops: 1, gated: true },
+};
+
+function activationSpec(name: string | null | undefined): { flops: number; gated: boolean } {
+  const normalized = String(name ?? '').trim().toLowerCase().replace(/-/g, '_');
+  return ACTIVATION_SPECS[normalized] ?? { flops: 5, gated: false };
+}
+
+/** Block types that take their normalized dimension from `dim` rather than
+ * `hidden_size`/`d_model` — hoisted from two identical inline copies. */
+const NORM_TYPES = new Set<string>([
+  'layernorm',
+  'rmsnorm',
+  'LayerNorm',
+  'RMSNorm',
+  'BatchNorm',
+  'GroupNorm',
+  'InstanceNorm',
+]);
+
+/**
  * Params and forward-FLOPs for a `layer_stack` block — the compact "N×
  * Decoder Blocks" node every preset in the Templates catalogue compiles to,
  * instead of N individual Attention/Mlp/Normalization nodes.
@@ -1115,39 +1183,47 @@ function decoderStackParamsAndFlops(cfg: {
   hidden: number;
   heads: number;
   kvHeads: number | null;
+  headDim: number | null;
   ffnDim: number;
   activation: string | null;
+  gated: boolean | null;
   batch: number;
   seq: number;
 }): { paramCount: number; flopsForward: number } {
   const { numLayers, hidden, heads, ffnDim, batch, seq } = cfg;
   const kvHeads = cfg.kvHeads ?? heads;
-  const headDim = hidden / Math.max(heads, 1);
-  const gated = ['silu', 'swish', 'swiglu', 'geglu'].includes(
-    String(cfg.activation ?? '').toLowerCase(),
-  );
+  // A model that states its own head_dim (GLM-4.5: hidden_size=5120,
+  // num_heads=96, head_dim=128 — 96*128=12288 != 5120, a real widened
+  // Q/output projection, not a rounding artifact) must use it instead of
+  // silently deriving — and truncating — one from hidden/heads. Mirrors
+  // neurax-formulas::attention's `*_with_head_dim` variants.
+  const headDim = cfg.headDim ?? hidden / Math.max(heads, 1);
+  const qkWidth = heads * headDim;
+  const activation = activationSpec(cfg.activation);
+  const gated = cfg.gated === true || activation.gated;
 
   let attnParams: number;
   let attnFlops: number;
   if (kvHeads === heads) {
-    // Standard MHA: Q, K, V, out — each hidden×hidden.
-    attnParams = 4 * hidden * hidden;
-    const qkv = 3 * (2 * batch * seq * hidden * hidden);
+    // Standard MHA: Q, K, V, out — hidden -> qkWidth each (== hidden*hidden
+    // when head_dim derives evenly, wider when it doesn't).
+    attnParams = 3 * hidden * qkWidth + qkWidth * hidden;
+    const qkv = 3 * (2 * batch * seq * hidden * qkWidth);
     const scores = 2 * batch * heads * seq * seq * headDim;
     const av = 2 * batch * heads * seq * seq * headDim;
     const softmax = 5 * batch * heads * seq * seq;
-    const outProj = 2 * batch * seq * hidden * hidden;
+    const outProj = 2 * batch * seq * qkWidth * hidden;
     // Causal: on average only half the attention matrix is real work.
     attnFlops = qkv + (scores + av + softmax) * 0.5 + outProj;
   } else {
     // GQA/MQA: K, V projections shrink to the KV head count.
     const kvDim = kvHeads * headDim;
-    attnParams = hidden * hidden + 2 * hidden * kvDim + hidden * hidden;
-    const q = 2 * batch * seq * hidden * hidden;
+    attnParams = hidden * qkWidth + 2 * hidden * kvDim + qkWidth * hidden;
+    const q = 2 * batch * seq * hidden * qkWidth;
     const kv = 2 * (2 * batch * seq * hidden * kvDim);
     const scores = 2 * batch * heads * seq * seq * headDim;
     const av = 2 * batch * heads * seq * seq * headDim;
-    const outProj = 2 * batch * seq * hidden * hidden;
+    const outProj = 2 * batch * seq * qkWidth * hidden;
     attnFlops = q + kv + (scores + av) * 0.5 + outProj;
   }
 
@@ -1156,10 +1232,7 @@ function decoderStackParamsAndFlops(cfg: {
   const linear1 = 2 * batch * seq * hidden * ffnDim;
   const linear2 = 2 * batch * seq * ffnDim * hidden;
   const gateExtra = gated ? 2 * batch * seq * hidden * ffnDim + batch * seq * ffnDim : 0;
-  // SiLU (gated) is cheaper per element than GELU (standard) — see
-  // neurax-formulas' activation cost table.
-  const activationFlopsPerElement = gated ? 4 : 8;
-  const actFlops = activationFlopsPerElement * batch * seq * ffnDim;
+  const actFlops = activation.flops * batch * seq * ffnDim;
   const mlpFlops = linear1 + linear2 + gateExtra + actFlops;
 
   // Two LayerNorms per block (pre-attention, pre-FFN): weight + bias each.
@@ -1479,9 +1552,19 @@ function toParserLayerType(blockType: string): string {
     return 'dense';
   }
 
+  // `bottleneck_block` is deliberately its own branch, not folded in with
+  // `basic_block` below: the parser accepts "bottleneck_block" itself as a
+  // direct alias for `LayerType::ResnetBottleneck` (the real 3-conv
+  // 1x1/3x3/1x1 block ResNet-50+ uses, with its own `mid_channels`/
+  // `cardinality`-aware formula) — routing it to `residual_block`
+  // (`LayerType::ResidualBlock`, ResNet-18/34's plain 2-conv block) instead
+  // silently cost every bottleneck-family template the wrong architecture,
+  // not just the wrong numbers. `basic_block` genuinely is `ResidualBlock`.
+  if (normalized === 'bottleneck_block') {
+    return 'bottleneck_block';
+  }
   if (
     normalized === 'basic_block' ||
-    normalized === 'bottleneck_block' ||
     normalized === 'preact_block' ||
     normalized === 'stem_block' ||
     normalized === 'stage_block' ||
@@ -1936,6 +2019,13 @@ export function compileToNeuraxIR(
      * their own real share of the depth instead of the full depth each.
      */
     numDenseLayers?: number | null;
+    /**
+     * An encoder-decoder model's (T5, BART, Pegasus...) decoder depth, when
+     * it differs from `numLayers` (the encoder's). Read by
+     * `repeat_scale_for` on the Rust side alongside a decoder-role layer's
+     * own `encoder_decoder_role` tag — see `neurax-ir/src/architecture/mod.rs`.
+     */
+    numDecoderLayers?: number | null;
     kvHeads?: number | null;
     useBias?: boolean | null;
     dropout?: number | null;
@@ -2066,6 +2156,7 @@ export function compileToNeuraxIR(
     ffnDim = null,
     numLayers = null,
     numDenseLayers = null,
+    numDecoderLayers = null,
     kvHeads = null,
     useBias = null,
     dropout = null,
@@ -2355,8 +2446,6 @@ export function compileToNeuraxIR(
       params = fixRnnParams(params, inputDim);
     }
 
-    // @ts-ignore
-    const NORM_TYPES = new Set(['layernorm', 'rmsnorm', 'LayerNorm', 'RMSNorm', 'BatchNorm', 'GroupNorm', 'InstanceNorm']);
     if (NORM_TYPES.has(blockType) && !('dim' in params)) {
       const inputDim = incomingIds.length > 0 ? (nodeDimMap.get(incomingIds[0]) ?? null) : null;
       if (inputDim !== null) {
@@ -2470,8 +2559,6 @@ export function compileToNeuraxIR(
         params = fixSdpaParams(params, inputDim);
       }
 
-      // @ts-ignore
-      const NORM_TYPES = new Set(['layernorm', 'rmsnorm', 'LayerNorm', 'RMSNorm', 'BatchNorm', 'GroupNorm', 'InstanceNorm']);
       if (NORM_TYPES.has(blockType) && !('dim' in params)) {
         const inputDim = incIds.length > 0 ? (nodeDimMap.get(incIds[0]) ?? null) : null;
         if (inputDim !== null) {
@@ -2727,7 +2814,147 @@ export function compileToNeuraxIR(
   // a family's own preset doesn't set it, and 0 is never a valid size.
   const hidden = hiddenDim || hiddenSize || 768;
 
-  const flatBlocks = flattenBlocks(blocks).filter((block) => block.ui_node_type !== 'input' && block.ui_node_type !== 'output');
+  const flatBlocksRaw = flattenBlocks(blocks).filter((block) => block.ui_node_type !== 'input' && block.ui_node_type !== 'output');
+
+  // A "Hybrid SSM+Attention" canvas block (Jamba-style) represents two real
+  // sublayers sharing one node. Left as-is, `toParserLayerType` resolves
+  // "hybrid_ssm_attn" via its generic `includes('ssm')` rule to a plain
+  // `state_space` block — the attention half never reached the compiled
+  // model at all, silently. Split it here into its own `attention` and
+  // `mamba_block` representatives, each carrying `repeat_fraction` (from
+  // `mix_ratio`) so `repeat_scale_for` on the Rust side scales them against
+  // their own share of the model's depth (`ai21labs/Jamba-v0.1`: attention
+  // on 4 of 32 layers) instead of the full depth each.
+  // A CNN "stage" node (the Templates catalogue's `bottleneck_block`/
+  // `basic_block`/... convention: `{ planes, blocks, stride, expansion }`
+  // standing for `blocks` repeated real blocks) used to compile in a way
+  // that silently dropped every one of those fields. Two bugs stacked:
+  // `toParserLayerType` folded `bottleneck_block` into the same bucket as
+  // `basic_block` (`residual_block`/`LayerType::ResidualBlock`, ResNet's
+  // 2-conv block) even though the parser already accepts `bottleneck_block`
+  // itself as a direct alias for `LayerType::ResnetBottleneck` (the real
+  // 3-conv 1x1/3x3/1x1 block ResNet-50+ actually uses); and neither
+  // `LayerType` reads `planes`/`blocks`/`expansion` at all, only
+  // `in_channels`/`out_channels`/`mid_channels`/`stride`/`cardinality` — so
+  // every stage silently fell back to the same default 64->64 block
+  // regardless of what stage it was. Verified empirically against the
+  // existing ResNet-50 template before this fix: 384,808 measured against
+  // a published 25,600,000 (98.5% off).
+  //
+  // `cnnStageChannels` tracks the running output-channel count across
+  // stages in encounter order (seeded at 64, the real stem output for every
+  // template that uses this convention) so each stage's *first* block gets
+  // the real previous stage's channel count as its `in_channels` — exactly
+  // how a real ResNet-family stage transition works (only the first block
+  // changes channels/stride; the rest are in==out, stride 1).
+  let cnnStageChannels = 64;
+  const flatBlocks: NeuraxBlock[] = [];
+  for (const block of flatBlocksRaw) {
+    const sourceType = String(block.ui_node_type ?? block.type ?? '').toLowerCase();
+
+    if (sourceType === 'hybrid_ssm_attn') {
+      const p = block.params ?? {};
+      const width = Number(p.d_model ?? hidden);
+      const mixRatio = Math.min(1, Math.max(0, Number(p.mix_ratio ?? 0.5)));
+      const numHeadsHybrid = Number(p.n_heads ?? 8);
+      flatBlocks.push({
+        ...block,
+        id: `${block.id}-attn`,
+        ui_node_type: 'attention' as LayerType,
+        params: {
+          hidden_size: width,
+          num_heads: numHeadsHybrid,
+          causal: true,
+          repeat_fraction: mixRatio,
+        },
+      });
+      flatBlocks.push({
+        ...block,
+        id: `${block.id}-mamba`,
+        ui_node_type: 'mamba_block' as LayerType,
+        params: {
+          hidden_size: width,
+          state_dim: Number(p.d_state ?? 16),
+          expansion_factor: Number(p.expand ?? 2),
+          repeat_fraction: Number((1 - mixRatio).toFixed(6)),
+        },
+      });
+      continue;
+    }
+
+    const p = block.params ?? {};
+    const isCnnStage =
+      (sourceType === 'bottleneck_block' || sourceType === 'basic_block' || sourceType === 'stage_block') &&
+      typeof p.planes === 'number' &&
+      typeof p.blocks === 'number';
+    if (isCnnStage) {
+      const outCh = Number(p.planes);
+      const numBlocks = Math.max(1, Math.round(Number(p.blocks)));
+      const stageStride = Number(p.stride ?? 1);
+      const expansion = Number(p.expansion ?? 4);
+      const cardinality = typeof p.cardinality === 'number' ? Number(p.cardinality) : undefined;
+      const baseWidth = typeof p.base_width === 'number' ? Number(p.base_width) : undefined;
+      // ResNeXt/RegNet-style grouped bottlenecks state their real per-group
+      // inner width directly (cardinality x base_width) rather than the
+      // plain out/expansion a standard bottleneck uses — reading it when
+      // present, instead of always deriving it, is what makes those two
+      // families' grouped convolutions cost what they really cost instead
+      // of a plain bottleneck's.
+      const midCh =
+        cardinality !== undefined && baseWidth !== undefined
+          ? cardinality * baseWidth
+          : Math.max(1, Math.round(outCh / Math.max(expansion, 1)));
+      const isBottleneck = expansion > 1;
+      const startInCh = cnnStageChannels;
+
+      for (let i = 0; i < numBlocks; i++) {
+        const blockInCh = i === 0 ? startInCh : outCh;
+        const blockStride = i === 0 ? stageStride : 1;
+        flatBlocks.push({
+          ...block,
+          id: `${block.id}-b${i}`,
+          ui_node_type: (isBottleneck ? 'bottleneck_block' : 'residual_block') as LayerType,
+          params: {
+            in_channels: blockInCh,
+            out_channels: outCh,
+            ...(isBottleneck ? { mid_channels: midCh } : {}),
+            stride: blockStride,
+            ...(cardinality !== undefined ? { cardinality } : {}),
+          },
+        });
+      }
+      cnnStageChannels = outCh;
+      continue;
+    }
+
+    // A plain VGG-style `conv2d` node whose *name* states a repeat
+    // ("Conv Block 3: 4× [256, 3x3]") but whose params never did — the
+    // label was cosmetic, the compiled graph always held exactly one conv,
+    // regardless of what the name claimed. `blocks` makes the repeat real:
+    // only the first of the `blocks` convs changes channels (VGG-16/19's
+    // stem->256->512 transitions happen once per stage, at its first conv),
+    // the rest are same-channel 3x3 convs, mirroring the CNN stage-block
+    // handling above for the same reason.
+    if (sourceType === 'conv2d' && typeof p.blocks === 'number' && Number(p.blocks) > 1) {
+      const outCh = Number(p.out_channels ?? p.in_channels ?? 64);
+      const inCh = Number(p.in_channels ?? outCh);
+      const numBlocks = Math.max(1, Math.round(Number(p.blocks)));
+      for (let i = 0; i < numBlocks; i++) {
+        flatBlocks.push({
+          ...block,
+          id: `${block.id}-b${i}`,
+          params: {
+            ...p,
+            in_channels: i === 0 ? inCh : outCh,
+            out_channels: outCh,
+          },
+        });
+      }
+      continue;
+    }
+
+    flatBlocks.push(block);
+  }
 
   // A `layer_stack` node means one of two different things depending on who
   // built the design. The Templates catalogue compiles a repeated block down
@@ -2826,8 +3053,10 @@ export function compileToNeuraxIR(
         hidden,
         heads: numHeads ?? 8,
         kvHeads: kvHeads ?? null,
+        headDim: headDim ?? p.head_dim ?? null,
         ffnDim: ffnDim ?? 4 * hidden,
         activation: activation ?? null,
+        gated: typeof p.gated === 'boolean' ? p.gated : null,
         batch,
         seq,
       });
@@ -2853,6 +3082,7 @@ export function compileToNeuraxIR(
   if (hiddenDim != null) global_params.hidden_size = hiddenDim;
   if (numLayers != null) global_params.num_layers = numLayers;
   if (numDenseLayers != null) global_params.num_dense_layers = numDenseLayers;
+  if (numDecoderLayers != null) global_params.num_decoder_layers = numDecoderLayers;
   if (vocabSize != null) global_params.vocab_size = vocabSize;
   if (resolvedSeqLen != null) global_params.sequence_length = resolvedSeqLen;
   if (numHeads != null) global_params.num_heads = numHeads;

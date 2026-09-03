@@ -226,10 +226,10 @@ const ALL_ARCHITECTURE_FAMILIES: ArchitectureFamily[] = [
 const isPositiveNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0;
 
-const withPositiveFallback = (value: number | undefined, fallback: number): number =>
+export const withPositiveFallback = (value: number | undefined, fallback: number): number =>
   isPositiveNumber(value) ? value : fallback;
 
-const findNumericParam = (
+export const findNumericParam = (
   nodes: CanvasNode[],
   nodeTypes: string[],
   paramKeys: string[],
@@ -245,7 +245,7 @@ const findNumericParam = (
   return undefined;
 };
 
-function hydrateNodesForFamily(
+export function hydrateNodesForFamily(
   family: ArchitectureFamily,
   nodes: CanvasNode[],
 ): CanvasNode[] {
@@ -305,7 +305,7 @@ function hydrateNodesForFamily(
   });
 }
 
-function buildHardwareConfigFromPreset(
+export function buildHardwareConfigFromPreset(
   preset: VariantPreset,
   current: HardwareConfig,
 ): HardwareConfig {

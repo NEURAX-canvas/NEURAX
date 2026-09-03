@@ -57,42 +57,40 @@ impl IrPass for OperatorPass {
             .unwrap_or(512);
         let dtype = &ctx.config.training.precision;
 
-        // Compute block_scale: same logic as ArchitecturePass
-        let json_attention_count = arch_ir
-            .layers
-            .iter()
-            .filter(|l| l.layer_type == neurax_parser::LayerType::Attention)
-            .count();
-        let json_mlp_count = arch_ir
-            .layers
-            .iter()
-            .filter(|l| l.layer_type == neurax_parser::LayerType::Mlp)
-            .count();
-        let json_block_count = json_attention_count.max(json_mlp_count).max(1);
-        // Same rule as `repeat_scale_for`: only an explicitly declared depth
-        // means the listed layers stand in for more than themselves.
-        let block_scale = match arch_ir.global_params.num_layers.map(|n| n as usize) {
-            Some(global_num_layers) if global_num_layers > json_block_count => {
-                global_num_layers as f64 / json_block_count as f64
-            }
-            _ => 1.0_f64,
-        };
-
         for layer in &arch_ir.layers {
             let mut layer_ops = Vec::new();
 
             let mut ops = decompose_layer_to_ops(layer, batch, seq, dtype, ctx);
 
-            // Scale FLOPs for repeatable layers
-            let is_repeatable = matches!(
-                layer.layer_type,
-                neurax_parser::LayerType::Attention
-                    | neurax_parser::LayerType::Mlp
-                    | neurax_parser::LayerType::Normalization
-            );
-            if is_repeatable && block_scale > 1.0 {
+            // The real per-kind, per-role scale — the same one
+            // `scaled_total_parameters` and the memory pass's liveness
+            // intervals already use, looked up by matching `id` against the
+            // parsed config's own layer list (`repeat_scale_for` reads
+            // `encoder_decoder_role`/`repeat_fraction` off that layer, which
+            // `ArchitectureIR`'s own `LayerDef` doesn't carry).
+            //
+            // This replaces a second, independent implementation that used
+            // to live here: it counted only `Attention`/`Mlp` (ignoring
+            // `CrossAttention`, `MambaBlock`, MoE and every other repeatable
+            // kind — each of those got a silent, permanent 1.0), applied one
+            // blended scale to both Attention and Mlp instead of each
+            // kind's own count the way `repeat_scale_for` does, and had no
+            // way to know about `encoder_decoder_role`/`repeat_fraction`.
+            // FLOPs for a T5 import's decoder cross-attention, and for
+            // every MoE model's routed-expert layers, were understated as a
+            // result — parameter counts were already correct through
+            // `scaled_total_parameters`, only FLOPs used this second path.
+            let scale = ctx
+                .config
+                .model
+                .layers
+                .iter()
+                .find(|l| l.id == layer.id)
+                .map(|l| crate::architecture::repeat_scale_for(&ctx.config, l))
+                .unwrap_or(1.0);
+            if scale > 1.0 {
                 for op in &mut ops {
-                    op.flops *= block_scale;
+                    op.flops *= scale;
                 }
             }
 

@@ -1,0 +1,74 @@
+NEURAX PROPRIETARY LICENSE
+
+Copyright (c) 2026 Fossouo Wato Martial. All rights reserved.
+
+This repository and its contents (source code, object code, documentation,
+design files, and all associated assets — the "Software") are the exclusive
+property of Fossouo Wato Martial ("Licensor"). The Software is made available in
+this public repository for transparency, security review, and evaluation
+purposes only. Publication of the source code does NOT constitute an open
+source license and does NOT grant any of the rights normally associated
+with open source software.
+
+1. NO LICENSE TO THE SOURCE CODE
+
+   Except for the limited right to view the source code as published in
+   this repository, no license, right, or interest in the Software is
+   granted to any person by virtue of its being publicly visible. In
+   particular, you may NOT, without Licensor's prior written permission:
+
+   a) copy, reproduce, or redistribute the source code, in whole or in
+      part, in any form or medium;
+   b) modify, adapt, translate, or create derivative works based on the
+      source code;
+   c) merge the source code, in whole or in part, into another project;
+   d) use the source code, or any algorithm, formula, or technique
+      contained in it, to develop, train, or improve a competing product
+      or service;
+   e) sublicense, rent, lease, or otherwise transfer any rights in the
+      source code to a third party;
+   f) remove or alter any copyright, trademark, or other proprietary
+      notice contained in the Software.
+
+2. LICENSE TO USE THE COMPILED APPLICATION
+
+   Licensor grants you a personal, non-exclusive, non-transferable,
+   revocable license to download, install, and run the compiled NEURAX
+   desktop application and its official binary releases, as distributed
+   by Licensor, for your own internal use — personal or commercial —
+   subject to any separate commercial terms, subscription agreement, or
+   end-user agreement that Licensor may present at download, purchase, or
+   first run. This license does not extend to the source code beyond what
+   is necessary to build the application for your own use under Section 1.
+
+3. CONTRIBUTIONS
+
+   Any feedback, bug report, patch, or other contribution submitted to
+   this repository is provided under the assumption that Licensor may
+   use, modify, and incorporate it into the Software without restriction
+   or compensation, unless a separate written agreement states otherwise.
+
+4. NO WARRANTY
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND
+   NON-INFRINGEMENT. IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY CLAIM,
+   DAMAGES, OR OTHER LIABILITY ARISING FROM, OUT OF, OR IN CONNECTION WITH
+   THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. TERMINATION
+
+   Any use of the Software in violation of this license automatically and
+   immediately terminates the rights granted under Section 2, without
+   need for notice from Licensor.
+
+6. THIRD-PARTY COMPONENTS
+
+   NEURAX depends on third-party open source packages, each governed by
+   its own license (listed in the respective Cargo.toml / package.json
+   manifests and their lockfiles). This license does not apply to those
+   packages; their own licenses do.
+
+For commercial licensing, partnership, or any use not covered above,
+contact Licensor via the repository's GitHub profile.

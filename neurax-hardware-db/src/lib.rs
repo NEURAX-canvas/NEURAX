@@ -644,6 +644,172 @@ impl HardwareDatabase {
                 num_sms: Some(64),
             },
         );
+
+        // ── Non-NVIDIA-only additions ──────────────────────────────────────
+        // Added after a 2026-09 audit found the four highest-share
+        // accelerators absent from this database entirely (verified against
+        // MLPerf Training v6.0 submissions and analyst market-share
+        // estimates — IDC/TrendForce/Bloomberg converge on 75–88% NVIDIA,
+        // with AMD/Google/AWS silicon making up a real, growing remainder,
+        // not a rounding error). Sources per entry below.
+        //
+        // `l2_cache_mb`/`num_sms` are NVIDIA CUDA-architecture concepts with
+        // no equivalent on TPU/Trainium (`None`); `nvlink`/
+        // `nvlink_bandwidth_gbs` are NVIDIA's own interconnect brand — AMD's
+        // Infinity Fabric, Google's ICI and AWS's NeuronLink are real,
+        // comparable-purpose interconnects but not literally NVLink, so
+        // `nvlink: false` here undercounts each chip's actual scale-up
+        // bandwidth; the real figure is noted in each entry's comment until
+        // `HardwareDatabase` grows a vendor-neutral interconnect field.
+
+        // NVIDIA B200 (Blackwell), HGX B200 180GB configuration.
+        // https://www.nvidia.com/en-us/data-center/dgx-b200/ ,
+        // https://images.nvidia.com/aem-dam/Solutions/documents/HGX-B200-PCF-Summary.pdf
+        // Dense tensor figures (NVIDIA publishes a 2x "with sparsity" column
+        // alongside, same convention as every other entry above).
+        self.gpus.insert(
+            "B200".to_string(),
+            GpuSpec {
+                name: "B200".to_string(),
+                manufacturer: "NVIDIA".to_string(),
+                memory_gb: 180,
+                memory_bandwidth_gbs: 7700.0,
+                tflops_fp64: 37.0,
+                tflops_fp32: 75.0,
+                tflops_fp16: 2250.0,
+                tflops_bf16: 2250.0,
+                tflops_int8: 4500.0,
+                tflops_fp8: 2250.0,
+                tensor_cores: true,
+                nvlink: true,
+                nvlink_bandwidth_gbs: 900.0,
+                tdp_watts: 1000,
+                launch_year: 2024,
+                l2_cache_mb: None,
+                num_sms: None,
+            },
+        );
+
+        // AMD Instinct MI300X, 192GB OAM.
+        // https://www.amd.com/en/products/accelerators/instinct/mi300/mi300x.html ,
+        // https://hc2024.hotchips.org/assets/program/conference/day1/23_HC2024.AMD.MI300X.ASmith(MI300X).v1.Final.20240817.pdf
+        // Dense figures — AMD publishes a matching 2x sparse column.
+        // Real scale-up interconnect: Infinity Fabric, ~896 GB/s aggregate,
+        // not NVLink (see module-level note above).
+        self.gpus.insert(
+            "MI300X".to_string(),
+            GpuSpec {
+                name: "MI300X".to_string(),
+                manufacturer: "AMD".to_string(),
+                memory_gb: 192,
+                memory_bandwidth_gbs: 5300.0,
+                tflops_fp64: 81.7,
+                tflops_fp32: 163.4,
+                tflops_fp16: 1305.0,
+                tflops_bf16: 1305.0,
+                tflops_int8: 2610.0,
+                tflops_fp8: 2610.0,
+                tensor_cores: true,
+                nvlink: false,
+                nvlink_bandwidth_gbs: 0.0,
+                tdp_watts: 750,
+                launch_year: 2023,
+                l2_cache_mb: None,
+                num_sms: None,
+            },
+        );
+
+        // Google TPU v6e ("Trillium"), per-chip figures.
+        // https://docs.cloud.google.com/tpu/docs/v6e ,
+        // https://www.servethehome.com/google-cloud-tpu-v6e-trillium-shown-at-sc24/
+        // No FP64/FP32 matmul path and no dedicated FP8 format the way
+        // Hopper/Blackwell have one — both left at 0.0, matching this
+        // struct's own "not published/not supported" convention for
+        // `tflops_fp8` (see its field doc comment), extended here to FP64/
+        // FP32 for the same reason: nothing to cite, not an oversight.
+        // Real scale-up interconnect: ICI (Inter-Chip Interconnect), 800
+        // GB/s bidirectional per chip, not NVLink.
+        self.gpus.insert(
+            "TPU-v6e".to_string(),
+            GpuSpec {
+                name: "TPU-v6e".to_string(),
+                manufacturer: "Google".to_string(),
+                memory_gb: 32,
+                memory_bandwidth_gbs: 1638.0,
+                tflops_fp64: 0.0,
+                tflops_fp32: 0.0,
+                tflops_fp16: 918.0,
+                tflops_bf16: 918.0,
+                tflops_int8: 1836.0,
+                tflops_fp8: 0.0,
+                tensor_cores: false,
+                nvlink: false,
+                nvlink_bandwidth_gbs: 0.0,
+                tdp_watts: 300,
+                launch_year: 2024,
+                l2_cache_mb: None,
+                num_sms: None,
+            },
+        );
+
+        // AWS Trainium2, per-chip figures (an EC2 Trn2 instance carries 16).
+        // https://awsdocs-neuron.readthedocs-hosted.com/en/latest/about-neuron/arch/neuron-hardware/trainium2.html
+        // `tflops_int8` has no distinct published figure separate from FP8
+        // on this chip — left equal to `tflops_fp8` rather than guessed at
+        // a different number with no source. Real scale-up interconnect:
+        // NeuronLink-v3, 1.28 TB/s per chip, not NVLink.
+        self.gpus.insert(
+            "Trainium2".to_string(),
+            GpuSpec {
+                name: "Trainium2".to_string(),
+                manufacturer: "AWS".to_string(),
+                memory_gb: 96,
+                memory_bandwidth_gbs: 2900.0,
+                tflops_fp64: 0.0,
+                tflops_fp32: 181.0,
+                tflops_fp16: 667.0,
+                tflops_bf16: 667.0,
+                tflops_int8: 1299.0,
+                tflops_fp8: 1299.0,
+                tensor_cores: false,
+                nvlink: false,
+                nvlink_bandwidth_gbs: 0.0,
+                tdp_watts: 700,
+                launch_year: 2024,
+                l2_cache_mb: None,
+                num_sms: None,
+            },
+        );
+
+        // NVIDIA L4 (Ada, AD104) — the dominant price/performance inference
+        // choice cited across 2026 cloud-GPU comparisons, distinct from
+        // L40/L40S already above (smaller die, single-slot 72W).
+        // https://www.nvidia.com/en-us/data-center/l4/ ,
+        // https://jarvislabs.ai/blog/l4-gpu-price
+        // Dense figures (172/242/485 with 2:4 sparsity, same halving
+        // convention as every other Ada/Hopper entry above).
+        self.gpus.insert(
+            "L4".to_string(),
+            GpuSpec {
+                name: "L4".to_string(),
+                manufacturer: "NVIDIA".to_string(),
+                memory_gb: 24,
+                memory_bandwidth_gbs: 300.0,
+                tflops_fp64: 0.5,
+                tflops_fp32: 30.3,
+                tflops_fp16: 121.0,
+                tflops_bf16: 121.0,
+                tflops_int8: 242.0,
+                tflops_fp8: 242.0,
+                tensor_cores: true,
+                nvlink: false,
+                nvlink_bandwidth_gbs: 0.0,
+                tdp_watts: 72,
+                launch_year: 2023,
+                l2_cache_mb: Some(48.0),
+                num_sms: Some(58),
+            },
+        );
     }
 
     fn add_builtin_cpus(&mut self) {

@@ -229,6 +229,8 @@ export type LayerType =
   | 'neuromorphic_activation'
   // SSM — Extended Fundamental
   | 'h3_block'
+  | 'rwkv_block'
+  | 'retention_block'
   | 'hyena_conv'
   | 'gated_ssm'
   | 'neural_cde'

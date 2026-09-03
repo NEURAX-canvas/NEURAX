@@ -576,6 +576,28 @@ pub struct LayerParams {
     pub bias: bool,
     pub param_count: Option<u64>, // Explicit param count for custom layers
 
+    /// `"encoder"` or `"decoder"` on a repeatable block (`Attention`/`Mlp`/
+    /// `Normalization`) of an encoder-decoder model (T5, BART, Pegasus...).
+    /// `None` for every other model — the overwhelming majority — which
+    /// keeps `repeat_scale_for` counting and scaling exactly as it always
+    /// has. Lets one JSON list an encoder's and a decoder's representative
+    /// blocks side by side without either kind's count polluting the
+    /// other's scale, and lets the decoder's depth (`num_decoder_layers`)
+    /// differ from the encoder's (`num_layers`) instead of forcing both
+    /// stacks through one shared repeat count.
+    pub encoder_decoder_role: Option<String>,
+
+    /// What fraction (0–1) of the model's total depth this repeatable block
+    /// stands for — Jamba-style hybrids interleave a periodic minority of
+    /// attention layers among a majority of Mamba ones
+    /// (`ai21labs/Jamba-v0.1`: 4 attention layers of 32, `attn_layer_period:
+    /// 8`), so a representative `Attention` block and a representative
+    /// `MambaBlock` must each scale against their own share of the depth,
+    /// not the model's full depth each. `None` (every non-hybrid model)
+    /// keeps `repeat_scale_for` scaling against the full depth exactly as
+    /// it always has.
+    pub repeat_fraction: Option<f64>,
+
     // Extra parameters
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -746,6 +768,8 @@ impl LayerParams {
             dropout: raw.get_f64("dropout"),
             bias: raw.get_bool("bias").unwrap_or(true),
             param_count: raw.get_u64("param_count"),
+            encoder_decoder_role: raw.get_string("encoder_decoder_role"),
+            repeat_fraction: raw.get_f64("repeat_fraction"),
             extra: raw.extra,
         }
     }
@@ -787,6 +811,12 @@ pub struct GlobalParams {
     pub num_layers: Option<u64>,
     /// Number of dense (non-MoE) layers in MoE models like DeepSeek-V3
     pub num_dense_layers: Option<u64>,
+    /// Decoder depth of an encoder-decoder model (T5, BART, Pegasus...),
+    /// when it differs from `num_layers` (the encoder's depth). `None` for
+    /// every non-encoder-decoder model. See
+    /// `LayerParams::encoder_decoder_role` and `repeat_scale_for`, which
+    /// together let the two stacks scale independently.
+    pub num_decoder_layers: Option<u64>,
     // RNN/LSTM global parameters
     pub rnn_hidden_size: Option<usize>,
     pub num_rnn_layers: Option<usize>,
@@ -820,6 +850,10 @@ impl GlobalParams {
         let num_dense_layers = raw
             .num_dense_layers
             .or_else(|| raw.extra.get("num_dense_layers").and_then(|v| v.as_u64()));
+        let num_decoder_layers = raw
+            .extra
+            .get("num_decoder_layers")
+            .and_then(|v| v.as_u64());
 
         // Extract RNN/LSTM global params from extra
         let rnn_hidden_size = raw
@@ -917,6 +951,7 @@ impl GlobalParams {
             graph_message_dim: raw.graph_message_dim,
             num_layers,
             num_dense_layers,
+            num_decoder_layers,
             rnn_hidden_size,
             num_rnn_layers,
             bidirectional_rnn,

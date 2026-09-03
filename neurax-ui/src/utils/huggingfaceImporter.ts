@@ -1098,6 +1098,402 @@ function parseMambaConfig(config: RawConfig, fallbackName: string): HuggingFaceI
   };
 }
 
+// ── Encoder-decoder import (T5, BART, Pegasus, Marian...) ──────────────────
+//
+// Before this, an encoder-decoder config had no way to be told apart from a
+// plain decoder-only one — it fell through to the `causal: !isEncoder`
+// branch below and got built as a single stack, which read `num_layers` as
+// the whole model's depth (T5's own field genuinely names only the
+// *encoder's* depth) and never gave the decoder its cross-attention
+// sublayer at all. `google-t5/t5-small` measured 35.6M against a published
+// 60.5M — a real ~41% miss, not a rounding error.
+//
+// The fix reuses `neurax-ir`'s existing, already-verified `Attention` and
+// `CrossAttention` formulas rather than inventing new ones — encoder and
+// decoder self-attention are both plain `Attention` (T5/BART's encoder and
+// decoder share one hidden width, so the shape is identical either side),
+// and the decoder's second sublayer is `CrossAttention` (already used by
+// diffusion U-Nets for image conditioning — the same "Q from one place, K/V
+// from another, same width" math applies to a decoder attending over an
+// encoder's output). Each node carries `encoder_decoder_role: 'decoder'` so
+// the two stacks scale against their own depth
+// (`num_layers`/`num_decoder_layers`) instead of one shared count — see
+// `repeat_scale_for` in `neurax-ir/src/architecture/mod.rs`.
+
+const ENCODER_DECODER_MODEL_TYPES = new Set([
+  't5', 'mt5', 'longt5', 'switch_transformers',
+  'bart', 'mbart', 'pegasus', 'marian', 'blenderbot', 'blenderbot-small',
+  'prophetnet', 'fsmt', 'led',
+]);
+
+/** T5's own family: relative-position attention bias, T5's bias-free
+ * RMSNorm-like LayerNorm, and a `feed_forward_proj` field that names gating
+ * directly ("relu" vs "gated-gelu") instead of leaving it to be inferred. */
+const T5_LIKE_MODEL_TYPES = new Set(['t5', 'mt5', 'longt5', 'switch_transformers']);
+
+interface EncoderDecoderShape {
+  modelType: string;
+  name: string;
+  hiddenSize: number;
+  numLayers: number;
+  numDecoderLayers: number;
+  numHeads: number;
+  numDecoderHeads: number;
+  headDim: number;
+  ffnDim: number;
+  decoderFfnDim: number;
+  vocabSize: number;
+  maxPositions: number;
+  normEps: number;
+  norm: Extract<LayerType, 'rmsnorm' | 'layernorm'>;
+  ffn: Extract<LayerType, 'ffn_gated' | 'ffn_standard'>;
+  activation: string;
+  tieWordEmbeddings: boolean;
+  /** T5-style: position information comes from a small per-head relative
+   * bias table folded into attention itself, not a positional-embedding
+   * matrix — see the note where this is read, below. */
+  usesRelativePositionBias: boolean;
+}
+
+function readEncoderDecoderShape(
+  config: RawConfig,
+  fallbackName: string,
+): { shape: EncoderDecoderShape; assumptions: string[] } | { error: string } {
+  const assumptions: string[] = [];
+
+  const hiddenSize = num(config, 'hidden_size', 'd_model');
+  if (hiddenSize === undefined || hiddenSize <= 0) {
+    return { error: 'No hidden size in this config (looked for hidden_size, d_model).' };
+  }
+
+  const numLayers = num(config, 'num_layers', 'encoder_layers', 'num_hidden_layers');
+  if (numLayers === undefined || numLayers <= 0) {
+    return {
+      error: 'No encoder layer count in this config (looked for num_layers, encoder_layers).',
+    };
+  }
+  const numDecoderLayers = num(config, 'num_decoder_layers', 'decoder_layers') ?? numLayers;
+
+  let numHeads = num(config, 'num_heads', 'encoder_attention_heads', 'num_attention_heads');
+  if (numHeads === undefined || numHeads <= 0) {
+    numHeads = Math.max(1, Math.round(hiddenSize / 64));
+    assumptions.push(`Encoder head count absent; assumed ${numHeads} (one head per 64 channels).`);
+  }
+  const numDecoderHeads = num(config, 'decoder_attention_heads') ?? numHeads;
+
+  const headDim = num(config, 'd_kv', 'head_dim') ?? Math.floor(hiddenSize / numHeads);
+
+  let ffnDim = num(config, 'd_ff', 'encoder_ffn_dim', 'intermediate_size');
+  if (ffnDim === undefined || ffnDim <= 0) {
+    ffnDim = hiddenSize * 4;
+    assumptions.push(`Feed-forward width absent; assumed 4× hidden size (${ffnDim}).`);
+  }
+  const decoderFfnDim = num(config, 'decoder_ffn_dim') ?? ffnDim;
+
+  let vocabSize = num(config, 'vocab_size');
+  if (vocabSize === undefined || vocabSize <= 0) {
+    vocabSize = 32000;
+    assumptions.push('Vocabulary size absent; assumed 32000.');
+  }
+
+  let maxPositions = num(config, 'max_position_embeddings', 'n_positions');
+  if (maxPositions === undefined || maxPositions <= 0) {
+    maxPositions = 2048;
+    assumptions.push('Context length absent; assumed 2048.');
+  }
+
+  const normEps = num(config, 'layer_norm_epsilon', 'layer_norm_eps') ?? 1e-6;
+
+  const modelType = (str(config, 'model_type') ?? '').toLowerCase();
+  const isT5Like = T5_LIKE_MODEL_TYPES.has(modelType);
+
+  // T5's own field names its gating directly, rather than leaving it to be
+  // read off the activation name the way the decoder-only path does.
+  const feedForwardProj = str(config, 'feed_forward_proj');
+  let ffn: Traits['ffn'];
+  let activation: string;
+  if (feedForwardProj !== undefined) {
+    ffn = feedForwardProj.startsWith('gated-') ? 'ffn_gated' : 'ffn_standard';
+    activation = feedForwardProj.replace(/^gated-/, '');
+  } else {
+    // T5's pre-`feed_forward_proj` checkpoints (t5-small and the rest of the
+    // original T5 v1.0 release) predate this field and default to ReLU, not
+    // BART/Pegasus's GELU — a real difference in FLOPs cost per element,
+    // though not in parameter count either way.
+    const activationDefault = isT5Like ? 'relu' : 'gelu';
+    activation = (
+      str(config, 'activation_function', 'dense_act_fn') ?? activationDefault
+    ).toLowerCase();
+    ffn = GATED_ACTIVATIONS.has(activation) ? 'ffn_gated' : 'ffn_standard';
+  }
+
+  const tieWordEmbeddings = bool(config, 'tie_word_embeddings') ?? true;
+
+  const usesRelativePositionBias =
+    isT5Like || num(config, 'relative_attention_num_buckets') !== undefined;
+  if (usesRelativePositionBias) {
+    assumptions.push(
+      'Relative-position attention bias (T5-style) is not modelled — its own parameter table ' +
+        '(num_buckets × heads) is a negligible fraction of the model, unlike a real positional-embedding matrix.',
+    );
+  }
+
+  const name =
+    str(config, '_name_or_path', 'name_or_path') ?? (modelType ? modelType : fallbackName);
+
+  return {
+    shape: {
+      modelType: modelType || 'unknown',
+      name,
+      hiddenSize,
+      numLayers,
+      numDecoderLayers,
+      numHeads,
+      numDecoderHeads,
+      headDim,
+      ffnDim,
+      decoderFfnDim,
+      vocabSize,
+      maxPositions,
+      normEps,
+      norm: isT5Like ? 'rmsnorm' : 'layernorm',
+      ffn,
+      activation,
+      tieWordEmbeddings,
+      usesRelativePositionBias,
+    },
+    assumptions,
+  };
+}
+
+function buildEncoderDecoderGraph(
+  shape: EncoderDecoderShape,
+): { nodes: CanvasNode[]; connections: Connection[] } {
+  const nodes: CanvasNode[] = [];
+  const connections: Connection[] = [];
+  let nodeSeq = 0;
+  let connSeq = 0;
+
+  const add = (
+    type: LayerType,
+    name: string,
+    x: number,
+    y: number,
+    params: Record<string, unknown>,
+  ): string => {
+    const id = `hf-n${++nodeSeq}`;
+    nodes.push({ id, type, name, x, y, params: params as CanvasNode['params'] });
+    return id;
+  };
+  const link = (from: string, to: string) => {
+    connections.push({ id: `hf-c${++connSeq}`, from, to });
+  };
+
+  const width = shape.hiddenSize;
+  const TRUNK = 140;
+
+  const input = add('input', 'Input Tokens', 50, TRUNK, { sequence_length: shape.maxPositions });
+  const embedding = add('token_embedding', 'Token Embedding', 250, TRUNK, {
+    vocab_size: shape.vocabSize,
+    hidden_size: width,
+  });
+  link(input, embedding);
+
+  // T5-style models carry no positional-embedding node at all — see
+  // `usesRelativePositionBias`'s assumption note. A BART-style model uses
+  // real learned absolute positions, same as the decoder-only path.
+  let trunkOut = embedding;
+  if (!shape.usesRelativePositionBias) {
+    const positional = add('pos_absolute', 'Learned Positional Embedding', 450, TRUNK, {
+      max_length: shape.maxPositions,
+      hidden_size: width,
+    });
+    link(embedding, positional);
+    trunkOut = positional;
+  }
+
+  // ── Encoder stack: self-attention (bidirectional) + FFN, no role tag ──
+  const encStack = add('layer_stack', `${shape.numLayers}× Encoder Block`, 650, TRUNK, {
+    num_layers: shape.numLayers,
+  });
+  link(trunkOut, encStack);
+
+  const encNorm1 = add(shape.norm, 'Pre-Attention Norm', 650, TRUNK - 100, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  const encAttn = add('attention', `Self-Attention (${shape.numHeads} heads)`, 850, TRUNK - 100, {
+    hidden_size: width,
+    num_heads: shape.numHeads,
+    head_dim: shape.headDim,
+    causal: false,
+  });
+  const encAttnResidual = add('residual_add', 'Residual Add', 1050, TRUNK - 100, {});
+  link(encNorm1, encAttn);
+  link(encAttn, encAttnResidual);
+  link(encAttnResidual, encStack);
+
+  const encNorm2 = add(shape.norm, 'Pre-FFN Norm', 650, TRUNK + 100, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  const encFfn = add(shape.ffn, shape.ffn === 'ffn_gated' ? 'Gated FFN' : 'FFN (2× Linear)', 850, TRUNK + 100, {
+    hidden_size: width,
+    intermediate_size: shape.ffnDim,
+    activation: shape.activation,
+  });
+  const encFfnResidual = add('residual_add', 'Residual Add', 1050, TRUNK + 100, {});
+  link(encNorm2, encFfn);
+  link(encFfn, encFfnResidual);
+  link(encFfnResidual, encStack);
+
+  const encFinalNorm = add(shape.norm, 'Encoder Final Norm', 1250, TRUNK, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  link(encStack, encFinalNorm);
+
+  // ── Decoder stack: self-attention (causal) + cross-attention + FFN,
+  // every repeatable node tagged `encoder_decoder_role: 'decoder'` so it
+  // scales against `num_decoder_layers`, independently of the encoder's
+  // `num_layers` above. ──
+  const decStack = add('layer_stack', `${shape.numDecoderLayers}× Decoder Block`, 1450, TRUNK, {
+    num_layers: shape.numDecoderLayers,
+  });
+  link(encFinalNorm, decStack);
+
+  const decNorm1 = add(shape.norm, 'Pre-Self-Attention Norm', 1450, TRUNK - 160, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  const decSelfAttn = add(
+    'attention',
+    `Causal Self-Attention (${shape.numDecoderHeads} heads)`,
+    1650,
+    TRUNK - 160,
+    {
+      hidden_size: width,
+      num_heads: shape.numDecoderHeads,
+      head_dim: shape.headDim,
+      causal: true,
+      encoder_decoder_role: 'decoder',
+    },
+  );
+  const decSelfAttnResidual = add('residual_add', 'Residual Add', 1850, TRUNK - 160, {});
+  link(decNorm1, decSelfAttn);
+  link(decSelfAttn, decSelfAttnResidual);
+  link(decSelfAttnResidual, decStack);
+
+  const decNorm2 = add(shape.norm, 'Pre-Cross-Attention Norm', 1450, TRUNK, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  const decCrossAttn = add(
+    'cross_attention',
+    `Cross-Attention (${shape.numDecoderHeads} heads)`,
+    1650,
+    TRUNK,
+    {
+      hidden_size: width,
+      num_heads: shape.numDecoderHeads,
+      encoder_decoder_role: 'decoder',
+    },
+  );
+  const decCrossAttnResidual = add('residual_add', 'Residual Add', 1850, TRUNK, {});
+  link(decNorm2, decCrossAttn);
+  link(decCrossAttn, decCrossAttnResidual);
+  link(decCrossAttnResidual, decStack);
+
+  const decNorm3 = add(shape.norm, 'Pre-FFN Norm', 1450, TRUNK + 160, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  const decFfn = add(
+    shape.ffn,
+    shape.ffn === 'ffn_gated' ? 'Gated FFN' : 'FFN (2× Linear)',
+    1650,
+    TRUNK + 160,
+    {
+      hidden_size: width,
+      intermediate_size: shape.decoderFfnDim,
+      activation: shape.activation,
+      encoder_decoder_role: 'decoder',
+    },
+  );
+  const decFfnResidual = add('residual_add', 'Residual Add', 1850, TRUNK + 160, {});
+  link(decNorm3, decFfn);
+  link(decFfn, decFfnResidual);
+  link(decFfnResidual, decStack);
+
+  const decFinalNorm = add(shape.norm, 'Decoder Final Norm', 2050, TRUNK, {
+    hidden_size: width,
+    eps: shape.normEps,
+  });
+  link(decStack, decFinalNorm);
+
+  const head = add('lm_head', shape.tieWordEmbeddings ? 'LM Head (tied)' : 'LM Head', 2250, TRUNK, {
+    vocab_size: shape.vocabSize,
+    hidden_size: width,
+    tie_weights: shape.tieWordEmbeddings,
+    ...(shape.tieWordEmbeddings ? {} : { in_features: width, out_features: shape.vocabSize }),
+  });
+  link(decFinalNorm, head);
+
+  const output = add('output', 'Output', 2450, TRUNK, {});
+  link(head, output);
+
+  return { nodes, connections };
+}
+
+function buildEncoderDecoderHardwareConfig(shape: EncoderDecoderShape): Partial<HardwareConfig> {
+  return {
+    hiddenDim: shape.hiddenSize,
+    numLayers: shape.numLayers,
+    numDecoderLayers: shape.numDecoderLayers,
+    numHeads: shape.numHeads,
+    headDim: shape.headDim,
+    ffnDim: shape.ffnDim,
+    vocabSize: shape.vocabSize,
+    seqLen: shape.maxPositions,
+    maxSeqLen: shape.maxPositions,
+    activation: shape.activation,
+  };
+}
+
+function parseEncoderDecoderConfig(
+  config: RawConfig,
+  fallbackName: string,
+): HuggingFaceImportResult {
+  const empty = { nodes: [], connections: [], notes: [], assumptions: [] };
+
+  const read = readEncoderDecoderShape(config, fallbackName);
+  if ('error' in read) {
+    return { ...empty, modelName: fallbackName, error: read.error };
+  }
+  const { shape, assumptions } = read;
+  const { nodes, connections } = buildEncoderDecoderGraph(shape);
+
+  const notes: string[] = [
+    `Encoder-decoder: ${shape.numLayers} encoder layers, ${shape.numDecoderLayers} decoder layers, ` +
+      `width ${shape.hiddenSize}, ${shape.numHeads} heads, vocabulary ${shape.vocabSize.toLocaleString('en-US')}.`,
+    `${shape.norm === 'rmsnorm' ? 'RMSNorm' : 'LayerNorm'}, ` +
+      `${shape.ffn === 'ffn_gated' ? 'gated' : 'standard'} feed-forward.`,
+  ];
+  if (shape.tieWordEmbeddings) {
+    notes.push('Input and output embeddings are tied.');
+  }
+
+  return {
+    nodes,
+    connections,
+    modelName: shape.name,
+    family: 'transformer' as ArchitectureFamily,
+    hardwareConfig: buildEncoderDecoderHardwareConfig(shape),
+    notes,
+    assumptions,
+  };
+}
+
 // ── Building the graph ──────────────────────────────────────────────────────
 
 /**
@@ -1423,6 +1819,14 @@ export function parseHuggingFaceConfig(
   if (CNN_MODEL_TYPES.has(topModelType)) {
     return parseCnnConfig(top, fallbackName);
   }
+  // Checked ahead of the generic transformer path below: `is_encoder_decoder`
+  // is a real HuggingFace config field (T5, BART and every other seq2seq
+  // family sets it), so an architecture not in `ENCODER_DECODER_MODEL_TYPES`
+  // by name is still caught here rather than silently imported as a
+  // decoder-only model.
+  if (ENCODER_DECODER_MODEL_TYPES.has(topModelType) || bool(top, 'is_encoder_decoder') === true) {
+    return parseEncoderDecoderConfig(top, fallbackName);
+  }
 
   const { config, nested, incomplete } = textConfig(top);
 
@@ -1432,6 +1836,12 @@ export function parseHuggingFaceConfig(
   }
   if (CNN_MODEL_TYPES.has(nestedModelType)) {
     return parseCnnConfig(config, fallbackName);
+  }
+  if (
+    ENCODER_DECODER_MODEL_TYPES.has(nestedModelType) ||
+    bool(config, 'is_encoder_decoder') === true
+  ) {
+    return parseEncoderDecoderConfig(config, fallbackName);
   }
 
   const unsupportedFamily = KNOWN_UNSUPPORTED_MODEL_TYPES[nestedModelType || topModelType];

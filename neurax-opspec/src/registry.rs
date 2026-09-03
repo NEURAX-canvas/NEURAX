@@ -680,8 +680,17 @@ fn conv_flops_fn(layer: &Layer, batch: usize, _seq: usize, ctx: &FlopsContext) -
         )
     };
 
-    let out_h = (in_h + 2 * padding - kernel_h + stride) / stride;
-    let out_w = (in_w + 2 * padding - kernel_w + stride) / stride;
+    // Saturating, not `-`: a kernel larger than its padded input (a real
+    // config this crate has actually been handed — a mis-wired skip
+    // connection feeding a conv a far smaller spatial input than the
+    // template's own author intended) used to panic the whole analysis
+    // with an unsigned subtract-overflow instead of reporting a degenerate
+    // shape. `stride.max(1)` guards the same class of crash for a stated
+    // `stride: 0`, which is nonsensical but not this function's job to
+    // reject — that belongs to validation, not to a FLOPs formula.
+    let stride_safe = stride.max(1);
+    let out_h = (in_h + 2 * padding + stride_safe).saturating_sub(kernel_h) / stride_safe;
+    let out_w = (in_w + 2 * padding + stride_safe).saturating_sub(kernel_w) / stride_safe;
 
     // `neurax-ir`'s own (now-orphaned) `operator::formulas::conv2d_flops`
     // computes this exact six-term product from pre-computed out_h/out_w —
@@ -1653,8 +1662,9 @@ mod tests {
         let spec = op_spec(LayerType::Conv).unwrap();
         let flops = (spec.flops_fn)(&layer, 1, 196, &ctx);
 
-        let out_h = (32 + 2 * 0 - 5 + 1) / 1;
-        let out_w = (32 + 2 * 0 - 7 + 1) / 1;
+        let padding = 0; // Conv defaults to no padding when params.padding is unset, stride defaults to 1
+        let out_h = 32 + 2 * padding - 5 + 1;
+        let out_w = 32 + 2 * padding - 7 + 1;
         let expected = 2.0 * 1.0 * out_h as f64 * out_w as f64 * 8.0 * 5.0 * 7.0 * (3.0 / 1.0);
         assert_eq!(flops, expected);
     }
