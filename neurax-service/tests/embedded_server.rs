@@ -91,6 +91,35 @@ fn an_unknown_route_is_a_404_not_a_hang() {
     assert_eq!(status, 404);
 }
 
+/// The agent-memory routes (see `agent_memory.rs`) are mounted at the root,
+/// not `/agent/*` — this test only proves they're wired into the real route
+/// table and fail the way `supabase_rest_client()` is documented to when no
+/// Supabase project is configured (this test environment has none), not
+/// that Supabase itself works — that needs real credentials this repo does
+/// not carry.
+#[test]
+fn agent_memory_routes_are_mounted_and_fail_cleanly_with_no_supabase_configured() {
+    let base = spawn_api();
+
+    let (status, body) = get(&format!("{base}/memory/core?project_id=test-project"));
+    assert_eq!(status, 500, "body was: {body}");
+    assert!(body.contains("SUPABASE_URL"), "body was: {body}");
+
+    let (status, body) = get(&format!(
+        "{base}/memory/archival?project_id=test-project&query=mamba"
+    ));
+    assert_eq!(status, 500, "body was: {body}");
+
+    let (status, body) = get(&format!("{base}/memory/conversation?project_id=test-project"));
+    assert_eq!(status, 500, "body was: {body}");
+
+    // Not 404 — proves these are real, mounted routes, not typos.
+    for path in ["/memory/core", "/memory/archival", "/memory/conversation"] {
+        let (status, body) = get(&format!("{base}{path}?project_id=x"));
+        assert_ne!(status, 404, "{path} should be a mounted route — body was: {body}");
+    }
+}
+
 /// The desktop webview presents a `tauri://` origin, which is not in any
 /// configured list; CORS has to admit it by scheme or every request the
 /// desktop app makes is blocked by the webview.

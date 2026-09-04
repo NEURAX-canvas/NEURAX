@@ -17,6 +17,7 @@ use subtle::ConstantTimeEq;
 use tokio::sync::broadcast;
 use tracing_subscriber::EnvFilter;
 
+pub mod agent_memory;
 pub mod persistence;
 mod presets;
 
@@ -821,7 +822,7 @@ fn stripe_price_env_key(plan: &str, interval: &str) -> Option<&'static str> {
     }
 }
 
-async fn supabase_rest_client() -> Result<(String, String, reqwest::Client), HttpResponse> {
+pub(crate) async fn supabase_rest_client() -> Result<(String, String, reqwest::Client), HttpResponse> {
     let supabase_url = env::var("SUPABASE_URL").map_err(|_| {
         HttpResponse::build(StatusCode::INTERNAL_SERVER_ERROR).body("SUPABASE_URL not set")
     })?;
@@ -4524,6 +4525,125 @@ async fn agent_projects(req: HttpRequest, state: web::Data<AppState>) -> impl Re
     }))
 }
 
+// ─── Agent memory (neurax-agent's step-by-step loop) ───────────────────
+//
+// Root-level, not `/agent/*` — see `agent_memory`'s own module doc for why
+// (no service-level credential exists for `neurax-agent` to present a
+// scope-gated route with). Scoped by `project_id` alone, not `user_id` —
+// same doc, same reason: no real per-user identity reaches this service
+// from `neurax-agent` today.
+
+#[derive(Debug, Deserialize)]
+struct ProjectIdQuery {
+    project_id: String,
+}
+
+async fn memory_core_get(query: web::Query<ProjectIdQuery>) -> impl Responder {
+    match agent_memory::get_core_preferences(&query.project_id).await {
+        Ok(preferences) => HttpResponse::Ok().json(serde_json::json!({ "preferences": preferences })),
+        Err(resp) => resp,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AddPreferenceRequest {
+    project_id: String,
+    preference: String,
+}
+
+async fn memory_core_add_preference(body: web::Json<AddPreferenceRequest>) -> impl Responder {
+    match agent_memory::add_core_preference(&body.project_id, &body.preference).await {
+        Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+        Err(resp) => resp,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ArchivalSearchQuery {
+    project_id: String,
+    #[serde(default)]
+    query: String,
+    #[serde(default = "default_archival_limit")]
+    limit: u32,
+}
+
+fn default_archival_limit() -> u32 {
+    5
+}
+
+async fn memory_archival_search(query: web::Query<ArchivalSearchQuery>) -> impl Responder {
+    match agent_memory::search_archival(&query.project_id, &query.query, query.limit).await {
+        Ok(entries) => HttpResponse::Ok().json(serde_json::json!({ "entries": entries })),
+        Err(resp) => resp,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AddArchivalRequest {
+    project_id: String,
+    content: String,
+}
+
+async fn memory_archival_add(body: web::Json<AddArchivalRequest>) -> impl Responder {
+    match agent_memory::add_archival_entry(&body.project_id, &body.content).await {
+        Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+        Err(resp) => resp,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct ConversationQuery {
+    project_id: String,
+    #[serde(default = "default_conversation_limit")]
+    limit: u32,
+}
+
+fn default_conversation_limit() -> u32 {
+    8
+}
+
+#[derive(Debug, serde::Serialize)]
+struct ConversationTurnOut {
+    role: String,
+    content: String,
+}
+
+async fn memory_conversation_get(query: web::Query<ConversationQuery>) -> impl Responder {
+    match agent_memory::get_recent_conversation(&query.project_id, query.limit).await {
+        Ok(turns) => HttpResponse::Ok().json(serde_json::json!({
+            "turns": turns
+                .into_iter()
+                .map(|(role, content)| ConversationTurnOut { role, content })
+                .collect::<Vec<_>>(),
+        })),
+        Err(resp) => resp,
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct AppendConversationRequest {
+    project_id: String,
+    turns: Vec<ConversationTurnIn>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ConversationTurnIn {
+    role: String,
+    content: String,
+}
+
+async fn memory_conversation_append(body: web::Json<AppendConversationRequest>) -> impl Responder {
+    let turns: Vec<(String, String)> = body
+        .turns
+        .iter()
+        .map(|t| (t.role.clone(), t.content.clone()))
+        .collect();
+    match agent_memory::append_conversation_turns(&body.project_id, &turns).await {
+        Ok(()) => HttpResponse::Ok().json(serde_json::json!({ "ok": true })),
+        Err(resp) => resp,
+    }
+}
+
 /// Helper to get compliance data
 /// Checked against primary and legal-tracker sources on this date. Regulatory
 /// text moves: three of these six entries changed materially in the twelve
@@ -4880,7 +5000,13 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         .route("/agent/carbon", web::post().to(agent_carbon))
         .route("/agent/compliance", web::get().to(agent_compliance))
         .route("/agent/results", web::get().to(agent_results))
-        .route("/agent/projects", web::get().to(agent_projects));
+        .route("/agent/projects", web::get().to(agent_projects))
+        .route("/memory/core", web::get().to(memory_core_get))
+        .route("/memory/core/preference", web::post().to(memory_core_add_preference))
+        .route("/memory/archival", web::get().to(memory_archival_search))
+        .route("/memory/archival", web::post().to(memory_archival_add))
+        .route("/memory/conversation", web::get().to(memory_conversation_get))
+        .route("/memory/conversation", web::post().to(memory_conversation_append));
 }
 
 /// Build the configured `HttpServer` and return it alongside the addresses it

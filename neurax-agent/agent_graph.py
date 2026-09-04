@@ -51,6 +51,7 @@ from typing_extensions import TypedDict
 from langgraph.graph import END, START, StateGraph
 
 import analysis_tools
+import memory_tools
 import web_search_tools
 from langchain_runner import ALL_TOOL_DESCRIPTIONS, run_controller_step
 from snapshot_ops import _apply_tool_to_snapshot
@@ -101,6 +102,7 @@ MODE_TOOL_GRANTS: dict[str, frozenset[str]] = {
         "set_node_params", "set_hw_config", "initialize_hyperparams", "set_hyperparams",
         "navigate_to", "run_analysis", "select_node",
         "analyze_architecture", "check_budget",
+        "remember_preference",
     }),
     "optimization": frozenset({
         # Deliberately no add_node/delete_node/connect/disconnect/set_family:
@@ -109,6 +111,7 @@ MODE_TOOL_GRANTS: dict[str, frozenset[str]] = {
         "navigate_to", "run_analysis", "select_node",
         "analyze_architecture", "check_budget", "find_optimal_hyperparameters",
         "estimate_training_cost", "get_hardware_list",
+        "remember_preference",
     }),
     "research": frozenset({
         "set_family", "add_node", "connect", "disconnect", "delete_node",
@@ -116,16 +119,19 @@ MODE_TOOL_GRANTS: dict[str, frozenset[str]] = {
         "navigate_to", "run_analysis", "select_node",
         "analyze_architecture", "check_budget", "find_optimal_hyperparameters",
         "get_presets", "get_preset", "get_hardware_list", "estimate_training_cost",
+        "remember_preference", "search_past_designs",
         # "web_search" is NOT listed here — it's added dynamically in
         # run_agent_graph, only when the caller actually supplied a Tavily
         # key. Listing it unconditionally would grant a tool this run can't
         # actually use, the opposite of what MODE_TOOL_GRANTS is for.
     }),
     "explanation": frozenset({
-        # Read-only: no canvas-mutation tool anywhere in this set.
+        # Read-only: no canvas-mutation tool anywhere in this set —
+        # search_past_designs included (it only reads), remember_preference
+        # deliberately not (it writes).
         "navigate_to", "select_node",
         "analyze_architecture", "get_compliance_config", "get_presets", "get_preset",
-        "explain_layer_type",
+        "explain_layer_type", "search_past_designs",
     }),
 }
 
@@ -152,6 +158,16 @@ class AgentGraphState(TypedDict):
     #: `credentials` on every `web_search` call, the same reasoning as
     #: `allowed_tools` below (one resolution, agreed on for the whole run).
     search_api_key: Optional[str]
+    #: Real, only ever a value when the canvas is a saved project — see
+    #: `memory_tools.py`'s and `agent_memory.rs`'s module docs for why
+    #: memory is scoped by this alone, not a user id. `None` means "this
+    #: canvas has no project to remember against," a normal state, not
+    #: an error — every memory tool degrades gracefully when it's `None`.
+    project_id: Optional[str]
+    #: Fetched once at the very start of the run (`run_agent_graph`) via
+    #: `memory_tools.get_core_preferences` — always shown in the prompt,
+    #: never re-fetched mid-run.
+    core_memory: list[str]
     mode: str
     #: Resolved once in `run_agent_graph` from `MODE_TOOL_GRANTS[mode]` —
     #: kept on the state (not re-looked-up per step) so `plan_step` and
@@ -194,6 +210,7 @@ async def plan_step(state: AgentGraphState) -> dict[str, Any]:
         credentials=state.get("credentials"),
         allowed_tools=state["allowed_tools"],
         mode=state["mode"],
+        core_memory=state.get("core_memory"),
     )
     assistant_text = str(result.get("assistant") or "")
     tool = result.get("tool") or {"name": "done", "args": {}}
@@ -242,6 +259,25 @@ async def _execute_analysis_tool(state: AgentGraphState, tool: dict[str, Any], h
         "history": history,
         "step_count": state["step_count"] + 1,
         "tool_call_counts": counts,
+        "events": [_event("tool", tool), _event("tool_result", {"tool": name, "content": result_text})],
+    }
+
+
+def _tool_result_update(
+    state: AgentGraphState, tool: dict[str, Any], history: list[dict[str, Any]], result_text: str
+) -> dict[str, Any]:
+    """The shared shape every non-canvas, non-`_execute_analysis_tool` tool
+    branch returns: the result read back into history for the next
+    `plan_step` call, and both the `tool` and `tool_result` SSE events —
+    factored out once this pattern reached its fourth near-identical copy
+    (`explain_layer_type`, `web_search`, `remember_preference`,
+    `search_past_designs`)."""
+    name = str(tool.get("name") or "")
+    history.append({"role": "system", "content": f"Result of {name}: {result_text}"})
+    return {
+        "snapshot": state["snapshot"],
+        "history": history,
+        "step_count": state["step_count"] + 1,
         "events": [_event("tool", tool), _event("tool_result", {"tool": name, "content": result_text})],
     }
 
@@ -302,23 +338,36 @@ async def execute_tool(state: AgentGraphState) -> dict[str, Any]:
             query=str(args.get("query") or ""),
             api_key=state.get("search_api_key") or "",
         )
-        history.append({"role": "system", "content": f"Result of {name}: {result_text}"})
-        return {
-            "snapshot": state["snapshot"],
-            "history": history,
-            "step_count": state["step_count"] + 1,
-            "events": [_event("tool", tool), _event("tool_result", {"tool": name, "content": result_text})],
-        }
+        return _tool_result_update(state, tool, history, result_text)
 
     if name == "explain_layer_type":
         result_text = _explain_layer_type(state["snapshot"], str(args.get("layer_type") or ""))
-        history.append({"role": "system", "content": f"Result of {name}: {result_text}"})
-        return {
-            "snapshot": state["snapshot"],
-            "history": history,
-            "step_count": state["step_count"] + 1,
-            "events": [_event("tool", tool), _event("tool_result", {"tool": name, "content": result_text})],
-        }
+        return _tool_result_update(state, tool, history, result_text)
+
+    if name == "remember_preference":
+        preference = str(args.get("preference") or "").strip()
+        project_id = state.get("project_id")
+        if not project_id:
+            result_text = "Nothing to remember against — this canvas isn't saved as a project yet."
+        elif not preference:
+            result_text = "No preference text given."
+        else:
+            saved = await memory_tools.add_core_preference(project_id, preference)
+            result_text = f"Remembered: {preference}" if saved else "Could not save this — memory is unavailable right now."
+        return _tool_result_update(state, tool, history, result_text)
+
+    if name == "search_past_designs":
+        project_id = state.get("project_id")
+        if not project_id:
+            result_text = "This canvas isn't saved as a project yet — no history to search."
+        else:
+            entries = await memory_tools.search_past_designs(project_id, str(args.get("query") or ""))
+            result_text = (
+                "Past designs found:\n" + "\n".join(f"- {e}" for e in entries)
+                if entries
+                else "No past designs found for this project."
+            )
+        return _tool_result_update(state, tool, history, result_text)
 
     if name in analysis_tools.ANALYSIS_TOOL_NAMES:
         return await _execute_analysis_tool(state, tool, history)
@@ -426,6 +475,7 @@ async def run_agent_graph(
     credentials: Optional[dict[str, Any]] = None,
     conversation_history: Optional[list[dict[str, Any]]] = None,
     mode: str = DEFAULT_MODE,
+    project_id: Optional[str] = None,
     max_steps: int = DEFAULT_MAX_STEPS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     max_expensive_calls: int = DEFAULT_MAX_EXPENSIVE_CALLS,
@@ -440,6 +490,13 @@ async def run_agent_graph(
     mode falls back to `DEFAULT_MODE` rather than raising — a stale or
     future frontend build naming a mode this process doesn't know yet
     degrades to the safe default instead of failing the run outright.
+
+    `project_id`, when given, is what makes this run's memory real: core
+    preferences and recent conversation are recalled before the loop starts,
+    and this run's own turns (plus, on a successful creation/research run, a
+    short archival summary) are saved after it ends — all best-effort, all
+    inside the same `finally` that guarantees `done` fires, so a memory
+    failure never blocks the run's own result from reaching the caller.
     """
     allowed_tools = MODE_TOOL_GRANTS.get(mode, MODE_TOOL_GRANTS[DEFAULT_MODE])
 
@@ -454,16 +511,25 @@ async def run_agent_graph(
         allowed_tools = allowed_tools | {"web_search"}
 
     logger.info(
-        f"🚀 GRAPH RUN STARTED | run_id={run_id} | mode={mode} | max_steps={max_steps} | timeout={timeout_seconds}s"
+        f"🚀 GRAPH RUN STARTED | run_id={run_id} | mode={mode} | project_id={project_id} | "
+        f"max_steps={max_steps} | timeout={timeout_seconds}s"
     )
+
+    core_memory: list[str] = []
+    recalled_turns: list[dict[str, str]] = []
+    if project_id:
+        core_memory = await memory_tools.get_core_preferences(project_id)
+        recalled_turns = await memory_tools.get_recent_conversation(project_id)
 
     initial_state: AgentGraphState = {
         "run_id": run_id,
         "user_message": user_message,
         "snapshot": snapshot,
-        "history": list(conversation_history or []),
+        "history": recalled_turns + list(conversation_history or []),
         "credentials": credentials,
         "search_api_key": search_api_key,
+        "project_id": project_id,
+        "core_memory": core_memory,
         "mode": mode,
         "allowed_tools": allowed_tools,
         "step_count": 0,
@@ -477,12 +543,33 @@ async def run_agent_graph(
         "events": [],
     }
 
+    # Tracked as the stream goes by so the `finally` block below can persist
+    # recall/archival memory from whatever the run actually produced —
+    # `history`/`stop_reason` are "last write wins" fields (no reducer), so
+    # the most recent update carrying either is the final value; `assistant`
+    # events are narration text, collected here rather than re-derived from
+    # `history` (which only ever holds mechanical "Called X(...)" entries,
+    # never the model's own words — see `plan_step`/`execute_tool`).
+    final_history: list[dict[str, Any]] = list(initial_state["history"])
+    final_stop_reason = "unknown"
+    assistant_narrations: list[str] = []
+
     try:
         graph = get_graph()
         async for step in graph.astream(initial_state):
             for _node_name, update in step.items():
-                for evt in (update or {}).get("events") or []:
+                if not update:
+                    continue
+                if "history" in update:
+                    final_history = update["history"]
+                if update.get("stop_reason"):
+                    final_stop_reason = update["stop_reason"]
+                for evt in update.get("events") or []:
                     await q.put(evt)
+                    if evt.get("event") == "assistant":
+                        content = (evt.get("data") or {}).get("content")
+                        if content:
+                            assistant_narrations.append(str(content))
     except asyncio.CancelledError:
         # A caller disconnecting (`config._stop_run`) cancels this task —
         # that is normal shutdown, not a failure to report as one.
@@ -492,4 +579,19 @@ async def run_agent_graph(
         await q.put(_event("error", {"message": str(e)}))
         await q.put(_event("assistant", {"content": f"I hit an error while working on this: {e}"}))
     finally:
+        if project_id:
+            try:
+                turns = [{"role": "user", "content": user_message}]
+                if assistant_narrations:
+                    turns.append({"role": "assistant", "content": assistant_narrations[-1]})
+                await memory_tools.append_conversation_turns(project_id, turns)
+
+                if final_stop_reason == "done" and mode in ("creation", "research") and assistant_narrations:
+                    summary = " ".join(assistant_narrations)[:2000]
+                    await memory_tools.add_archival_entry(project_id, summary)
+            except Exception as mem_err:
+                # Memory is a real feature, not a dependency the run's own
+                # result relies on — a failure here must never keep `done`
+                # from reaching the caller below.
+                logger.warning(f"post-run memory persistence failed: {mem_err}")
         await q.put(_event("done", {}))

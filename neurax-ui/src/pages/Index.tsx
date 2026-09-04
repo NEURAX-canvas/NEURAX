@@ -2624,6 +2624,7 @@ params: params as Record<string, ParameterValue>,
                 creditsLimit={creditInfo?.limit}
                 getSnapshot={agentGetSnapshot}
                 onToolEvent={handleAgentToolEvent}
+                projectId={currentProjectId}
                 className="h-full"
               />
             </Suspense>
@@ -2645,6 +2646,7 @@ params: params as Record<string, ParameterValue>,
                     creditsLimit={creditInfo?.limit}
                     getSnapshot={agentGetSnapshot}
                     onToolEvent={handleAgentToolEvent}
+                    projectId={currentProjectId}
                     className="h-full"
                   />
                 </Suspense>

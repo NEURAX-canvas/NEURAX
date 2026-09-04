@@ -34,7 +34,22 @@ from config import (
     _RATE_LIMIT_MAX_RUNS,
     _RATE_LIMIT_WINDOW_SECONDS,
 )
-from agent_graph import DEFAULT_MODE, run_agent_graph
+from agent_graph import (
+    DEFAULT_MAX_EXPENSIVE_CALLS,
+    DEFAULT_MAX_STEPS,
+    DEFAULT_MODE,
+    DEFAULT_TIMEOUT_SECONDS,
+    run_agent_graph,
+)
+
+#: Read once at import time, matching how every other env-configurable
+#: constant in this file/config.py already works. AGENT_MAX_STEPS existed
+#: in deployments' .env files already (this repo's own local one included)
+#: with nothing reading it — this run loop's step ceiling was always the
+#: hardcoded default regardless of what an operator set it to.
+_AGENT_MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", str(DEFAULT_MAX_STEPS)))
+_AGENT_TIMEOUT_SECONDS = float(os.environ.get("AGENT_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+_AGENT_MAX_EXPENSIVE_CALLS = int(os.environ.get("AGENT_MAX_EXPENSIVE_CALLS", str(DEFAULT_MAX_EXPENSIVE_CALLS)))
 
 
 async def _sweep_loop() -> None:
@@ -123,6 +138,13 @@ class RunRequest(BaseModel):
     conversation_history: list[ConversationTurn] = Field(default_factory=list)
     #: Omit to fall back to the server's own credentials, where configured.
     credentials: LlmCredentials | None = None
+    #: The id of the currently-open, saved project (`Index.tsx`'s
+    #: `currentProjectId`) — the key every memory tier is scoped by (see
+    #: `agent_graph.py`'s `AgentGraphState.project_id` and `agent_memory.rs`'s
+    #: module doc for why this and not a user id). `None` for a canvas that
+    #: was never saved as a project — memory is then simply unavailable for
+    #: this run, not an error.
+    project_id: str | None = None
 
 
 @app.get("/health")
@@ -163,6 +185,10 @@ async def create_run(req: RunRequest, request: Request) -> dict[str, Any]:
             credentials=req.credentials.model_dump() if req.credentials else None,
             conversation_history=history,
             mode=req.mode,
+            project_id=req.project_id,
+            max_steps=_AGENT_MAX_STEPS,
+            timeout_seconds=_AGENT_TIMEOUT_SECONDS,
+            max_expensive_calls=_AGENT_MAX_EXPENSIVE_CALLS,
         )
     )
     _runs[run_id] = RunEntry(task=task, queue=q, created_at=time.monotonic())

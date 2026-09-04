@@ -456,11 +456,32 @@ WEB_SEARCH_TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
 }
 
+#: Project-scoped memory (see `memory_tools.py` and `neurax-service`'s
+#: `agent_memory.rs`) — only bound when a run actually carries a
+#: `project_id`; a canvas that was never saved as a project has nothing to
+#: key memory rows by, the same graceful-degradation shape `web_search`
+#: already uses for a missing key.
+MEMORY_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "remember_preference": (
+        "Save one short, durable preference about this project (args: "
+        "preference) — e.g. \"prefers GQA over MHA\", \"target: on-device, "
+        "keep under 50MB\". Use when the user states something that should "
+        "silently steer every future design for this project, not just this "
+        "one step."
+    ),
+    "search_past_designs": (
+        "Search this project's own design history (args: query) for a past "
+        "architecture and why it was built that way. Use before re-deriving "
+        "a decision this project may have already made."
+    ),
+}
+
 ALL_TOOL_DESCRIPTIONS: dict[str, str] = {
     **CANVAS_TOOL_DESCRIPTIONS,
     **ANALYSIS_TOOL_DESCRIPTIONS,
     **EXPLANATION_TOOL_DESCRIPTIONS,
     **WEB_SEARCH_TOOL_DESCRIPTIONS,
+    **MEMORY_TOOL_DESCRIPTIONS,
     "done": "Finalize — call this once the current request is fully satisfied.",
 }
 
@@ -491,6 +512,7 @@ def _build_tools_section(allowed_tools: Optional[frozenset[str]]) -> str:
         ),
         _section("Explanation tools", EXPLANATION_TOOL_DESCRIPTIONS),
         _section("Web search — external, unverified information", WEB_SEARCH_TOOL_DESCRIPTIONS),
+        _section("Memory — this project's own history", MEMORY_TOOL_DESCRIPTIONS),
     ]
     parts = [p for p in parts if p]
     parts.append(f"- `done`: {ALL_TOOL_DESCRIPTIONS['done']}")
@@ -505,6 +527,7 @@ async def run_controller_step(
     credentials: Optional[dict[str, Any]] = None,
     allowed_tools: Optional[frozenset[str]] = None,
     mode: str = "creation",
+    core_memory: Optional[list[str]] = None,
     max_retries: int = 2,
 ) -> dict[str, Any]:
     """Run a single controller step using LangChain structured output.
@@ -524,6 +547,11 @@ async def run_controller_step(
     discouraged in prose — `agent_graph.py::execute_tool` enforces the same
     set again at execution time, so a hallucinated call to an ungranted
     tool is rejected even if this filtering somehow missed it.
+
+    `core_memory`, when non-empty, is this project's own remembered
+    preferences (`memory_tools.get_core_preferences`) — always shown, not
+    behind a tool call, the same "small, always-in-context" tier the
+    project's plan document describes.
     """
     from langchain_core.prompts import ChatPromptTemplate
 
@@ -678,6 +706,14 @@ async def run_controller_step(
 
     tools_section = _build_tools_section(allowed_tools)
 
+    if core_memory:
+        core_memory_section = (
+            "## Remembered for this project\n"
+            + "\n".join(f"- {p}" for p in core_memory)
+        )
+    else:
+        core_memory_section = ""
+
     _MODE_HINTS: dict[str, str] = {
         "creation": "build and edit the canvas to satisfy the request",
         "optimization": "tune the existing design's parameters and hardware — never add, remove, or rewire blocks",
@@ -762,6 +798,7 @@ You are building a computational graph that transforms input data to output pred
 
 {construction_principles}
 
+{core_memory_section}
 ## Current Context
 - Mode: {mode_name} — {mode_hint}
 - Family: {current_family}
@@ -825,6 +862,7 @@ What is the next step to progress toward a complete architecture?"""
                 tools_section=tools_section,
                 construction_principles=construction_principles,
                 catalogue_section=catalogue_section,
+                core_memory_section=core_memory_section,
                 mode_name=mode,
                 mode_hint=mode_hint,
                 families_list=", ".join(str(f) for f in allowed_families[:15]),

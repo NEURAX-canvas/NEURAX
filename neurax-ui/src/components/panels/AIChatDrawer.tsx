@@ -51,6 +51,11 @@ interface AIChatDrawerProps {
   agentBaseUrl?: string;
   getSnapshot?: () => AgentSnapshot;
   onToolEvent?: (tool: AgentToolEvent) => void;
+  //: The currently-open, saved project's id (`Index.tsx`'s
+  //: `currentProjectId`) — what agent_graph.py's memory is scoped by. `null`
+  //: for a canvas that was never saved as a project: the agent still works,
+  //: it just has nothing to remember against for this run.
+  projectId?: string | null;
   className?: string;
 }
 
@@ -59,8 +64,39 @@ type RunBlock =
   | { kind: 'assistant'; content: string; ts: number }
   | { kind: 'result'; content: string; ts: number }
   | { kind: 'tool'; content: string; ts: number }
+  // A real answer from a compiler/search/memory tool call (agent_graph.py's
+  // `tool_result` SSE event) — distinct from 'tool' (which only ever carries
+  // a canvas-mutation call's name/args, never a result) and from 'assistant'
+  // (the model's own narration, not a fetched fact).
+  | { kind: 'tool_result'; toolName: string; content: string; ts: number }
   | { kind: 'error'; content: string; ts: number }
   | { kind: 'done'; content: string; ts: number };
+
+//: Human-readable label per backend tool name, for a `tool_result` block's
+//: title — matches `langchain_runner.ALL_TOOL_DESCRIPTIONS`'s vocabulary
+//: (analysis_tools.py's 11 names, plus web_search/explain_layer_type/
+//: remember_preference/search_past_designs), a generic fallback for
+//: anything not named here rather than a blank title.
+function toolResultTitle(toolName: string): string {
+  const titles: Record<string, string> = {
+    analyze_architecture: 'Analysis',
+    check_budget: 'Budget check',
+    find_optimal_hyperparameters: 'Hyperparameter search',
+    get_hardware_list: 'Hardware',
+    get_presets: 'Presets',
+    get_preset: 'Preset',
+    estimate_training_cost: 'Cost estimate',
+    get_compliance_config: 'Compliance',
+    get_credits: 'Credits',
+    get_user_info: 'Account',
+    health_check: 'Backend status',
+    web_search: 'Web search',
+    explain_layer_type: 'Explanation',
+    remember_preference: 'Memory',
+    search_past_designs: 'Past designs',
+  };
+  return titles[toolName] ?? 'Result';
+}
 
 export default function AIChatDrawer({
   open,
@@ -71,6 +107,7 @@ export default function AIChatDrawer({
   agentBaseUrl,
   getSnapshot,
   onToolEvent,
+  projectId,
   className,
 }: AIChatDrawerProps) {
   const { config: apiKeyConfig } = useApiKey();
@@ -112,6 +149,9 @@ export default function AIChatDrawer({
     if (b.kind === 'result') return { title: 'Result', detail: b.content, tone: 'success' };
     if (b.kind === 'error') return { title: 'Error', detail: b.content, tone: 'error' };
     if (b.kind === 'done') return { title: 'Done', detail: b.content, tone: 'success' };
+    if (b.kind === 'tool_result') {
+      return { title: toolResultTitle(b.toolName), detail: b.content, tone: 'success' };
+    }
     // tool
     const raw = String(b.content ?? '');
     const [name, rest] = raw.split(' ', 2);
@@ -310,6 +350,7 @@ export default function AIChatDrawer({
           user_message: content,
           snapshot: snapshotForSend,
           mode,
+          ...(projectId ? { project_id: projectId } : {}),
           ...(apiKeyConfig?.key && {
             credentials: {
               api_key: apiKeyConfig.key,
@@ -374,6 +415,19 @@ export default function AIChatDrawer({
           setToolCount((c) => c + 1);
           const s = summarizeTool(payload);
           if (s) setToolSummaries((prev) => [...prev, s]);
+        } catch {
+          // ignore
+        }
+      });
+
+      es.addEventListener('tool_result', (evt) => {
+        try {
+          const payload = JSON.parse((evt as MessageEvent).data) as { tool?: string; content?: string };
+          const content = String(payload?.content ?? '');
+          const toolName = String(payload?.tool ?? '');
+          if (content) {
+            setRunBlocks((prev) => [...prev, { kind: 'tool_result', toolName, content, ts: Date.now() }]);
+          }
         } catch {
           // ignore
         }
