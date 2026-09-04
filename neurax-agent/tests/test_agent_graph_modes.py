@@ -89,7 +89,10 @@ def test_the_tools_section_only_lists_granted_tools():
 
 
 def test_no_restriction_lists_every_tool():
-    section = langchain_runner._build_tools_section(None)
+    # advance_plan_step is gated by has_plan, not by the allowed_tools
+    # restriction this test is otherwise about — a run with no roadmap has
+    # nothing to advance, regardless of how unrestricted its tool set is.
+    section = langchain_runner._build_tools_section(None, has_plan=True)
     for name in langchain_runner.ALL_TOOL_DESCRIPTIONS:
         assert f"`{name}`" in section, name
 

@@ -383,6 +383,67 @@ class _ControllerStep(BaseModel):
     tool: _ToolCall
 
 
+class _PlanStep(BaseModel):
+    id: str = Field(description="Short id, e.g. '1'")
+    text: str = Field(description="One short phrase (5-10 words) naming a concrete milestone")
+
+
+class _RunPlan(BaseModel):
+    items: list[_PlanStep] = Field(description="3-5 ordered high-level steps")
+
+
+async def plan_run_strategy(
+    *,
+    user_message: str,
+    mode: str,
+    snapshot: dict[str, Any],
+    credentials: Optional[dict[str, Any]] = None,
+    max_items: int = 5,
+) -> list[dict[str, str]]:
+    """One cheap upfront call producing a short, mode-aware roadmap for this
+    run — the `plan` SSE event `AIChatDrawer.tsx` already has a checklist
+    component built to render, dark since `agent_graph.py` became the real
+    entry point (Phase 3) without anything calling this. `[]` on any
+    failure (a bad response, no credentials, a down provider) — an upfront
+    roadmap is a real feature, not something the run's own result should
+    ever depend on; `agent_graph.py`'s only caller treats an empty plan as
+    "no roadmap to enforce", not an error.
+
+    Deliberately not `arch_planner.plan_strategy` (the old pipeline's
+    equivalent): that prompt is hard-coded to a "design a backbone from
+    scratch" framing (`bridge business needs to technical implementation`)
+    that fits creation mode and nothing else — asking it to plan an
+    optimization or a read-only explanation would return build-shaped
+    steps for a run that isn't building anything. This one is mode-aware
+    from its own `_MODE_HINTS`-equivalent framing below.
+    """
+    mode_action = {
+        "creation": "building",
+        "optimization": "optimizing the existing",
+        "research": "researching and building",
+        "explanation": "explaining the existing",
+    }.get(mode, "working on")
+    family = str(snapshot.get("family") or "unspecified")
+
+    prompt = f"""You are Neurax, an expert neural architecture assistant, about to start {mode_action} an architecture (family: {family}).
+
+Give a short, ordered roadmap (3-5 steps) for accomplishing this request. Each step names one concrete milestone in 5-10 words — not implementation detail, not a single tool call.
+
+User request: {user_message}
+
+Return JSON: a list of items, each with "id" (a short string, e.g. "1") and "text" (the step)."""
+
+    try:
+        llm = make_chat_model(credentials=credentials, temperature=0.0)
+        structured = llm.with_structured_output(_RunPlan)
+        result: _RunPlan = await structured.ainvoke(prompt)
+        items = [{"id": str(it.id), "text": str(it.text)} for it in result.items if str(it.text).strip()]
+        return items[:max_items]
+    except Exception as e:
+        logger.warning(f"upfront plan generation failed, continuing without one: {e}")
+        return []
+
+
 #: One line per tool, keyed by name — the single source both the prompt
 #: builder below and `agent_graph.MODE_TOOL_GRANTS` draw from, so a mode's
 #: allowed set and what the model is actually *told* about can never name a
@@ -476,22 +537,36 @@ MEMORY_TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
 }
 
+#: Control-flow, not a capability — available in every mode, the same way
+#: `done` is, never gated by `MODE_TOOL_GRANTS`. Only meaningful (and only
+#: ever shown) when this run actually has a plan — see `_build_tools_section`.
+PLAN_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "advance_plan_step": (
+        "Mark your current roadmap step complete and move to the next one "
+        "(args: none). Call this when — and only when — the step shown as "
+        "in-progress below is actually done. `done` is refused while any "
+        "roadmap step is not yet marked complete."
+    ),
+}
+
 ALL_TOOL_DESCRIPTIONS: dict[str, str] = {
     **CANVAS_TOOL_DESCRIPTIONS,
     **ANALYSIS_TOOL_DESCRIPTIONS,
     **EXPLANATION_TOOL_DESCRIPTIONS,
     **WEB_SEARCH_TOOL_DESCRIPTIONS,
     **MEMORY_TOOL_DESCRIPTIONS,
+    **PLAN_TOOL_DESCRIPTIONS,
     "done": (
         "Finalize — call this once the current request is fully satisfied. "
         "If you've added blocks, they must already form one connected chain "
-        "from input to output with no orphan block left dangling — done "
-        "is refused, with the specific problem named, if they don't."
+        "from input to output with no orphan block left dangling, and every "
+        "roadmap step below must already be marked complete — done is "
+        "refused, with the specific problem named, if either isn't true."
     ),
 }
 
 
-def _build_tools_section(allowed_tools: Optional[frozenset[str]]) -> str:
+def _build_tools_section(allowed_tools: Optional[frozenset[str]], has_plan: bool = False) -> str:
     """The '## Available Tools' block, filtered to what this call may
     actually use. Token efficiency, not just prompt hygiene: a mode with a
     dozen tools granted doesn't pay to have all ~25 described every single
@@ -499,7 +574,15 @@ def _build_tools_section(allowed_tools: Optional[frozenset[str]]) -> str:
     cost to exactly this (showing a model capabilities it cannot use), and
     a shorter, on-topic tool list also means fewer irrelevant paths for the
     model to consider. `None` means "no restriction" (every tool, the
-    original, pre-mode behavior) — every existing caller gets this."""
+    original, pre-mode behavior) — every existing caller gets this.
+
+    `has_plan` gates `advance_plan_step` on its own, separate from
+    `allowed_tools` — control-flow for a roadmap this run actually has,
+    the same way `done` is never subject to the mode grant either; a run
+    with no plan (upfront generation failed or returned nothing) has
+    nothing to advance, so the tool isn't mentioned at all rather than
+    describing a no-op.
+    """
     names = set(ALL_TOOL_DESCRIPTIONS) if allowed_tools is None else (allowed_tools | {"done"})
 
     def _section(title: str, table: dict[str, str]) -> str:
@@ -519,6 +602,8 @@ def _build_tools_section(allowed_tools: Optional[frozenset[str]]) -> str:
         _section("Web search — external, unverified information", WEB_SEARCH_TOOL_DESCRIPTIONS),
         _section("Memory — this project's own history", MEMORY_TOOL_DESCRIPTIONS),
     ]
+    if has_plan:
+        parts.append(_section("Roadmap control", PLAN_TOOL_DESCRIPTIONS))
     parts = [p for p in parts if p]
     parts.append(f"- `done`: {ALL_TOOL_DESCRIPTIONS['done']}")
     return "## Available Tools\n\n" + "\n\n".join(parts)
@@ -533,6 +618,7 @@ async def run_controller_step(
     allowed_tools: Optional[frozenset[str]] = None,
     mode: str = "creation",
     core_memory: Optional[list[str]] = None,
+    plan_items: Optional[list[dict[str, str]]] = None,
     max_retries: int = 2,
 ) -> dict[str, Any]:
     """Run a single controller step using LangChain structured output.
@@ -557,6 +643,14 @@ async def run_controller_step(
     preferences (`memory_tools.get_core_preferences`) — always shown, not
     behind a tool call, the same "small, always-in-context" tier the
     project's plan document describes.
+
+    `plan_items`, when non-empty, is this run's own upfront roadmap
+    (`plan_run_strategy`) with each item's live status — shown every step
+    so the model works through it in order, and `advance_plan_step` is
+    listed as available (`_build_tools_section`'s `has_plan`) only when
+    this is non-empty. The plan is binding, not decorative: this function
+    only shows it; `agent_graph.py::execute_tool` is what actually refuses
+    `done` while a step remains incomplete.
     """
     from langchain_core.prompts import ChatPromptTemplate
 
@@ -709,7 +803,7 @@ async def run_controller_step(
 
     input_status_desc = "\n".join(input_status_lines) if input_status_lines else "  (no processing nodes yet)"
 
-    tools_section = _build_tools_section(allowed_tools)
+    tools_section = _build_tools_section(allowed_tools, has_plan=bool(plan_items))
 
     if core_memory:
         core_memory_section = (
@@ -718,6 +812,18 @@ async def run_controller_step(
         )
     else:
         core_memory_section = ""
+
+    if plan_items:
+        plan_lines = [f"  {i + 1}. [{item.get('status', 'pending')}] {item.get('text', '')}" for i, item in enumerate(plan_items)]
+        plan_section = (
+            "## Your Roadmap For This Request (strict — work through it in order)\n"
+            + "\n".join(plan_lines)
+            + "\n\nCall `advance_plan_step` the moment the step marked "
+              "[in_progress] is actually done — before starting the next one. "
+              "`done` is refused while any step here is not [done]."
+        )
+    else:
+        plan_section = ""
 
     _MODE_HINTS: dict[str, str] = {
         "creation": "build and edit the canvas to satisfy the request",
@@ -803,6 +909,7 @@ You are building a computational graph that transforms input data to output pred
 
 {construction_principles}
 
+{plan_section}
 {core_memory_section}
 ## Current Context
 - Mode: {mode_name} — {mode_hint}
@@ -868,6 +975,7 @@ What is the next step to progress toward a complete architecture?"""
                 construction_principles=construction_principles,
                 catalogue_section=catalogue_section,
                 core_memory_section=core_memory_section,
+                plan_section=plan_section,
                 mode_name=mode,
                 mode_hint=mode_hint,
                 families_list=", ".join(str(f) for f in allowed_families[:15]),

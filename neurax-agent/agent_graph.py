@@ -54,7 +54,7 @@ import analysis_tools
 import memory_tools
 import web_search_tools
 from catalogue_store import get_family_constraints
-from langchain_runner import ALL_TOOL_DESCRIPTIONS, run_controller_step
+from langchain_runner import ALL_TOOL_DESCRIPTIONS, plan_run_strategy, run_controller_step
 from snapshot_ops import _apply_tool_to_snapshot
 from topology_validator import validate_arch_spec
 
@@ -170,6 +170,14 @@ class AgentGraphState(TypedDict):
     #: `memory_tools.get_core_preferences` — always shown in the prompt,
     #: never re-fetched mid-run.
     core_memory: list[str]
+    #: This run's own upfront roadmap (`langchain_runner.plan_run_strategy`),
+    #: each item `{id, text, status}` with status one of "pending"/
+    #: "in_progress"/"done" — `[]` when generation failed or returned
+    #: nothing, in which case the plan is simply not enforced (see
+    #: `execute_tool`'s `done` handling) rather than the run failing over a
+    #: best-effort roadmap. Mutated only by `execute_tool`'s
+    #: `advance_plan_step` handling; `plan_step` only ever reads it.
+    plan_items: list[dict[str, str]]
     mode: str
     #: Resolved once in `run_agent_graph` from `MODE_TOOL_GRANTS[mode]` —
     #: kept on the state (not re-looked-up per step) so `plan_step` and
@@ -213,6 +221,7 @@ async def plan_step(state: AgentGraphState) -> dict[str, Any]:
         allowed_tools=state["allowed_tools"],
         mode=state["mode"],
         core_memory=state.get("core_memory"),
+        plan_items=state.get("plan_items"),
     )
     assistant_text = str(result.get("assistant") or "")
     tool = result.get("tool") or {"name": "done", "args": {}}
@@ -349,7 +358,7 @@ async def execute_tool(state: AgentGraphState) -> dict[str, Any]:
     history = list(state["history"])
     history.append({"role": "assistant", "content": f"Called {name}({_describe_args(args)})"})
 
-    if name != "done" and name not in state["allowed_tools"]:
+    if name not in ("done", "advance_plan_step") and name not in state["allowed_tools"]:
         message = f"'{name}' is not available in '{state['mode']}' mode."
         history.append({"role": "system", "content": message})
         logger.warning(f"⛔ STEP {state['step_count'] + 1}: '{name}' refused — outside '{state['mode']}' mode's grant")
@@ -360,7 +369,54 @@ async def execute_tool(state: AgentGraphState) -> dict[str, Any]:
             "events": [_event("tool_result", {"tool": name, "content": message})],
         }
 
+    if name == "advance_plan_step":
+        plan_items = [dict(item) for item in (state.get("plan_items") or [])]
+        current = next((i for i, item in enumerate(plan_items) if item.get("status") == "in_progress"), None)
+        if current is None:
+            message = "There is no in-progress roadmap step to advance."
+        else:
+            plan_items[current]["status"] = "done"
+            nxt = current + 1
+            if nxt < len(plan_items):
+                plan_items[nxt]["status"] = "in_progress"
+                message = f"Marked step {current + 1} done. Now on step {nxt + 1}: {plan_items[nxt]['text']}"
+            else:
+                message = f"Marked step {current + 1} done. All roadmap steps are now complete."
+        history.append({"role": "system", "content": f"Result of {name}: {message}"})
+        return {
+            "snapshot": state["snapshot"],
+            "history": history,
+            "plan_items": plan_items,
+            "step_count": state["step_count"] + 1,
+            "events": [
+                _event("tool", tool),
+                _event("tool_result", {"tool": name, "content": message}),
+                _event("plan", {"items": plan_items}),
+            ],
+        }
+
     if name == "done":
+        plan_items = state.get("plan_items") or []
+        incomplete = [item for item in plan_items if item.get("status") != "done"]
+        if incomplete:
+            message = (
+                "Cannot finish yet — your own roadmap isn't complete:\n"
+                + "\n".join(f"- [{item.get('status', 'pending')}] {item.get('text', '')}" for item in incomplete)
+                + "\nCall `advance_plan_step` as each one finishes."
+            )
+            history.append({"role": "system", "content": message})
+            logger.warning(
+                f"⛔ STEP {state['step_count'] + 1}: 'done' refused — "
+                f"{len(incomplete)} roadmap step(s) not yet complete"
+            )
+            return {
+                "snapshot": state["snapshot"],
+                "history": history,
+                "step_count": state["step_count"] + 1,
+                "last_tool": {"name": "done_refused_plan_incomplete", "args": {}},
+                "events": [_event("tool_result", {"tool": "done", "content": message})],
+            }
+
         # Only worth checking when there's something to be incoherent about
         # (an empty canvas trivially has no orphan blocks or broken chains)
         # and only in a mode that can actually shape structure — asking
@@ -392,10 +448,10 @@ async def execute_tool(state: AgentGraphState) -> dict[str, Any]:
                     "last_tool": {"name": "done_refused_incoherent", "args": {}},
                     "events": [_event("tool_result", {"tool": "done", "content": message})],
                 }
-        # Coherent (or nothing was built, or this mode can't have broken it)
-        # — fall through to the ordinary canvas path below, a no-op for
-        # "done", leaving `last_tool` as "done" so should_continue routes to
-        # `finish` normally.
+        # Roadmap complete, coherent (or nothing was built, or this mode
+        # can't have broken it) — fall through to the ordinary canvas path
+        # below, a no-op for "done", leaving `last_tool` as "done" so
+        # should_continue routes to `finish` normally.
 
     if name == "web_search":
         # Reaching here at all already proves a key was present: 'web_search'
@@ -613,6 +669,21 @@ async def run_agent_graph(
             core_memory = await memory_tools.get_core_preferences(project_id)
             recalled_turns = await memory_tools.get_recent_conversation(project_id)
 
+        # One cheap upfront call producing this run's roadmap — `[]` on any
+        # failure (langchain_runner.plan_run_strategy's own contract), in
+        # which case nothing below enforces or displays one; a best-effort
+        # feature never blocks the run it's meant to help. When it does
+        # succeed, this is binding, not decorative: execute_tool's `done`
+        # handling refuses to finish while any item here isn't "done".
+        plan_items = await plan_run_strategy(
+            user_message=user_message, mode=mode, snapshot=snapshot, credentials=credentials,
+        )
+        if plan_items:
+            plan_items[0]["status"] = "in_progress"
+            for item in plan_items[1:]:
+                item["status"] = "pending"
+            await q.put(_event("plan", {"items": plan_items}))
+
         initial_state: AgentGraphState = {
             "run_id": run_id,
             "user_message": user_message,
@@ -622,6 +693,7 @@ async def run_agent_graph(
             "search_api_key": search_api_key,
             "project_id": project_id,
             "core_memory": core_memory,
+            "plan_items": plan_items,
             "mode": mode,
             "allowed_tools": allowed_tools,
             "step_count": 0,
