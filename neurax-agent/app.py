@@ -50,6 +50,13 @@ _AGENT_MAX_STEPS = int(os.environ.get("AGENT_MAX_STEPS", str(DEFAULT_MAX_STEPS))
 _AGENT_TIMEOUT_SECONDS = float(os.environ.get("AGENT_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
 _AGENT_MAX_EXPENSIVE_CALLS = int(os.environ.get("AGENT_MAX_EXPENSIVE_CALLS", str(DEFAULT_MAX_EXPENSIVE_CALLS)))
 
+#: POST /ask's own, much smaller ceiling — a quick "what does this block
+#: do" question is a handful of read-only tool calls at most, not a
+#: multi-minute build; a caller shouldn't have to know AGENT_MAX_STEPS
+#: exists or override it just to get sensible behavior from this endpoint.
+_ASK_MAX_STEPS = int(os.environ.get("ASK_MAX_STEPS", "6"))
+_ASK_TIMEOUT_SECONDS = float(os.environ.get("ASK_TIMEOUT_SECONDS", "60"))
+
 
 async def _sweep_loop() -> None:
     while True:
@@ -221,6 +228,86 @@ async def run_events(run_id: str) -> StreamingResponse:
             _stop_run(run_id)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+class AskRequest(BaseModel):
+    """A quick question, no build. Phase 6's "always-available explain/
+    consult path" — not a second orchestration mechanism (the plan
+    document's own words for why this shouldn't exist as one): this is
+    `run_agent_graph` in explanation mode with a small step ceiling and no
+    upfront plan call, run to completion synchronously instead of streamed
+    over `/runs/{id}/events` — the SSE/polling shape a chat drawer needs is
+    overhead a one-off "what does this do" caller (an inline tooltip, a
+    quick lookup) shouldn't have to implement just to get an answer.
+    """
+
+    question: str
+    snapshot: CanvasSnapshot
+    project_id: str | None = None
+    credentials: LlmCredentials | None = None
+
+
+class AskResponse(BaseModel):
+    answer: str
+    #: Any compiler/search/memory results the answer drew on, in the order
+    #: they happened — the same data a `/runs` caller would see as
+    #: `tool_result` SSE events, collected here instead since there is no
+    #: stream to emit them onto.
+    tool_results: list[dict[str, str]] = Field(default_factory=list)
+
+
+@app.post("/ask")
+async def ask(req: AskRequest, request: Request) -> AskResponse:
+    client_id = (
+        (req.credentials.api_key if req.credentials else None)
+        or (request.client.host if request.client else "unknown")
+    )
+    if not check_rate_limit(client_id):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit exceeded: at most {_RATE_LIMIT_MAX_RUNS} runs per "
+                f"{_RATE_LIMIT_WINDOW_SECONDS:.0f}s. Wait and try again."
+            ),
+        )
+
+    q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+    await run_agent_graph(
+        str(uuid.uuid4()),
+        q,
+        req.question,
+        req.snapshot.model_dump(),
+        credentials=req.credentials.model_dump() if req.credentials else None,
+        mode="explanation",
+        project_id=req.project_id,
+        max_steps=_ASK_MAX_STEPS,
+        timeout_seconds=_ASK_TIMEOUT_SECONDS,
+        enable_plan=False,
+    )
+
+    # run_agent_graph has already returned (awaited directly, not a
+    # background task the way /runs's is) — every event it will ever
+    # produce is already sitting in the queue, so draining it here is
+    # synchronous and complete, not a race with the run still writing to it.
+    answer_parts: list[str] = []
+    tool_results: list[dict[str, str]] = []
+    while not q.empty():
+        item = q.get_nowait()
+        event = item.get("event")
+        data = item.get("data") or {}
+        if event == "assistant":
+            content = str(data.get("content") or "")
+            if content:
+                answer_parts.append(content)
+        elif event == "tool_result":
+            tool_results.append({"tool": str(data.get("tool") or ""), "content": str(data.get("content") or "")})
+        elif event == "error":
+            answer_parts.append(f"Error: {data.get('message', 'unknown error')}")
+
+    return AskResponse(
+        answer="\n\n".join(answer_parts) or "I don't have an answer for that.",
+        tool_results=tool_results,
+    )
 
 
 if __name__ == "__main__":

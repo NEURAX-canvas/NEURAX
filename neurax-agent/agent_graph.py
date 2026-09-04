@@ -606,6 +606,7 @@ async def run_agent_graph(
     max_steps: int = DEFAULT_MAX_STEPS,
     timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
     max_expensive_calls: int = DEFAULT_MAX_EXPENSIVE_CALLS,
+    enable_plan: bool = True,
 ) -> None:
     """Drive the graph for one run, forwarding every event it produces to
     the same SSE queue `agent_runner.py::_run_agent` already writes to.
@@ -624,6 +625,13 @@ async def run_agent_graph(
     short archival summary) are saved after it ends — all best-effort, all
     inside the same `finally` that guarantees `done` fires, so a memory
     failure never blocks the run's own result from reaching the caller.
+
+    `enable_plan=False` skips the upfront roadmap call entirely — for a
+    quick one-off question (`app.py`'s `POST /ask`, see below) a "3-5 step
+    plan" for what is itself one step is pure overhead, not a feature; the
+    resulting state is identical to a normal run whose plan generation
+    happened to return nothing (already the tested, safe degrade path),
+    just without spending the call.
     """
     allowed_tools = MODE_TOOL_GRANTS.get(mode, MODE_TOOL_GRANTS[DEFAULT_MODE])
 
@@ -675,9 +683,11 @@ async def run_agent_graph(
         # feature never blocks the run it's meant to help. When it does
         # succeed, this is binding, not decorative: execute_tool's `done`
         # handling refuses to finish while any item here isn't "done".
-        plan_items = await plan_run_strategy(
-            user_message=user_message, mode=mode, snapshot=snapshot, credentials=credentials,
-        )
+        plan_items: list[dict[str, str]] = []
+        if enable_plan:
+            plan_items = await plan_run_strategy(
+                user_message=user_message, mode=mode, snapshot=snapshot, credentials=credentials,
+            )
         if plan_items:
             plan_items[0]["status"] = "in_progress"
             for item in plan_items[1:]:
