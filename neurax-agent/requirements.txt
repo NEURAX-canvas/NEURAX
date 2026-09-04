@@ -10,20 +10,37 @@ python-dotenv>=1.0.0
 # — no separate package needed for those four (langchain-mistralai exists but
 # is deliberately not used here). Google/Gemini's native API is not
 # OpenAI-shaped, so it needs its own client.
-langchain-core==0.2.43
-langchain-openai==0.1.22
-langchain-anthropic==0.1.23
-langchain-google-genai==1.0.10
-google-generativeai>=0.7.0,<0.8.0
+#
+# Upgraded 2026-09-04 from the 0.2.x/0.1.x line to clear GitHub's
+# Dependabot alerts against langchain-core (1 critical — serialization
+# injection enabling secret extraction in dumps/loads — plus 3 high:
+# path traversal in legacy load_prompt, template injection via attribute
+# access, unsafe deserialization via overly broad load() allowlists). No
+# patched 0.2.x/0.3.x release exists for all four at once; 1.6.1 is the
+# first version past every one of them. Verified, not assumed: every real
+# construction path this file's make_chat_model() uses (openai, anthropic
+# incl. a custom base_url, google, and the four openai-compatible clones)
+# was exercised against the real new client classes — not a mock — and
+# with_structured_output() confirmed still callable, before this pin
+# changed. `google-generativeai` (the old Gemini SDK, pinned below this
+# comment until now) is gone: langchain-google-genai>=4 depends on
+# `google-genai` (Google's newer SDK) instead, pulled in transitively —
+# nothing in this codebase ever imported the old one directly.
+langchain-core==1.6.1
+langchain-openai==1.6.0
+langchain-anthropic==1.7.1
+langchain-google-genai==4.4.0
 
-# Step-by-step agentic loop (agent_graph.py). Pinned to the 0.2.x line
-# deliberately: langgraph>=0.3 (and its default langgraph-checkpoint/
-# langgraph-sdk resolved by an unpinned `pip install langgraph`, which pulls
-# langgraph 1.x) drags langchain-core up to a 1.x release, which breaks every
-# provider package above (all pinned against langchain-core<0.3.0). Verified
-# this exact trio installs clean against langchain-core==0.2.43 with no
-# resolver conflicts — bumping langgraph means re-verifying the whole
-# provider stack together, not just this one line.
-langgraph==0.2.60
-langgraph-checkpoint==2.0.24
-langgraph-sdk==0.1.51
+# Step-by-step agentic loop (agent_graph.py). Upgraded in lockstep with the
+# langchain-core bump above — langgraph 1.x requires langchain-core>=1.4.7,
+# incompatible with the 0.2.x line this used to pin against. langgraph-
+# checkpoint==4.2.0 also clears its own Dependabot high alert (RCE in
+# JsonPlusSerializer's "json" mode, fixed at 3.0.0; 4.2.0 is langgraph
+# 1.2.11's actual floor, well past that patch). langgraph-prebuilt is a new
+# transitive requirement of langgraph 1.x that didn't exist in the 0.2.x
+# line. Verified this exact set — full workspace test suite green, no
+# resolver conflicts — before committing to it.
+langgraph==1.2.11
+langgraph-checkpoint==4.2.0
+langgraph-sdk==0.4.4
+langgraph-prebuilt==1.1.0
