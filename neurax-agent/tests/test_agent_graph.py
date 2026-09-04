@@ -122,7 +122,16 @@ def test_a_rejected_tool_calls_reason_is_fed_back_into_the_next_steps_history(mo
 
     monkeypatch.setattr(agent_graph, "run_controller_step", fake)
 
-    snapshot = {"nodes": [{"id": "a", "type": "conv2d"}], "connections": []}
+    # Coherent on purpose (not the "a" node the self-loop attempt names —
+    # the rejection fires on from_id == to_id regardless of whether that id
+    # is a real node, see snapshot_ops.py's connect handling): an incoherent
+    # starting snapshot would make the second step's `done` call get
+    # refused by the coherence check `execute_tool` now runs, which is a
+    # second, unrelated rejection this test isn't about.
+    snapshot = {
+        "nodes": [{"id": "input", "type": "input"}, {"id": "output", "type": "output"}],
+        "connections": [{"from": "input", "to": "output"}],
+    }
     _run("connect a to a", snapshot)
 
     assert len(seen_histories) == 2, "the second plan_step call must see the first step's outcome"

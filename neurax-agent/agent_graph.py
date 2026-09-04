@@ -53,8 +53,10 @@ from langgraph.graph import END, START, StateGraph
 import analysis_tools
 import memory_tools
 import web_search_tools
+from catalogue_store import get_family_constraints
 from langchain_runner import ALL_TOOL_DESCRIPTIONS, run_controller_step
 from snapshot_ops import _apply_tool_to_snapshot
+from topology_validator import validate_arch_spec
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -282,6 +284,34 @@ def _tool_result_update(
     }
 
 
+def _validate_canvas_coherence(snapshot: dict[str, Any]) -> list[str]:
+    """Real structural validation — cycles, a real input→output path, no
+    node left off that path, fan-in limits — the same
+    `topology_validator.validate_arch_spec` the old 3-phase pipeline
+    already gated materialization on, reused rather than re-derived.
+    `agent_runner.py`'s pipeline plans a whole spec and validates it before
+    a single tool call is ever emitted; this loop emits tool calls
+    one at a time with no such gate at all until this function's one call
+    site (`execute_tool`'s `done` handling) — without it, the model could
+    call `done` on a design with a block connected to nothing, and nothing
+    would say so.
+
+    Falls back to a permissive catalogue — every type actually on the
+    canvas, trivially "allowed" — when the snapshot carries none: real
+    usage always sends one (`Index.tsx::agentGetSnapshot`), but this
+    function's job is connectivity, not re-litigating whether a block type
+    the canvas already accepted is a real one. Without this fallback, a
+    caller that omitted `catalogue` (a stripped-down test snapshot, or any
+    future caller of this loop that doesn't happen to send one) would get
+    every node flagged as "not in the catalogue" — a false coherence
+    failure on a design that may be perfectly wired.
+    """
+    spec = analysis_tools.snapshot_to_spec(snapshot)
+    catalogue = snapshot.get("catalogue") or [{"type": t} for t in {n.type for n in spec.nodes}]
+    constraints = get_family_constraints(str(spec.family)) if spec.family else {}
+    return validate_arch_spec(spec, catalogue, constraints).errors
+
+
 def _explain_layer_type(snapshot: dict[str, Any], layer_type: str) -> str:
     """Look up NEURAX's own description of a block type, sourced from the
     snapshot's own `catalogue[].description` — which
@@ -329,6 +359,43 @@ async def execute_tool(state: AgentGraphState) -> dict[str, Any]:
             "step_count": state["step_count"] + 1,
             "events": [_event("tool_result", {"tool": name, "content": message})],
         }
+
+    if name == "done":
+        # Only worth checking when there's something to be incoherent about
+        # (an empty canvas trivially has no orphan blocks or broken chains)
+        # and only in a mode that can actually shape structure — asking
+        # optimization/explanation to justify a graph they were never
+        # allowed to touch would block `done` on a pre-existing issue this
+        # run had no way to cause or fix.
+        nodes_present = bool(state["snapshot"].get("nodes"))
+        can_add_nodes = "add_node" in state["allowed_tools"]
+        if can_add_nodes and nodes_present:
+            validation_errors = _validate_canvas_coherence(state["snapshot"])
+            if validation_errors:
+                message = (
+                    "Cannot finish yet — the design isn't coherent:\n"
+                    + "\n".join(f"- {e}" for e in validation_errors)
+                )
+                history.append({"role": "system", "content": message})
+                logger.warning(
+                    f"⛔ STEP {state['step_count'] + 1}: 'done' refused — "
+                    f"{len(validation_errors)} coherence error(s)"
+                )
+                return {
+                    "snapshot": state["snapshot"],
+                    "history": history,
+                    "step_count": state["step_count"] + 1,
+                    # Anything other than "done" — should_continue must route
+                    # back to plan_step, not finish, so the model can actually
+                    # act on the errors above instead of the run silently
+                    # ending on an incoherent design.
+                    "last_tool": {"name": "done_refused_incoherent", "args": {}},
+                    "events": [_event("tool_result", {"tool": "done", "content": message})],
+                }
+        # Coherent (or nothing was built, or this mode can't have broken it)
+        # — fall through to the ordinary canvas path below, a no-op for
+        # "done", leaving `last_tool` as "done" so should_continue routes to
+        # `finish` normally.
 
     if name == "web_search":
         # Reaching here at all already proves a key was present: 'web_search'

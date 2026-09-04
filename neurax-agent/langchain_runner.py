@@ -482,7 +482,12 @@ ALL_TOOL_DESCRIPTIONS: dict[str, str] = {
     **EXPLANATION_TOOL_DESCRIPTIONS,
     **WEB_SEARCH_TOOL_DESCRIPTIONS,
     **MEMORY_TOOL_DESCRIPTIONS,
-    "done": "Finalize — call this once the current request is fully satisfied.",
+    "done": (
+        "Finalize — call this once the current request is fully satisfied. "
+        "If you've added blocks, they must already form one connected chain "
+        "from input to output with no orphan block left dangling — done "
+        "is refused, with the specific problem named, if they don't."
+    ),
 }
 
 

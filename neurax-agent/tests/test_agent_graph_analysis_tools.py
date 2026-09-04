@@ -53,7 +53,13 @@ def test_an_analysis_tool_call_does_not_mutate_the_snapshot(monkeypatch):
 
     monkeypatch.setattr(analysis_tools, "dispatch", fake_dispatch)
 
-    snapshot = {"nodes": [{"id": "a", "type": "conv2d"}], "connections": []}
+    # Coherent on purpose — an incoherent snapshot would make the trailing
+    # `done` call get refused by the coherence check `execute_tool` now
+    # runs before accepting one, which isn't what this test is about.
+    snapshot = {
+        "nodes": [{"id": "input", "type": "input"}, {"id": "output", "type": "output"}],
+        "connections": [{"from": "input", "to": "output"}],
+    }
     events = _run_graph(
         monkeypatch, snapshot,
         [{"name": "analyze_architecture", "args": {}}],
