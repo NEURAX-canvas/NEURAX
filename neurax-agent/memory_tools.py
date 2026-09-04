@@ -73,7 +73,16 @@ async def add_core_preference(project_id: str, preference: str) -> bool:
         return False
 
 
-async def search_past_designs(project_id: str, query: str, limit: int = 5) -> list[str]:
+async def search_past_designs(project_id: str, query: str, limit: int = 5) -> Optional[list[str]]:
+    """`None` on failure, a list (possibly empty) on a real answer — unlike
+    this module's other "get" functions, this one's result is narrated
+    straight back to the model as a tool result
+    (`agent_graph.py::execute_tool`), so collapsing "the service is down"
+    and "this project genuinely has no past designs" into the same `[]`
+    would tell the model a false fact instead of an honest "couldn't
+    check". The other tiers stay silent background context, where that
+    distinction doesn't reach anyone — this one doesn't get to.
+    """
     if not project_id:
         return []
     try:
@@ -86,7 +95,7 @@ async def search_past_designs(project_id: str, query: str, limit: int = 5) -> li
             return list(r.json().get("entries") or [])
     except Exception as e:
         logger.warning(f"could not search archival memory for project {project_id}: {e}")
-        return []
+        return None
 
 
 async def add_archival_entry(project_id: str, content: str) -> bool:

@@ -120,9 +120,20 @@ def test_search_past_designs_sends_the_query_and_limit(monkeypatch):
     assert client.sent_params == {"project_id": "proj-1", "query": "mamba", "limit": 3}
 
 
-def test_search_past_designs_degrades_to_empty_on_error(monkeypatch):
+def test_search_past_designs_returns_none_on_failure_not_an_empty_list(monkeypatch):
+    # None (failure) and [] (genuinely no matches) are different facts —
+    # agent_graph.py narrates them as different messages to the model, so
+    # this function must not collapse the two the way the other "get"
+    # functions in this module are allowed to.
     _patch(monkeypatch, raise_connect_error=True)
-    assert asyncio.run(memory_tools.search_past_designs("proj-1", "x")) == []
+    assert asyncio.run(memory_tools.search_past_designs("proj-1", "x")) is None
+
+
+def test_search_past_designs_with_genuinely_no_matches_returns_an_empty_list(monkeypatch):
+    _patch(monkeypatch, payload={"entries": []})
+    result = asyncio.run(memory_tools.search_past_designs("proj-1", "x"))
+    assert result == []
+    assert result is not None
 
 
 def test_add_archival_entry_sends_content(monkeypatch):

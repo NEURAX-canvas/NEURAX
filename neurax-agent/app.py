@@ -9,7 +9,6 @@ Code is split into modules:
 - config.py: Shared state and utilities
 """
 import asyncio
-import json
 import os
 import time
 import uuid

@@ -362,11 +362,15 @@ async def execute_tool(state: AgentGraphState) -> dict[str, Any]:
             result_text = "This canvas isn't saved as a project yet — no history to search."
         else:
             entries = await memory_tools.search_past_designs(project_id, str(args.get("query") or ""))
-            result_text = (
-                "Past designs found:\n" + "\n".join(f"- {e}" for e in entries)
-                if entries
-                else "No past designs found for this project."
-            )
+            if entries is None:
+                # Distinct from "genuinely no matches" — memory_tools.py's
+                # own docstring on why this one function doesn't collapse
+                # failure into an empty list the way the others do.
+                result_text = "Could not search past designs — memory is unavailable right now."
+            elif entries:
+                result_text = "Past designs found:\n" + "\n".join(f"- {e}" for e in entries)
+            else:
+                result_text = "No past designs found for this project."
         return _tool_result_update(state, tool, history, result_text)
 
     if name in analysis_tools.ANALYSIS_TOOL_NAMES:
@@ -515,34 +519,17 @@ async def run_agent_graph(
         f"max_steps={max_steps} | timeout={timeout_seconds}s"
     )
 
+    # Everything from here on — recall, the graph run itself, and the
+    # persistence in `finally` below — lives inside one try/finally so
+    # `done` is guaranteed to reach the caller (below) no matter where a
+    # cancellation or exception lands, recall's own network calls included.
+    # An earlier version of this function fetched recall *before* this
+    # block: a client disconnecting while that fetch was in flight would
+    # have propagated `CancelledError` straight out of this function with
+    # `done` never queued at all — the exact invariant every test in this
+    # module checks for, just from an angle none of them were reaching.
     core_memory: list[str] = []
     recalled_turns: list[dict[str, str]] = []
-    if project_id:
-        core_memory = await memory_tools.get_core_preferences(project_id)
-        recalled_turns = await memory_tools.get_recent_conversation(project_id)
-
-    initial_state: AgentGraphState = {
-        "run_id": run_id,
-        "user_message": user_message,
-        "snapshot": snapshot,
-        "history": recalled_turns + list(conversation_history or []),
-        "credentials": credentials,
-        "search_api_key": search_api_key,
-        "project_id": project_id,
-        "core_memory": core_memory,
-        "mode": mode,
-        "allowed_tools": allowed_tools,
-        "step_count": 0,
-        "max_steps": max_steps,
-        "max_expensive_calls": max_expensive_calls,
-        "tool_call_counts": {},
-        "started_at": time.monotonic(),
-        "timeout_seconds": timeout_seconds,
-        "last_tool": None,
-        "stop_reason": None,
-        "events": [],
-    }
-
     # Tracked as the stream goes by so the `finally` block below can persist
     # recall/archival memory from whatever the run actually produced —
     # `history`/`stop_reason` are "last write wins" fields (no reducer), so
@@ -550,11 +537,38 @@ async def run_agent_graph(
     # events are narration text, collected here rather than re-derived from
     # `history` (which only ever holds mechanical "Called X(...)" entries,
     # never the model's own words — see `plan_step`/`execute_tool`).
-    final_history: list[dict[str, Any]] = list(initial_state["history"])
+    final_history: list[dict[str, Any]] = list(conversation_history or [])
     final_stop_reason = "unknown"
     assistant_narrations: list[str] = []
 
     try:
+        if project_id:
+            core_memory = await memory_tools.get_core_preferences(project_id)
+            recalled_turns = await memory_tools.get_recent_conversation(project_id)
+
+        initial_state: AgentGraphState = {
+            "run_id": run_id,
+            "user_message": user_message,
+            "snapshot": snapshot,
+            "history": recalled_turns + list(conversation_history or []),
+            "credentials": credentials,
+            "search_api_key": search_api_key,
+            "project_id": project_id,
+            "core_memory": core_memory,
+            "mode": mode,
+            "allowed_tools": allowed_tools,
+            "step_count": 0,
+            "max_steps": max_steps,
+            "max_expensive_calls": max_expensive_calls,
+            "tool_call_counts": {},
+            "started_at": time.monotonic(),
+            "timeout_seconds": timeout_seconds,
+            "last_tool": None,
+            "stop_reason": None,
+            "events": [],
+        }
+        final_history = list(initial_state["history"])
+
         graph = get_graph()
         async for step in graph.astream(initial_state):
             for _node_name, update in step.items():

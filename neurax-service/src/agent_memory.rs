@@ -172,6 +172,17 @@ pub async fn add_core_preference(project_id: &str, preference: &str) -> Result<(
     Ok(())
 }
 
+/// Strips characters that mean something to PostgREST's own filter syntax
+/// inside an `ilike.*...*` value: `*` is that filter's wildcard, `,`
+/// separates OR-combined conditions — a search term containing either would
+/// change what the filter matches rather than being searched for literally.
+/// Neither is a meaningful character to search *for* here, so both are
+/// dropped rather than escaped. A pure function so the sanitization itself
+/// is directly testable without a real Supabase call behind it.
+fn sanitize_ilike_query(query: &str) -> String {
+    query.trim().chars().filter(|c| *c != '*' && *c != ',').collect()
+}
+
 /// Keyword search over a project's archival memory — real matches, not a
 /// ranked/semantic result set (see the module doc for why). Empty `query`
 /// returns the most recent entries instead of matching nothing.
@@ -189,8 +200,9 @@ pub async fn search_archival(
         ("order".to_string(), "created_at.desc".to_string()),
         ("limit".to_string(), limit.to_string()),
     ];
-    if !query.trim().is_empty() {
-        params.push(("content".to_string(), format!("ilike.*{}*", query.trim())));
+    let sanitized_query = sanitize_ilike_query(query);
+    if !sanitized_query.is_empty() {
+        params.push(("content".to_string(), format!("ilike.*{sanitized_query}*")));
     }
 
     let res = client
@@ -307,4 +319,39 @@ pub async fn append_conversation_turns(
         return Err(HttpResponse::BadGateway().body("Supabase conversation-log write failed"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_ilike_query;
+
+    #[test]
+    fn an_ordinary_query_passes_through_unchanged() {
+        assert_eq!(sanitize_ilike_query("mamba architecture"), "mamba architecture");
+    }
+
+    #[test]
+    fn leading_and_trailing_whitespace_is_trimmed() {
+        assert_eq!(sanitize_ilike_query("  mamba  "), "mamba");
+    }
+
+    #[test]
+    fn a_wildcard_character_does_not_reach_the_filter_value() {
+        // '*' is ilike.*...*'s own wildcard syntax — a literal '*' in the
+        // search text must not be able to widen the match it produces.
+        assert_eq!(sanitize_ilike_query("resnet*"), "resnet");
+        assert_eq!(sanitize_ilike_query("*"), "");
+    }
+
+    #[test]
+    fn a_comma_does_not_reach_the_filter_value() {
+        // ',' separates OR-combined PostgREST conditions — a literal ','
+        // in the search text must not be able to add a second condition.
+        assert_eq!(sanitize_ilike_query("mamba,or=true"), "mambaor=true");
+    }
+
+    #[test]
+    fn an_all_special_character_query_sanitizes_to_empty() {
+        assert_eq!(sanitize_ilike_query("***,,,"), "");
+    }
 }

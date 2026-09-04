@@ -141,6 +141,30 @@ def test_search_past_designs_returns_real_entries(monkeypatch):
     assert any("Built an 8x7B MoE for cost reasons." in e["data"]["content"] for e in result_events)
 
 
+def test_search_past_designs_distinguishes_a_service_failure_from_genuinely_empty(monkeypatch):
+    # None (memory_tools failed) must produce a different message than []
+    # (the project genuinely has no past designs) — telling the model "no
+    # past designs" when the real cause was an unreachable service is a
+    # false fact, not a graceful degradation.
+    async def failing_search(project_id, query, limit=5):
+        return None
+
+    monkeypatch.setattr(memory_tools, "search_past_designs", failing_search)
+    monkeypatch.setattr(memory_tools, "get_core_preferences", _empty_list)
+    monkeypatch.setattr(memory_tools, "get_recent_conversation", _empty_list)
+    monkeypatch.setattr(memory_tools, "append_conversation_turns", _noop_bool)
+
+    events = _run_scripted(
+        monkeypatch, {"nodes": [], "connections": []},
+        [{"name": "search_past_designs", "args": {"query": "x"}}],
+        mode="research", project_id="proj-1",
+    )
+    result_events = [e for e in events if e["event"] == "tool_result"]
+    content = next(e["data"]["content"] for e in result_events if e["data"]["tool"] == "search_past_designs")
+    assert "unavailable" in content.lower()
+    assert "no past designs found" not in content.lower()
+
+
 def test_search_past_designs_without_a_project_id_says_so(monkeypatch):
     events = _run_scripted(
         monkeypatch, {"nodes": [], "connections": []},
@@ -229,6 +253,33 @@ def test_recalled_conversation_is_prepended_to_history(monkeypatch):
     asyncio.run(go())
     assert captured["history"][0] == {"role": "user", "content": "earlier turn"}
     assert captured["history"][1] == {"role": "user", "content": "this request"}
+
+
+def test_cancellation_during_memory_recall_still_emits_done(monkeypatch):
+    # Regression guard: an earlier version fetched recall *before* the
+    # try/finally that guarantees `done` fires — a cancellation landing
+    # during that fetch (a real network call) would have propagated
+    # CancelledError out of run_agent_graph with `done` never queued at
+    # all, breaking the one invariant every other test in this file
+    # depends on, just from an angle none of them exercised.
+    async def cancel_during_fetch(project_id):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(memory_tools, "get_core_preferences", cancel_during_fetch)
+
+    async def go():
+        q: asyncio.Queue = asyncio.Queue()
+        try:
+            await agent_graph.run_agent_graph(
+                "r", q, "hi", {"nodes": [], "connections": []}, mode="creation", project_id="proj-1"
+            )
+        except asyncio.CancelledError:
+            pass
+        return _drain(q)
+
+    events = asyncio.run(go())
+    assert events, "the queue must have received events even though the run was cancelled"
+    assert events[-1]["event"] == "done"
 
 
 def test_with_no_project_id_no_recall_call_is_made(monkeypatch):
