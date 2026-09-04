@@ -313,3 +313,41 @@ def test_optimize_hyperparameters_against_the_real_compiler():
     if result.best is not None:
         assert result.best["peak_vram_gb"] >= 0
         assert "batch_size" in result.best
+
+
+def test_candidates_are_only_sent_when_given(monkeypatch):
+    """Added for `analysis_tools.find_optimal_hyperparameters`, whose MCP
+    counterpart already let a caller narrow the sweep to specific values.
+    Every existing caller passes no `candidates` and must see the exact same
+    request body as before this parameter existed — checked here by
+    capturing the outgoing payload rather than hitting a real backend, since
+    what matters is what gets sent, not what a live sweep returns.
+    """
+    captured = {}
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"result": {"points": [], "best": None}}
+
+    class _FakeAsyncClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def post(self, url, json=None, **kw):
+            captured["json"] = json
+            return _FakeResponse()
+
+    import budget_check
+    monkeypatch.setattr(budget_check.httpx, "AsyncClient", lambda **_: _FakeAsyncClient())
+
+    asyncio.run(optimize_hyperparameters(TINY, HW))
+    assert "candidates" not in captured["json"]
+
+    asyncio.run(optimize_hyperparameters(TINY, HW, candidates={"batch_sizes": [1, 2, 4]}))
+    assert captured["json"]["candidates"] == {"batch_sizes": [1, 2, 4]}

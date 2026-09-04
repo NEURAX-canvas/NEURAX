@@ -1882,7 +1882,15 @@ params: params as Record<string, ParameterValue>,
     const allowedLayerTypes = Array.from(new Set(allLayers.map((l) => l.type)));
 
     // De-duplicate by type, preferring the currently selected architecture family's definition.
-    const catalogueByType = new Map<string, { type: string; name: string; category: any; defaultParams: any }>();
+    //
+    // `description` rides along here rather than as a second, separate
+    // payload: the agent's explanation mode (agent_graph.py's
+    // `explain_layer_type` tool) reads it straight off each catalogue
+    // entry, so there is exactly one place — this one — that ever holds
+    // NEURAX's per-block descriptions, instead of a second backend copy
+    // that would drift from this file the same way LAYER_TYPE_MAP once did
+    // between neurax-mcp and neurax-agent.
+    const catalogueByType = new Map<string, { type: string; name: string; category: any; defaultParams: any; description?: string }>();
     for (const l of allLayers) {
       if (!l?.type) continue;
       if (!catalogueByType.has(l.type)) {
@@ -1891,6 +1899,7 @@ params: params as Record<string, ParameterValue>,
           name: l.name,
           category: l.category,
           defaultParams: l.defaultParams,
+          description: l.description,
         });
       }
     }

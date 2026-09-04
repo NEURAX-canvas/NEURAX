@@ -14,18 +14,27 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from dotenv import load_dotenv
 load_dotenv()  # Load .env before other imports
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from config import RunEntry, _runs, _sse_event, _stop_run, _sweep_expired_runs
-from agent_runner import _run_agent
+from config import (
+    RunEntry,
+    _runs,
+    _sse_event,
+    _stop_run,
+    _sweep_expired_runs,
+    check_rate_limit,
+    _RATE_LIMIT_MAX_RUNS,
+    _RATE_LIMIT_WINDOW_SECONDS,
+)
+from agent_graph import DEFAULT_MODE, run_agent_graph
 
 
 async def _sweep_loop() -> None:
@@ -81,6 +90,12 @@ class LlmCredentials(BaseModel):
     provider: str | None = None
     model: str | None = None
     base_url: str | None = None
+    #: The caller's own Tavily key for research mode's `web_search` tool —
+    #: same BYOK philosophy as `api_key` above, confirmed with the user as
+    #: user-paid rather than server-side. Omit and research mode simply
+    #: doesn't get the tool bound (`agent_graph.run_agent_graph`), rather
+    #: than the run failing.
+    search_api_key: str | None = None
 
 
 class ConversationTurn(BaseModel):
@@ -94,7 +109,12 @@ class ConversationTurn(BaseModel):
 class RunRequest(BaseModel):
     user_message: str
     snapshot: CanvasSnapshot
-    creativity: float = Field(default=0.0, ge=0.0, le=1.0)
+    #: Replaces the old `creativity` float entirely (retired, not kept as a
+    #: secondary knob — each of these is a real, separate least-privilege
+    #: tool grant on the backend, see `agent_graph.MODE_TOOL_GRANTS`, not a
+    #: cosmetic label). Defaults to "creation" so an older frontend build
+    #: that never sends this field still gets sensible behavior.
+    mode: Literal["creation", "optimization", "research", "explanation"] = DEFAULT_MODE
     #: Prior turns in this conversation, oldest first. Without this, a
     #: follow-up like "actually make it use GQA instead" or "you said this
     #: might not fit — try int8" has nothing to resolve "actually"/"you
@@ -111,21 +131,38 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/runs")
-async def create_run(req: RunRequest) -> dict[str, Any]:
+async def create_run(req: RunRequest, request: Request) -> dict[str, Any]:
+    # The caller's own API key (when given) identifies them across IPs and
+    # proxies more reliably than the socket address; falling back to the
+    # socket address means an unauthenticated deployment still gets *some*
+    # limiting rather than none.
+    client_id = (
+        (req.credentials.api_key if req.credentials else None)
+        or (request.client.host if request.client else "unknown")
+    )
+    if not check_rate_limit(client_id):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Rate limit exceeded: at most {_RATE_LIMIT_MAX_RUNS} runs per "
+                f"{_RATE_LIMIT_WINDOW_SECONDS:.0f}s. Wait and try again."
+            ),
+        )
+
     run_id = str(uuid.uuid4())
     q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
     snapshot = req.snapshot.model_dump()
     history = [turn.model_dump() for turn in req.conversation_history]
     task = asyncio.create_task(
-        _run_agent(
+        run_agent_graph(
             run_id,
             q,
             req.user_message,
             snapshot,
-            creativity=req.creativity,
             credentials=req.credentials.model_dump() if req.credentials else None,
             conversation_history=history,
+            mode=req.mode,
         )
     )
     _runs[run_id] = RunEntry(task=task, queue=q, created_at=time.monotonic())

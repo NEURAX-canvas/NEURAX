@@ -336,6 +336,46 @@ def _apply_tool_to_snapshot(snapshot: dict[str, Any], tool: dict[str, Any]) -> d
         else:
             logger.warning(f"⚠️ DISCONNECT FAILED: missing from_id or to_id")
 
+    elif name == "delete_node":
+        # The frontend (Index.tsx::handleAgentToolEvent) has handled this tool
+        # since before this file existed — it was only ever missing here, in
+        # the server's own in-memory view of the snapshot. A step-by-step loop
+        # (agent_graph.py) reads this snapshot to build its *next* prompt, so
+        # without this case a deleted node kept appearing as still present —
+        # the model would see it, believe it live, and issue calls (connect,
+        # set_node_params) against an id the canvas had already removed.
+        node_id = str(args.get("node_id") or "")
+        if node_id and find_node(node_id):
+            nodes = [n for n in nodes if str(n.get("id")) != node_id]
+            # A node's own connections don't disappear on their own — leaving
+            # them would let a later `connect`/fan-in check reason about edges
+            # attached to a node that no longer exists.
+            before = len(conns)
+            conns = [
+                c for c in conns
+                if not (
+                    isinstance(c, dict)
+                    and (
+                        str(c.get("from") or c.get("from_id") or "") == node_id
+                        or str(c.get("to") or c.get("to_id") or "") == node_id
+                    )
+                )
+            ]
+            logger.info(
+                f"🗑️ DELETE NODE: '{node_id}' (also removed {before - len(conns)} incident connection(s))"
+            )
+        else:
+            logger.warning(f"⚠️ DELETE NODE FAILED: '{node_id}' not found")
+
+    elif name in ("navigate_to", "run_analysis", "select_node"):
+        # Frontend-only effects (switch tabs, trigger a compile, highlight a
+        # node) — none of them change the canvas's own structure, so there is
+        # nothing for this function's snapshot copy to update. Named
+        # explicitly rather than left to fall through the `if`/`elif` chain
+        # unmatched, so a step loop's "unknown tool" check doesn't flag a
+        # tool the frontend genuinely does support.
+        pass
+
     snapshot["nodes"] = nodes
     snapshot["connections"] = conns
     

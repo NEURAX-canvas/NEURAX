@@ -10,6 +10,11 @@ import type { AgentRunPlanItem } from '@/components/panels/AgentRunModal.tsx';
 
 type ChatRole = 'user' | 'assistant';
 
+//: Mirrors agent_graph.py's MODE_TOOL_GRANTS keys exactly — each name here
+//: is a real, separate least-privilege tool grant on the backend, not a
+//: cosmetic label the way the old creativity presets were.
+type AgentMode = 'creation' | 'optimization' | 'research' | 'explanation';
+
 type ChatMessage = {
   id: string;
   role: ChatRole;
@@ -70,7 +75,7 @@ export default function AIChatDrawer({
 }: AIChatDrawerProps) {
   const { config: apiKeyConfig } = useApiKey();
   const [draft, setDraft] = useState('');
-  const [creativity, setCreativity] = useState(0.0);
+  const [mode, setMode] = useState<AgentMode>('creation');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
   const [isSending, setIsSending] = useState(false);
@@ -304,7 +309,7 @@ export default function AIChatDrawer({
         body: JSON.stringify({
           user_message: content,
           snapshot: snapshotForSend,
-          creativity,
+          mode,
           ...(apiKeyConfig?.key && {
             credentials: {
               api_key: apiKeyConfig.key,
@@ -804,25 +809,27 @@ export default function AIChatDrawer({
                     className="h-8 rounded-xl px-3 text-[11px] font-bold text-primary hover:bg-primary/5 transition-all border border-primary/20 bg-primary/5 backdrop-blur-md"
                   >
                     <Sparkles className="w-3.5 h-3.5 mr-1.5 animate-pulse" />
-                    {creativity === 0.0 ? 'Canon' : creativity === 0.4 ? 'Balanced' : creativity === 0.7 ? 'Creative' : 'Research'}
+                    {mode === 'creation' ? 'Create' : mode === 'optimization' ? 'Optimize' : mode === 'research' ? 'Research' : 'Explain'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-[240px] p-2 bg-background/80 backdrop-blur-2xl border-border/40 shadow-2xl rounded-2xl animate-in fade-in zoom-in duration-200">
                   <div className="px-2 py-1.5">
-                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">Architectural Mode</h4>
+                    <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 mb-2">Agent Mode</h4>
                     <div className="flex flex-col gap-1">
-                      {[
-                        { label: 'Canon', value: 0.0, hint: 'Deterministic & reproducible', desc: 'Strictly follows established architectural patterns.' },
-                        { label: 'Balanced', value: 0.4, hint: 'Standard architectural patterns', desc: 'Adapts standard patterns for specific constraints.' },
-                        { label: 'Creative', value: 0.7, hint: 'Novel & hybrid arrangements', desc: 'Proposes novel combinations and hybrid layer counts.' },
-                        { label: 'Research', value: 1.0, hint: 'Experimental research grade', desc: 'Generates experimental, state-of-the-art architectures.' },
-                      ].map(({ label, value, desc }) => (
+                      {(
+                        [
+                          { label: 'Create', value: 'creation', desc: 'Builds and edits the canvas from your request.' },
+                          { label: 'Optimize', value: 'optimization', desc: "Tunes the existing design's parameters and hardware — never adds or removes blocks." },
+                          { label: 'Research', value: 'research', desc: 'Explores new architectures, with the full toolset and presets available.' },
+                          { label: 'Explain', value: 'explanation', desc: 'Read-only — explains the canvas and its blocks, never changes it.' },
+                        ] as { label: string; value: AgentMode; desc: string }[]
+                      ).map(({ label, value, desc }) => (
                         <button
-                          key={label}
-                          onClick={() => setCreativity(value)}
+                          key={value}
+                          onClick={() => setMode(value)}
                           className={cn(
                             'group flex flex-col items-start px-3 py-2.5 rounded-xl text-left transition-all duration-200',
-                            creativity === value
+                            mode === value
                               ? 'bg-primary/10 text-primary border border-primary/20'
                               : 'hover:bg-muted/40 text-muted-foreground'
                           )}

@@ -169,3 +169,145 @@ async def materialize(
         yield _tool("set_hyperparams", {"updates": hyperparams})
 
     yield _tool("done", {})
+
+
+def _existing_index(
+    existing_snapshot: dict,
+) -> tuple[dict[str, dict], dict[tuple[str, str], bool]]:
+    """Index the caller-supplied snapshot's own nodes/connections by id, the
+    same lookup shape `snapshot_ops._apply_tool_to_snapshot` uses internally,
+    so a diff is computed against what the canvas actually holds rather than
+    what the plan assumes it holds."""
+    nodes_by_id: dict[str, dict] = {}
+    for n in existing_snapshot.get("nodes") or []:
+        if isinstance(n, dict) and n.get("id"):
+            nodes_by_id[str(n["id"])] = n
+    edges: dict[tuple[str, str], bool] = {}
+    for c in existing_snapshot.get("connections") or []:
+        if not isinstance(c, dict):
+            continue
+        f = str(c.get("from") or c.get("from_id") or "")
+        t = str(c.get("to") or c.get("to_id") or "")
+        if f and t:
+            edges[(f, t)] = True
+    return nodes_by_id, edges
+
+
+async def diff_to_tool_calls(
+    spec: ArchSpec,
+    existing_snapshot: dict,
+    positions: dict[str, tuple[float, float]] | None = None,
+) -> AsyncGenerator[dict, None]:
+    """
+    Yield canvas tool calls that turn the *current* canvas (`existing_snapshot`)
+    into `spec`, without a `clear_canvas` — the counterpart to `materialize()`
+    for editing an architecture that already has nodes on it, instead of
+    always wiping and rebuilding from nothing.
+
+    Only emits a call where something actually differs: a node present in both
+    with identical params produces no `set_node_params`, a connection present
+    in both produces no `connect`/`disconnect`. A node whose `type` changed is
+    treated as delete-then-add — there is no "retype a node in place" tool on
+    the canvas, matching how a human editing the canvas would have to do it
+    (remove the block, add the right one).
+
+    Yields dicts in the same `{"name", "args"}` shape `materialize()` yields,
+    compatible with `snapshot_ops._apply_tool_to_snapshot`.
+    """
+    existing_nodes, existing_edges = _existing_index(existing_snapshot)
+    target_ids = {n.id for n in spec.nodes}
+
+    logger.info(
+        f"🔧 Diff-materializing: {len(existing_nodes)} existing -> {len(spec.nodes)} target nodes"
+    )
+
+    current_family = str(existing_snapshot.get("family") or "")
+    if spec.family and spec.family != current_family:
+        yield _tool("set_family", {"family": spec.family})
+
+    existing_hw = dict(existing_snapshot.get("hw_config") or {})
+    target_hw = dict(getattr(spec, "hw_config", None) or {})
+    hw_diff = {k: v for k, v in target_hw.items() if existing_hw.get(k) != v}
+    if hw_diff:
+        yield _tool("set_hw_config", {"updates": hw_diff})
+
+    # Nodes the target no longer wants — delete first, so a later `connect`
+    # can never target an id about to disappear.
+    for node_id in list(existing_nodes.keys()):
+        if node_id not in target_ids:
+            yield _tool("delete_node", {"node_id": node_id})
+
+    # Rewiring: a connection the current canvas has but the target doesn't,
+    # where both endpoints survive (an endpoint being deleted above already
+    # takes its incident connections with it — see snapshot_ops.py's
+    # `delete_node` case — so re-disconnecting it here would be a no-op sent
+    # for a connection that no longer exists by the time this runs).
+    target_edges = {(e.from_id, e.to_id) for e in spec.edges}
+    for (f, t) in existing_edges:
+        if (f, t) not in target_edges and f in target_ids and t in target_ids:
+            yield _tool("disconnect", {"from_id": f, "to_id": t})
+
+    # New nodes need a position; a node that already exists keeps the one the
+    # user (or a prior run) already gave it rather than being silently moved.
+    computed_positions: dict[str, tuple[float, float]] | None = None
+
+    def _position_for(node_id: str) -> tuple[float, float]:
+        nonlocal computed_positions
+        existing = existing_nodes.get(node_id)
+        if existing is not None:
+            return (float(existing.get("x") or 0), float(existing.get("y") or 0))
+        if positions is not None and node_id in positions:
+            return positions[node_id]
+        if computed_positions is None:
+            computed_positions = assign_positions(spec)
+        return computed_positions.get(node_id, (0.0, 0.0))
+
+    for node in spec.nodes:
+        prior = existing_nodes.get(node.id)
+        if prior is None:
+            x, y = _position_for(node.id)
+            yield _tool("add_node", {
+                "layer_type": node.type,
+                "node_id": node.id,
+                "x": x,
+                "y": y,
+            })
+            if node.params:
+                yield _tool("set_node_params", {"node_id": node.id, "updates": node.params})
+            continue
+
+        if str(prior.get("type") or "") != node.type:
+            # Same id, different type: the canvas has no "retype" tool, so
+            # this is a delete+add even though the id survives — the delete
+            # above only covered ids the target dropped entirely.
+            yield _tool("delete_node", {"node_id": node.id})
+            x, y = _position_for(node.id)
+            yield _tool("add_node", {
+                "layer_type": node.type,
+                "node_id": node.id,
+                "x": x,
+                "y": y,
+            })
+            if node.params:
+                yield _tool("set_node_params", {"node_id": node.id, "updates": node.params})
+            continue
+
+        prior_params = prior.get("params") if isinstance(prior.get("params"), dict) else {}
+        params_diff = {k: v for k, v in node.params.items() if prior_params.get(k) != v}
+        if params_diff:
+            yield _tool("set_node_params", {"node_id": node.id, "updates": params_diff})
+
+    for edge in spec.edges:
+        if (edge.from_id, edge.to_id) not in existing_edges:
+            yield _tool("connect", {"from_id": edge.from_id, "to_id": edge.to_id})
+
+    hyperparams = getattr(spec, "hyperparams", None) or {}
+    existing_hyperparams = existing_snapshot.get("hyperparams") or {}
+    hp_diff = {
+        k: v for k, v in hyperparams.items() if existing_hyperparams.get(k) != v
+    }
+    if hp_diff:
+        yield _tool("set_hyperparams", {"updates": hp_diff})
+
+    logger.info("✅ Diff-materialization complete")
+    yield _tool("done", {})

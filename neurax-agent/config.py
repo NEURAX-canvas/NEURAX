@@ -1,8 +1,9 @@
 """Shared configuration and state for neurax-agent."""
 import asyncio
+import os
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Optional
 
 
 @dataclass
@@ -64,3 +65,36 @@ def _sweep_expired_runs(now: float | None = None) -> int:
     for run_id in expired:
         _stop_run(run_id)
     return len(expired)
+
+
+# Sliding-window rate limiting for `POST /runs`.
+#
+# Nothing throttled how often a caller can *start* a run anywhere in this
+# stack, Rust or Python, before this — `agent_graph.py`'s step/timeout
+# ceilings (and the old pipeline's MAX_ATTEMPTS) bound how long *one* run can
+# go, not how many runs a caller can start back to back, each one real,
+# billed LLM and compiler work.
+_RATE_LIMIT_MAX_RUNS = int(os.environ.get("NEURAX_AGENT_RATE_LIMIT_MAX_RUNS", "10"))
+_RATE_LIMIT_WINDOW_SECONDS = float(os.environ.get("NEURAX_AGENT_RATE_LIMIT_WINDOW_SECONDS", "60"))
+_run_starts: dict[str, list[float]] = {}
+
+
+def check_rate_limit(client_id: str, now: Optional[float] = None) -> bool:
+    """True — and recorded — if `client_id` may start another run right now.
+    False if they've already started `_RATE_LIMIT_MAX_RUNS` within the last
+    `_RATE_LIMIT_WINDOW_SECONDS`, in which case nothing is recorded (a
+    rejected attempt must not itself count toward the window it was
+    rejected by). `now` explicit for the same reason `_sweep_expired_runs`
+    takes it — the window boundary needs to be directly testable.
+    """
+    now = time.monotonic() if now is None else now
+    window_start = now - _RATE_LIMIT_WINDOW_SECONDS
+    starts = [t for t in _run_starts.get(client_id, []) if t > window_start]
+
+    if len(starts) >= _RATE_LIMIT_MAX_RUNS:
+        _run_starts[client_id] = starts
+        return False
+
+    starts.append(now)
+    _run_starts[client_id] = starts
+    return True

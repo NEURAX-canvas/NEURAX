@@ -581,20 +581,30 @@ async def optimize_hyperparameters(
     spec: Any,
     hw_config: dict[str, Any] | None = None,
     objective: str = "max_throughput",
+    candidates: dict[str, Any] | None = None,
     timeout_s: float = 30.0,
 ) -> SweepReport:
     """Search batch_size x zero_stage x precision for the design's best
     feasible training configuration. Reuses spec_to_topology exactly like
     measure_and_check — the sweep endpoint takes the same wire topology, it
     just evaluates many hyperparameter combinations against it instead of one.
+
+    `candidates` (batch_sizes/zero_stages/gpu_counts/precisions) narrows the
+    sweep to specific values instead of the backend's own default range —
+    added for `analysis_tools.find_optimal_hyperparameters`, whose MCP
+    counterpart already exposed this; every existing caller leaves it unset
+    and gets exactly the previous behavior.
     """
     topology = spec_to_topology(spec, hw_config)
+    payload: dict[str, Any] = {"topology": topology, "objective": objective}
+    if candidates:
+        payload["candidates"] = candidates
 
     try:
         async with httpx.AsyncClient(timeout=timeout_s) as client:
             response = await client.post(
                 f"{NEURAX_SERVICE_URL}/sweep",
-                json={"topology": topology, "objective": objective},
+                json=payload,
             )
             response.raise_for_status()
             payload = response.json()

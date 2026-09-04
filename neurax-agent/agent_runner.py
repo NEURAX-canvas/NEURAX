@@ -15,7 +15,7 @@ from topology_validator import validate_arch_spec, auto_repair_fanin_violations,
 from requirements import extract_budget
 from budget_check import measure_and_check, narrow_precision_to_fit, optimize_hyperparameters
 from layout_engine import assign_positions
-from materializer import materialize
+from materializer import materialize, diff_to_tool_calls
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -51,6 +51,16 @@ async def _run_agent(
     """
     logger.info(f"🚀 AGENT STARTED (3-PHASE) | run_id={run_id} | creativity={creativity}")
     logger.info(f"   User message: {user_message[:100]}...")
+
+    # Captured before anything in this function has a chance to mutate the
+    # snapshot (family selection does, a few lines down) — this is the one
+    # question that decides *how* Phase 3 below ends up materializing:
+    # editing what is already on the canvas, or building fresh onto an empty
+    # one. `bool(snapshot.get("nodes"))` on the request as it arrived is the
+    # right test, not the harder-to-reason-about "does `snapshot` still have
+    # nodes by the time we get to Phase 3" (it always will if it started
+    # with any, since nothing in Phases 0-2 removes nodes).
+    editing_existing_canvas = bool(snapshot.get("nodes"))
 
     try:
         # ── 0. Setup & Family Selection ──
@@ -324,13 +334,24 @@ async def _run_agent(
         positions = assign_positions(spec)
 
         # ── 4. Phase 3: Materialization ──
-        logger.info("🔧 streaming tool calls to canvas...")
+        # A canvas that already had nodes on it is edited in place — the
+        # diff against `spec` (add/move/reconnect/delete only what actually
+        # changed) — rather than wiped with `clear_canvas` and rebuilt from
+        # nothing, which used to happen unconditionally and threw away
+        # anything the user hadn't asked to change.
+        if editing_existing_canvas:
+            logger.info("🔧 streaming tool calls to canvas (editing existing, no clear_canvas)...")
+            tool_stream = diff_to_tool_calls(spec, snapshot, positions)
+        else:
+            logger.info("🔧 streaming tool calls to canvas (fresh build)...")
+            tool_stream = materialize(spec, positions)
+
         # Mark middle steps as done during materialization (simplification)
         for i in range(1, len(plan_data) - 1):
              await q.put(_update_plan(i, "done"))
 
         count = 0
-        async for tool_call in materialize(spec, positions):
+        async for tool_call in tool_stream:
             await q.put(_event("tool", tool_call))
             snapshot = _apply_tool_to_snapshot(snapshot, tool_call)
             count += 1
